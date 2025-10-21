@@ -87,7 +87,7 @@ pub fn get_open_rings(
         return all_open;
     }
 
-    // Return only rings from largest region
+    // Return only rings from the largest region
     let main_region = regions.iter()
         .max_by_key(|r| r.len())
         .unwrap();
@@ -175,16 +175,41 @@ fn apply_isolation_capture(
     global: &mut Array1<f32>,
     config: &BoardConfig,
     current_player: usize,
+    anchor: (usize, usize),
 ) {
-    let mut regions = get_regions(&spatial.view(), config);
+    let regions = get_regions(&spatial.view(), config);
     if regions.len() <= 1 {
         return;
     }
 
-    // Sort regions by size (largest first) so the main region is first.
-    regions.sort_by(|a, b| b.len().cmp(&a.len()));
-    for region in regions.into_iter().skip(1) {
-        if region.is_empty() {
+    let mut main_idx = 0usize;
+    let mut main_size = regions[0].len();
+    let mut main_has_anchor = regions[0].iter().any(|&coord| coord == anchor);
+    let mut main_min = regions[0]
+        .iter()
+        .cloned()
+        .min()
+        .unwrap_or(anchor);
+
+    for (idx, region) in regions.iter().enumerate().skip(1) {
+        let size = region.len();
+        let has_anchor = region.iter().any(|&coord| coord == anchor);
+        let region_min = region.iter().cloned().min().unwrap_or(anchor);
+
+        let better = size > main_size
+            || (size == main_size && has_anchor && !main_has_anchor)
+            || (size == main_size && has_anchor == main_has_anchor && region_min < main_min);
+
+        if better {
+            main_idx = idx;
+            main_size = size;
+            main_has_anchor = has_anchor;
+            main_min = region_min;
+        }
+    }
+
+    for (idx, region) in regions.into_iter().enumerate() {
+        if idx == main_idx || region.is_empty() {
             continue;
         }
 
@@ -406,7 +431,7 @@ pub fn apply_placement(
         spatial[[config.ring_layer, ry, rx]] = 0.0;
 
         // Apply isolation captures that may result from this removal
-        apply_isolation_capture(spatial, global, config, cur_player);
+        apply_isolation_capture(spatial, global, config, cur_player, (dst_y, dst_x));
     }
 
     // Decrement marble count from supply or captured pool
