@@ -67,7 +67,7 @@ pub fn get_regions(
     regions
 }
 
-/// Get list of empty ring indices in the main connected region
+/// Get list of empty ring indices across the board
 pub fn get_open_rings(
     spatial: &ArrayView3<f32>,
     config: &BoardConfig,
@@ -80,22 +80,7 @@ pub fn get_open_rings(
             !(1..4).any(|layer| spatial[[layer, y, x]] > 0.0)
         })
         .collect();
-
-    // Check for multiple regions
-    let regions = get_regions(spatial, config);
-    if regions.len() <= 1 {
-        return all_open;
-    }
-
-    // Return only rings from the largest region
-    let main_region = regions.iter()
-        .max_by_key(|r| r.len())
-        .unwrap();
-    let main_region_set: HashSet<_> = main_region.iter().cloned().collect();
-
-    all_open.into_iter()
-        .filter(|ring| main_region_set.contains(ring))
-        .collect()
+    all_open
 }
 
 /// Check if ring can be removed (geometric rule)
