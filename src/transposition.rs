@@ -1,3 +1,4 @@
+
 use dashmap::DashMap;
 use std::sync::Arc;
 use std::hash::{Hash, Hasher};
@@ -37,6 +38,7 @@ impl TranspositionEntry {
         }
     }
 
+    #[allow(dead_code)]
     pub fn get_average_value(&self) -> f32 {
         if self.visits == 0 {
             0.0
@@ -60,6 +62,7 @@ impl TranspositionTable {
     }
 
     /// Clone the table reference (shares underlying data)
+    #[allow(dead_code)]
     pub fn clone_ref(&self) -> Self {
         Self {
             table: Arc::clone(&self.table),
@@ -95,6 +98,7 @@ impl TranspositionTable {
     }
 
     /// Get table size
+    #[allow(dead_code)]
     pub fn len(&self) -> usize {
         self.table.len()
     }

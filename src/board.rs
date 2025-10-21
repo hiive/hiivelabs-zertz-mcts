@@ -146,6 +146,8 @@ impl BoardState {
     }
 
     /// Apply a placement action (for testing comparison with Python backend)
+    ///
+    #[pyo3(signature=(marble_type, dst_y, dst_x, remove_y=None, remove_x=None))]
     fn apply_placement(
         &mut self,
         py: Python<'_>,
