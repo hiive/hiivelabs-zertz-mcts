@@ -1,4 +1,4 @@
-use numpy::{PyArray3, PyArray1, PyArrayMethods, PyReadonlyArray3, PyReadonlyArray1};
+use numpy::{PyArray1, PyArray3, PyArrayMethods, PyReadonlyArray1, PyReadonlyArray3};
 use pyo3::prelude::*;
 use std::collections::HashMap;
 
@@ -45,7 +45,12 @@ impl BoardConfig {
             37 => 7,
             48 => 8,
             61 => 9,
-            _ => return Err(format!("Unsupported ring count: {}. Use 37, 48, or 61.", rings)),
+            _ => {
+                return Err(format!(
+                    "Unsupported ring count: {}. Use 37, 48, or 61.",
+                    rings
+                ))
+            }
         };
 
         let mut marble_to_layer = HashMap::new();
@@ -73,10 +78,7 @@ impl BoardConfig {
             cur_player: 9,
             player_1: 0,
             player_2: 1,
-            directions: vec![
-                (1, 0), (0, -1), (-1, -1),
-                (-1, 0), (0, 1), (1, 1)
-            ],
+            directions: vec![(1, 0), (0, -1), (-1, -1), (-1, 0), (0, 1), (1, 1)],
             marble_to_layer,
         })
     }
@@ -129,20 +131,29 @@ impl BoardState {
     }
 
     /// Get valid actions (for testing comparison with Python backend)
-    fn get_valid_actions(&self, py: Python<'_>) -> PyResult<(Py<PyArray3<f32>>, Py<PyArray3<f32>>)> {
+    fn get_valid_actions(
+        &self,
+        py: Python<'_>,
+    ) -> PyResult<(Py<PyArray3<f32>>, Py<PyArray3<f32>>)> {
         let spatial = self.spatial.bind(py).readonly().as_array().to_owned();
         let global = self.global.bind(py).readonly().as_array().to_owned();
 
-        let (placement_mask, capture_mask) = crate::game::get_valid_actions(
-            &spatial.view(),
-            &global.view(),
-            &self.config,
-        );
+        let (placement_mask, capture_mask) =
+            crate::game::get_valid_actions(&spatial.view(), &global.view(), &self.config);
 
         Ok((
             PyArray3::from_array_bound(py, &placement_mask).into(),
             PyArray3::from_array_bound(py, &capture_mask).into(),
         ))
+    }
+
+    /// Canonicalize the spatial state and return transform metadata
+    fn canonicalize_state(&self, py: Python<'_>) -> PyResult<(Py<PyArray3<f32>>, String, String)> {
+        let spatial = self.spatial.bind(py).readonly();
+        let (canonical, transform, inverse) =
+            crate::canonicalization::canonicalize_state(&spatial.as_array(), &self.config);
+        let canonical_py = PyArray3::from_array_bound(py, &canonical).into();
+        Ok((canonical_py, transform, inverse))
     }
 
     /// Apply a placement action (for testing comparison with Python backend)

@@ -1,15 +1,15 @@
+use ndarray::{Array1, Array3};
+use numpy::{PyReadonlyArray1, PyReadonlyArray3};
 use pyo3::prelude::*;
-use numpy::{PyReadonlyArray3, PyReadonlyArray1};
-use ndarray::{Array3, Array1};
-use rand::{Rng, RngCore, SeedableRng};
 use rand::rngs::StdRng;
+use rand::{Rng, RngCore, SeedableRng};
 use rayon::prelude::*;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 use crate::board::BoardConfig;
-use crate::node::{MCTSNode, Action};
-use crate::game::{get_valid_actions, apply_placement, apply_capture};
+use crate::game::{apply_capture, apply_placement, get_valid_actions};
+use crate::node::{Action, MCTSNode};
 use crate::transposition::TranspositionTable;
 
 /// MCTS Search implementation
@@ -121,7 +121,12 @@ impl MCTSSearch {
         verbose: Option<bool>,
         seed: Option<u64>,
     ) -> PyResult<(String, Option<(usize, usize, usize)>)> {
-        let search_options = SearchOptions::new(self, use_transposition_table, use_transposition_lookups, clear_table);
+        let search_options = SearchOptions::new(
+            self,
+            use_transposition_table,
+            use_transposition_lookups,
+            clear_table,
+        );
 
         let t = t.unwrap_or(1);
         let verbose = verbose.unwrap_or(false);
@@ -131,13 +136,26 @@ impl MCTSSearch {
 
         let config = Arc::new(
             BoardConfig::standard(rings, t)
-                .map_err(|e| pyo3::exceptions::PyValueError::new_err(e))?
+                .map_err(|e| pyo3::exceptions::PyValueError::new_err(e))?,
         );
 
         let spatial_arr = spatial.as_array().to_owned();
         let global_arr = global.as_array().to_owned();
 
-        let root = Arc::new(MCTSNode::new(spatial_arr, global_arr, Arc::clone(&config)));
+        let shared_entry = if search_options.use_lookups() {
+            search_options.table_ref().map(|table_ref| {
+                table_ref.get_or_insert(&spatial_arr.view(), &global_arr.view(), config.as_ref())
+            })
+        } else {
+            None
+        };
+
+        let root = Arc::new(MCTSNode::new(
+            spatial_arr,
+            global_arr,
+            Arc::clone(&config),
+            shared_entry,
+        ));
 
         let start = Instant::now();
 
@@ -207,7 +225,12 @@ impl MCTSSearch {
         verbose: Option<bool>,
         seed: Option<u64>,
     ) -> PyResult<(String, Option<(usize, usize, usize)>)> {
-        let search_options = SearchOptions::new(self, use_transposition_table, use_transposition_lookups, clear_table);
+        let search_options = SearchOptions::new(
+            self,
+            use_transposition_table,
+            use_transposition_lookups,
+            clear_table,
+        );
         let t = t.unwrap_or(1);
         let num_threads = num_threads.unwrap_or(16);
         let verbose = verbose.unwrap_or(false);
@@ -223,13 +246,26 @@ impl MCTSSearch {
 
         let config = Arc::new(
             BoardConfig::standard(rings, t)
-                .map_err(|e| pyo3::exceptions::PyValueError::new_err(e))?
+                .map_err(|e| pyo3::exceptions::PyValueError::new_err(e))?,
         );
 
         let spatial_arr = spatial.as_array().to_owned();
         let global_arr = global.as_array().to_owned();
 
-        let root = Arc::new(MCTSNode::new(spatial_arr, global_arr, Arc::clone(&config)));
+        let shared_entry = if search_options.use_lookups() {
+            search_options.table_ref().map(|table_ref| {
+                table_ref.get_or_insert(&spatial_arr.view(), &global_arr.view(), config.as_ref())
+            })
+        } else {
+            None
+        };
+
+        let root = Arc::new(MCTSNode::new(
+            spatial_arr,
+            global_arr,
+            Arc::clone(&config),
+            shared_entry,
+        ));
 
         let start = Instant::now();
 
@@ -354,20 +390,21 @@ impl MCTSSearch {
             // Select best child using UCB1
             let parent_visits = node.get_visits();
             let children = node.children.lock().unwrap();
-            let best_child = children.iter()
-                .max_by(|(_, child_a), (_, child_b)| {
-                    let score_a = child_a.ucb1_score(parent_visits, self.exploration_constant);
-                    let score_b = child_b.ucb1_score(parent_visits, self.exploration_constant);
-                    // Handle NaN gracefully (treat equal if either is NaN)
-                    score_a.partial_cmp(&score_b).unwrap_or(std::cmp::Ordering::Equal)
-                });
+            let best_child = children.iter().max_by(|(_, child_a), (_, child_b)| {
+                let score_a = child_a.ucb1_score(parent_visits, self.exploration_constant);
+                let score_b = child_b.ucb1_score(parent_visits, self.exploration_constant);
+                // Handle NaN gracefully (treat equal if either is NaN)
+                score_a
+                    .partial_cmp(&score_b)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            });
 
             if let Some((_, child)) = best_child {
                 let next_node = Arc::clone(child);
-                drop(children);  // Release lock before next iteration
+                drop(children); // Release lock before next iteration
                 node = next_node;
             } else {
-                drop(children);  // Release lock before returning
+                drop(children); // Release lock before returning
                 return node;
             }
         }
@@ -380,11 +417,8 @@ impl MCTSSearch {
         table: Option<&Arc<TranspositionTable>>,
         use_lookups: bool,
     ) -> Arc<MCTSNode> {
-        let (placement_mask, capture_mask) = get_valid_actions(
-            &node.spatial.view(),
-            &node.global.view(),
-            &node.config,
-        );
+        let (placement_mask, capture_mask) =
+            get_valid_actions(&node.spatial.view(), &node.global.view(), &node.config);
 
         // Get untried actions
         let mut untried_actions = Vec::new();
@@ -448,13 +482,13 @@ impl MCTSSearch {
         // Filter out already tried actions
         let tried_actions: Vec<_> = {
             let children = node.children.lock().unwrap();
-            children.iter()
-                .map(|(action, _)| action.clone())
-                .collect()
+            children.iter().map(|(action, _)| action.clone()).collect()
         };
 
         untried_actions.retain(|action| {
-            !tried_actions.iter().any(|tried| actions_equal(action, tried))
+            !tried_actions
+                .iter()
+                .any(|tried| actions_equal(action, tried))
         });
 
         if untried_actions.is_empty() {
@@ -470,7 +504,13 @@ impl MCTSSearch {
         let mut child_global = node.global.clone();
 
         match &action {
-            Action::Placement { marble_type, dst_y, dst_x, remove_y, remove_x } => {
+            Action::Placement {
+                marble_type,
+                dst_y,
+                dst_x,
+                remove_y,
+                remove_x,
+            } => {
                 apply_placement(
                     &mut child_spatial,
                     &mut child_global,
@@ -482,7 +522,11 @@ impl MCTSSearch {
                     &node.config,
                 );
             }
-            Action::Capture { start_y, start_x, direction } => {
+            Action::Capture {
+                start_y,
+                start_x,
+                direction,
+            } => {
                 apply_capture(
                     &mut child_spatial,
                     &mut child_global,
@@ -504,20 +548,25 @@ impl MCTSSearch {
         }
 
         // Create child node with parent pointer
+        let shared_entry = if use_lookups {
+            table.map(|t| {
+                t.get_or_insert(
+                    &child_spatial.view(),
+                    &child_global.view(),
+                    node.config.as_ref(),
+                )
+            })
+        } else {
+            None
+        };
+
         let child = Arc::new(MCTSNode::new_child(
             child_spatial,
             child_global,
             Arc::clone(&node.config),
             &node,
+            shared_entry,
         ));
-
-        if use_lookups {
-            if let Some(table_ref) = table {
-                if let Some(entry) = table_ref.lookup(&child.spatial.view(), &child.global.view()) {
-                    child.apply_entry(&entry);
-                }
-            }
-        }
 
         // Add child to parent (thread-safe)
         node.add_child(action, Arc::clone(&child));
@@ -549,23 +598,30 @@ impl MCTSSearch {
         for depth in 0..depth_limit {
             if let Some(limit) = time_limit {
                 if start_time.elapsed().as_secs_f32() >= limit {
-                    return self.evaluate_heuristic(&sim_spatial, &sim_global, &node.config, leaf_player);
+                    return self.evaluate_heuristic(
+                        &sim_spatial,
+                        &sim_global,
+                        &node.config,
+                        leaf_player,
+                    );
                 }
             }
 
             if self.is_terminal_state(&sim_spatial, &sim_global, &node.config) {
-                return self.evaluate_terminal(&sim_spatial, &sim_global, &node.config, leaf_player);
+                return self.evaluate_terminal(
+                    &sim_spatial,
+                    &sim_global,
+                    &node.config,
+                    leaf_player,
+                );
             }
 
             if consecutive_passes >= 2 {
                 return 0.0;
             }
 
-            let (placement_mask, capture_mask) = get_valid_actions(
-                &sim_spatial.view(),
-                &sim_global.view(),
-                &node.config,
-            );
+            let (placement_mask, capture_mask) =
+                get_valid_actions(&sim_spatial.view(), &sim_global.view(), &node.config);
 
             let mut captures = Vec::new();
             for dir in 0..6 {
@@ -581,7 +637,14 @@ impl MCTSSearch {
             if !captures.is_empty() {
                 let idx = self.with_rng(|rng| rng.gen_range(0..captures.len()));
                 let (direction, start_y, start_x) = captures[idx];
-                apply_capture(&mut sim_spatial, &mut sim_global, start_y, start_x, direction, &node.config);
+                apply_capture(
+                    &mut sim_spatial,
+                    &mut sim_global,
+                    start_y,
+                    start_x,
+                    direction,
+                    &node.config,
+                );
                 consecutive_passes = 0;
             } else {
                 let width = node.config.width;
@@ -608,7 +671,16 @@ impl MCTSSearch {
                 if !placements.is_empty() {
                     let idx = self.with_rng(|rng| rng.gen_range(0..placements.len()));
                     let (marble_type, dst_y, dst_x, remove_y, remove_x) = placements[idx];
-                    apply_placement(&mut sim_spatial, &mut sim_global, marble_type, dst_y, dst_x, remove_y, remove_x, &node.config);
+                    apply_placement(
+                        &mut sim_spatial,
+                        &mut sim_global,
+                        marble_type,
+                        dst_y,
+                        dst_x,
+                        remove_y,
+                        remove_x,
+                        &node.config,
+                    );
                     consecutive_passes = 0;
                 } else {
                     consecutive_passes += 1;
@@ -622,7 +694,12 @@ impl MCTSSearch {
             }
 
             if depth + 1 >= depth_limit {
-                return self.evaluate_heuristic(&sim_spatial, &sim_global, &node.config, leaf_player);
+                return self.evaluate_heuristic(
+                    &sim_spatial,
+                    &sim_global,
+                    &node.config,
+                    leaf_player,
+                );
             }
         }
 
@@ -644,12 +721,15 @@ impl MCTSSearch {
             current_node.update(value);
 
             if let Some(table_ref) = table {
-                table_ref.store(
-                    &current_node.spatial.view(),
-                    &current_node.global.view(),
-                    current_node.get_visits(),
-                    current_node.get_value(),
-                );
+                if !current_node.has_shared_stats() {
+                    table_ref.store(
+                        &current_node.spatial.view(),
+                        &current_node.global.view(),
+                        current_node.config.as_ref(),
+                        current_node.get_visits(),
+                        current_node.get_value(),
+                    );
+                }
             }
 
             value = -value;
@@ -663,7 +743,12 @@ impl MCTSSearch {
     }
 
     /// Check if state is terminal (standalone version)
-    fn is_terminal_state(&self, spatial: &Array3<f32>, global: &Array1<f32>, config: &BoardConfig) -> bool {
+    fn is_terminal_state(
+        &self,
+        spatial: &Array3<f32>,
+        global: &Array1<f32>,
+        config: &BoardConfig,
+    ) -> bool {
         let p1_caps = [
             global[config.p1_cap_w],
             global[config.p1_cap_g],
@@ -735,7 +820,11 @@ impl MCTSSearch {
             global[captured_slice[2]],
         ];
 
-        if supply.iter().zip(captured.iter()).all(|(&s, &c)| s + c == 0.0) {
+        if supply
+            .iter()
+            .zip(captured.iter())
+            .all(|(&s, &c)| s + c == 0.0)
+        {
             return true;
         }
 
@@ -780,10 +869,18 @@ impl MCTSSearch {
             0.0
         } else if p1_won {
             // Player 1 won
-            if root_player == config.player_1 { 1.0 } else { -1.0 }
+            if root_player == config.player_1 {
+                1.0
+            } else {
+                -1.0
+            }
         } else if p2_won {
             // Player 2 won
-            if root_player == config.player_2 { 1.0 } else { -1.0 }
+            if root_player == config.player_2 {
+                1.0
+            } else {
+                -1.0
+            }
         } else {
             // No winner yet
             0.0
@@ -801,10 +898,14 @@ impl MCTSSearch {
         root_player: usize,
     ) -> f32 {
         // Weight by marble value
-        let weights = [1.0, 2.0, 3.0];  // white, gray, black
+        let weights = [1.0, 2.0, 3.0]; // white, gray, black
 
-        let p0_score: f32 = (0..3).map(|i| global[config.p1_cap_w + i] * weights[i]).sum();
-        let p1_score: f32 = (0..3).map(|i| global[config.p2_cap_w + i] * weights[i]).sum();
+        let p0_score: f32 = (0..3)
+            .map(|i| global[config.p1_cap_w + i] * weights[i])
+            .sum();
+        let p1_score: f32 = (0..3)
+            .map(|i| global[config.p2_cap_w + i] * weights[i])
+            .sum();
 
         // Calculate advantage from root player's perspective
         let advantage = if root_player == config.player_1 {
@@ -829,24 +930,34 @@ impl MCTSSearch {
         }
 
         // Select child with most visits
-        let best = children.iter()
-            .max_by_key(|(_, child)| child.get_visits());
+        let best = children.iter().max_by_key(|(_, child)| child.get_visits());
 
         if let Some((action, _)) = best {
             let width = root.config.width;
             match action {
-                Action::Placement { marble_type, dst_y, dst_x, remove_y, remove_x } => {
+                Action::Placement {
+                    marble_type,
+                    dst_y,
+                    dst_x,
+                    remove_y,
+                    remove_x,
+                } => {
                     // Convert (y, x) coordinates to flattened indices
                     let dst_flat = dst_y * width + dst_x;
                     let remove_flat = match (remove_y, remove_x) {
                         (Some(ry), Some(rx)) => ry * width + rx,
-                        _ => width * width,  // No removal position (use width² as sentinel)
+                        _ => width * width, // No removal position (use width² as sentinel)
                     };
-                    Ok(("PUT".to_string(), Some((*marble_type, dst_flat, remove_flat))))
+                    Ok((
+                        "PUT".to_string(),
+                        Some((*marble_type, dst_flat, remove_flat)),
+                    ))
                 }
-                Action::Capture { start_y, start_x, direction } => {
-                    Ok(("CAP".to_string(), Some((*direction, *start_y, *start_x))))
-                }
+                Action::Capture {
+                    start_y,
+                    start_x,
+                    direction,
+                } => Ok(("CAP".to_string(), Some((*direction, *start_y, *start_x)))),
                 Action::Pass => Ok(("PASS".to_string(), None)),
             }
         } else {
@@ -860,12 +971,32 @@ fn actions_equal(a: &Action, b: &Action) -> bool {
     match (a, b) {
         (Action::Pass, Action::Pass) => true,
         (
-            Action::Placement { marble_type: mt1, dst_y: dy1, dst_x: dx1, remove_y: ry1, remove_x: rx1 },
-            Action::Placement { marble_type: mt2, dst_y: dy2, dst_x: dx2, remove_y: ry2, remove_x: rx2 },
+            Action::Placement {
+                marble_type: mt1,
+                dst_y: dy1,
+                dst_x: dx1,
+                remove_y: ry1,
+                remove_x: rx1,
+            },
+            Action::Placement {
+                marble_type: mt2,
+                dst_y: dy2,
+                dst_x: dx2,
+                remove_y: ry2,
+                remove_x: rx2,
+            },
         ) => mt1 == mt2 && dy1 == dy2 && dx1 == dx2 && ry1 == ry2 && rx1 == rx2,
         (
-            Action::Capture { start_y: sy1, start_x: sx1, direction: d1 },
-            Action::Capture { start_y: sy2, start_x: sx2, direction: d2 },
+            Action::Capture {
+                start_y: sy1,
+                start_x: sx1,
+                direction: d1,
+            },
+            Action::Capture {
+                start_y: sy2,
+                start_x: sx2,
+                direction: d2,
+            },
         ) => sy1 == sy2 && sx1 == sx2 && d1 == d2,
         _ => false,
     }

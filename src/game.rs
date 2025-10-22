@@ -1,5 +1,5 @@
-use ndarray::{Array3, Array1, ArrayView3, ArrayView1};
 use crate::board::BoardConfig;
+use ndarray::{Array1, Array3, ArrayView1, ArrayView3};
 use std::collections::{HashSet, VecDeque};
 
 /// Check if index is within board bounds
@@ -12,7 +12,9 @@ fn is_inbounds(y: i32, x: i32, width: usize) -> bool {
 /// Returns i32 coordinates which may be negative or >= width
 #[inline]
 pub fn get_neighbors_raw(y: usize, x: usize, config: &BoardConfig) -> Vec<(i32, i32)> {
-    config.directions.iter()
+    config
+        .directions
+        .iter()
         .map(|(dy, dx)| (y as i32 + dy, x as i32 + dx))
         .collect()
 }
@@ -20,7 +22,9 @@ pub fn get_neighbors_raw(y: usize, x: usize, config: &BoardConfig) -> Vec<(i32, 
 /// Get list of neighboring indices (filtered to in-bounds only)
 #[inline]
 pub fn get_neighbors(y: usize, x: usize, config: &BoardConfig) -> Vec<(usize, usize)> {
-    config.directions.iter()
+    config
+        .directions
+        .iter()
         .filter_map(|(dy, dx)| {
             let ny = y as i32 + dy;
             let nx = x as i32 + dx;
@@ -34,10 +38,7 @@ pub fn get_neighbors(y: usize, x: usize, config: &BoardConfig) -> Vec<(usize, us
 }
 
 /// Find all connected regions on the board
-pub fn get_regions(
-    spatial: &ArrayView3<f32>,
-    config: &BoardConfig,
-) -> Vec<Vec<(usize, usize)>> {
+pub fn get_regions(spatial: &ArrayView3<f32>, config: &BoardConfig) -> Vec<Vec<(usize, usize)>> {
     let mut regions = Vec::new();
     let mut not_visited: HashSet<(usize, usize)> = (0..config.width)
         .flat_map(|y| (0..config.width).map(move |x| (y, x)))
@@ -54,7 +55,9 @@ pub fn get_regions(
             region.push(index);
 
             for neighbor in get_neighbors(index.0, index.1, config) {
-                if not_visited.contains(&neighbor) && spatial[[config.ring_layer, neighbor.0, neighbor.1]] == 1.0 {
+                if not_visited.contains(&neighbor)
+                    && spatial[[config.ring_layer, neighbor.0, neighbor.1]] == 1.0
+                {
                     not_visited.remove(&neighbor);
                     queue.push_back(neighbor);
                 }
@@ -68,16 +71,13 @@ pub fn get_regions(
 }
 
 /// Get list of empty ring indices across the board
-pub fn get_open_rings(
-    spatial: &ArrayView3<f32>,
-    config: &BoardConfig,
-) -> Vec<(usize, usize)> {
+pub fn get_open_rings(spatial: &ArrayView3<f32>, config: &BoardConfig) -> Vec<(usize, usize)> {
     // Get all vacant rings (ring present, no marble)
     let all_open: Vec<(usize, usize)> = (0..config.width)
         .flat_map(|y| (0..config.width).map(move |x| (y, x)))
         .filter(|&(y, x)| {
-            spatial[[config.ring_layer, y, x]] == 1.0 &&
-            !(1..4).any(|layer| spatial[[layer, y, x]] > 0.0)
+            spatial[[config.ring_layer, y, x]] == 1.0
+                && !(1..4).any(|layer| spatial[[layer, y, x]] > 0.0)
         })
         .collect();
     all_open
@@ -117,7 +117,7 @@ pub fn is_ring_removable(
         let has_neighbor_ring = if is_inbounds(ny, nx, config.width) {
             spatial[[config.ring_layer, ny as usize, nx as usize]] == 1.0
         } else {
-            false  // Out of bounds = no ring
+            false // Out of bounds = no ring
         };
 
         if has_neighbor_ring {
@@ -136,10 +136,7 @@ pub fn is_ring_removable(
 }
 
 /// Get removable rings (rings that can be removed without disconnecting board)
-pub fn get_removable_rings(
-    spatial: &ArrayView3<f32>,
-    config: &BoardConfig,
-) -> Vec<(usize, usize)> {
+pub fn get_removable_rings(spatial: &ArrayView3<f32>, config: &BoardConfig) -> Vec<(usize, usize)> {
     (0..config.width)
         .flat_map(|y| (0..config.width).map(move |x| (y, x)))
         .filter(|&(y, x)| is_ring_removable(spatial, y, x, config))
@@ -170,11 +167,7 @@ fn apply_isolation_capture(
     let mut main_idx = 0usize;
     let mut main_size = regions[0].len();
     let mut main_has_anchor = regions[0].iter().any(|&coord| coord == anchor);
-    let mut main_min = regions[0]
-        .iter()
-        .cloned()
-        .min()
-        .unwrap_or(anchor);
+    let mut main_min = regions[0].iter().cloned().min().unwrap_or(anchor);
 
     for (idx, region) in regions.iter().enumerate().skip(1) {
         let size = region.len();
@@ -296,8 +289,10 @@ pub fn get_placement_actions(
             // Allow "no removal" option only if:
             // - No removable rings exist, OR
             // - Only one removable ring and it's the destination itself
-            let only_removable_is_dest = removable_rings.len() == 1 &&
-                removable_rings.iter().any(|&(ry, rx)| ry == dst_y && rx == dst_x);
+            let only_removable_is_dest = removable_rings.len() == 1
+                && removable_rings
+                    .iter()
+                    .any(|&(ry, rx)| ry == dst_y && rx == dst_x);
 
             if removable_rings.is_empty() || only_removable_is_dest {
                 placement_mask[[marble_idx, dst_flat, width2]] = 1.0;
@@ -310,10 +305,7 @@ pub fn get_placement_actions(
 
 /// Get valid capture actions
 /// Returns Array3<f32> with shape (6, width, width)
-pub fn get_capture_actions(
-    spatial: &ArrayView3<f32>,
-    config: &BoardConfig,
-) -> Array3<f32> {
+pub fn get_capture_actions(spatial: &ArrayView3<f32>, config: &BoardConfig) -> Array3<f32> {
     let mut capture_mask = Array3::zeros((6, config.width, config.width));
 
     // For each position with a marble
@@ -399,7 +391,7 @@ pub fn get_valid_actions(
 pub fn apply_placement(
     spatial: &mut Array3<f32>,
     global: &mut Array1<f32>,
-    marble_type: usize,  // 0=white, 1=gray, 2=black
+    marble_type: usize, // 0=white, 1=gray, 2=black
     dst_y: usize,
     dst_x: usize,
     remove_y: Option<usize>,
@@ -407,7 +399,7 @@ pub fn apply_placement(
     config: &BoardConfig,
 ) {
     // Place marble
-    let marble_layer = marble_type + 1;  // 1=white, 2=gray, 3=black
+    let marble_layer = marble_type + 1; // 1=white, 2=gray, 3=black
     spatial[[marble_layer, dst_y, dst_x]] = 1.0;
 
     // Remove ring if specified
@@ -420,7 +412,7 @@ pub fn apply_placement(
     }
 
     // Decrement marble count from supply or captured pool
-    let supply_idx = marble_type;  // 0, 1, 2
+    let supply_idx = marble_type; // 0, 1, 2
     let supply_empty = [
         global[config.supply_w],
         global[config.supply_g],
@@ -443,7 +435,10 @@ pub fn apply_placement(
         if global[captured_idx] > 0.0 {
             global[captured_idx] -= 1.0;
         } else {
-            panic!("No captured marbles of required type available for player {}", cur_player + 1);
+            panic!(
+                "No captured marbles of required type available for player {}",
+                cur_player + 1
+            );
         }
     } else {
         panic!(
@@ -471,7 +466,8 @@ pub fn apply_capture(
     let cur_player = global[config.cur_player] as usize;
 
     // Find marble layer at start position
-    let marble_layer = (1..4).find(|&layer| spatial[[layer, start_y, start_x]] > 0.0)
+    let marble_layer = (1..4)
+        .find(|&layer| spatial[[layer, start_y, start_x]] > 0.0)
         .expect("No marble at start position");
 
     // Get direction offset
@@ -484,7 +480,8 @@ pub fn apply_capture(
     let land_x = (cap_x as i32 + dx) as usize;
 
     // Find captured marble type
-    let captured_marble_layer = (1..4).find(|&layer| spatial[[layer, cap_y, cap_x]] > 0.0)
+    let captured_marble_layer = (1..4)
+        .find(|&layer| spatial[[layer, cap_y, cap_x]] > 0.0)
         .expect("No marble to capture");
 
     // Remove marble from start
@@ -497,7 +494,7 @@ pub fn apply_capture(
     spatial[[marble_layer, land_y, land_x]] = 1.0;
 
     // Update captured marble count
-    let marble_idx = captured_marble_layer - 1;  // Convert layer to index (0,1,2)
+    let marble_idx = captured_marble_layer - 1; // Convert layer to index (0,1,2)
     let captured_idx = if cur_player == config.player_1 {
         config.p1_cap_w + marble_idx
     } else {
@@ -507,9 +504,8 @@ pub fn apply_capture(
 
     // Check for chain capture in any direction from landing position
     let capture_actions = get_capture_actions(&spatial.view(), config);
-    let can_chain = (0..config.directions.len()).any(|dir_idx| {
-        capture_actions[[dir_idx, land_y, land_x]] > 0.0
-    });
+    let can_chain = (0..config.directions.len())
+        .any(|dir_idx| capture_actions[[dir_idx, land_y, land_x]] > 0.0);
 
     // Switch player only if no chain capture
     if !can_chain {
@@ -548,7 +544,7 @@ mod tests {
 
         // Set up a simple board with one ring and one marble in supply
         spatial[[config.ring_layer, 3, 3]] = 1.0;
-        global[config.supply_w] = 1.0;  // 1 white marble in supply
+        global[config.supply_w] = 1.0; // 1 white marble in supply
         global[config.cur_player] = config.player_1 as f32;
 
         let placement_mask = get_placement_actions(&spatial.view(), &global.view(), &config);
@@ -597,7 +593,7 @@ mod tests {
 
         // Set up ring with existing marble
         spatial[[config.ring_layer, 3, 3]] = 1.0;
-        spatial[[1, 3, 3]] = 1.0;  // White marble already there
+        spatial[[1, 3, 3]] = 1.0; // White marble already there
         global[config.supply_w] = 1.0;
         global[config.cur_player] = config.player_1 as f32;
 
@@ -616,13 +612,15 @@ mod tests {
         spatial[[config.ring_layer, 3, 3]] = 1.0;
         spatial[[config.ring_layer, 3, 4]] = 1.0;
         spatial[[config.ring_layer, 3, 5]] = 1.0;
-        spatial[[1, 3, 3]] = 1.0;  // White marble
-        spatial[[2, 3, 4]] = 1.0;  // Gray marble to capture
+        spatial[[1, 3, 3]] = 1.0; // White marble
+        spatial[[2, 3, 4]] = 1.0; // Gray marble to capture
 
         let capture_mask = get_capture_actions(&spatial.view(), &config);
 
         // Find direction index for east (0, +1)
-        let east_dir = config.directions.iter()
+        let east_dir = config
+            .directions
+            .iter()
             .position(|&(dy, dx)| dy == 0 && dx == 1)
             .unwrap();
 
@@ -639,13 +637,15 @@ mod tests {
         spatial[[config.ring_layer, 3, 3]] = 1.0;
         spatial[[config.ring_layer, 3, 4]] = 1.0;
         // No ring at 3,5
-        spatial[[1, 3, 3]] = 1.0;  // White marble
-        spatial[[2, 3, 4]] = 1.0;  // Gray marble
+        spatial[[1, 3, 3]] = 1.0; // White marble
+        spatial[[2, 3, 4]] = 1.0; // Gray marble
 
         let capture_mask = get_capture_actions(&spatial.view(), &config);
 
         // Should NOT have valid capture without landing ring
-        let east_dir = config.directions.iter()
+        let east_dir = config
+            .directions
+            .iter()
             .position(|&(dy, dx)| dy == 0 && dx == 1)
             .unwrap();
         assert_eq!(capture_mask[[east_dir, 3, 3]], 0.0);
@@ -660,14 +660,15 @@ mod tests {
         spatial[[config.ring_layer, 3, 3]] = 1.0;
         spatial[[config.ring_layer, 3, 4]] = 1.0;
         spatial[[config.ring_layer, 3, 5]] = 1.0;
-        spatial[[1, 3, 3]] = 1.0;  // Marble that can capture
-        spatial[[2, 3, 4]] = 1.0;  // Marble to capture
-        // Ring at 3,5 is empty - could place there
+        spatial[[1, 3, 3]] = 1.0; // Marble that can capture
+        spatial[[2, 3, 4]] = 1.0; // Marble to capture
+                                  // Ring at 3,5 is empty - could place there
 
         global[config.supply_w] = 1.0;
         global[config.cur_player] = config.player_1 as f32;
 
-        let (placement_mask, capture_mask) = get_valid_actions(&spatial.view(), &global.view(), &config);
+        let (placement_mask, capture_mask) =
+            get_valid_actions(&spatial.view(), &global.view(), &config);
 
         // Should have captures
         assert!(capture_mask.iter().any(|&x| x > 0.0));
@@ -688,7 +689,16 @@ mod tests {
         global[config.cur_player] = config.player_1 as f32;
 
         // Apply placement
-        apply_placement(&mut spatial, &mut global, 0, 3, 3, Some(4), Some(4), &config);
+        apply_placement(
+            &mut spatial,
+            &mut global,
+            0,
+            3,
+            3,
+            Some(4),
+            Some(4),
+            &config,
+        );
 
         // Check marble placed
         assert_eq!(spatial[[1, 3, 3]], 1.0);
@@ -730,12 +740,14 @@ mod tests {
         spatial[[config.ring_layer, 3, 3]] = 1.0;
         spatial[[config.ring_layer, 3, 4]] = 1.0;
         spatial[[config.ring_layer, 3, 5]] = 1.0;
-        spatial[[1, 3, 3]] = 1.0;  // White marble
-        spatial[[2, 3, 4]] = 1.0;  // Gray marble to capture
+        spatial[[1, 3, 3]] = 1.0; // White marble
+        spatial[[2, 3, 4]] = 1.0; // Gray marble to capture
         global[config.cur_player] = config.player_1 as f32;
 
         // Find east direction
-        let east_dir = config.directions.iter()
+        let east_dir = config
+            .directions
+            .iter()
             .position(|&(dy, dx)| dy == 0 && dx == 1)
             .unwrap();
 
@@ -743,8 +755,8 @@ mod tests {
         apply_capture(&mut spatial, &mut global, 3, 3, east_dir, &config);
 
         // Check marble moved
-        assert_eq!(spatial[[1, 3, 3]], 0.0);  // Removed from start
-        assert_eq!(spatial[[1, 3, 5]], 1.0);  // Placed at landing
+        assert_eq!(spatial[[1, 3, 3]], 0.0); // Removed from start
+        assert_eq!(spatial[[1, 3, 5]], 1.0); // Placed at landing
 
         // Check captured marble removed
         assert_eq!(spatial[[2, 3, 4]], 0.0);
@@ -768,12 +780,14 @@ mod tests {
         spatial[[config.ring_layer, 2, 4]] = 1.0;
         spatial[[config.ring_layer, 2, 5]] = 1.0;
         spatial[[config.ring_layer, 2, 6]] = 1.0;
-        spatial[[1, 2, 2]] = 1.0;  // White marble
-        spatial[[2, 2, 3]] = 1.0;  // Gray marble to capture
-        spatial[[3, 2, 5]] = 1.0;  // Black marble - chain capture target
+        spatial[[1, 2, 2]] = 1.0; // White marble
+        spatial[[2, 2, 3]] = 1.0; // Gray marble to capture
+        spatial[[3, 2, 5]] = 1.0; // Black marble - chain capture target
         global[config.cur_player] = config.player_1 as f32;
 
-        let east_dir = config.directions.iter()
+        let east_dir = config
+            .directions
+            .iter()
             .position(|&(dy, dx)| dy == 0 && dx == 1)
             .unwrap();
 
@@ -793,19 +807,21 @@ mod tests {
         let (mut spatial, mut global) = create_empty_state(&config);
 
         // Setup: initial capture east, then forced capture north from new position
-        spatial[[config.ring_layer, 3, 3]] = 1.0;  // Start ring
-        spatial[[config.ring_layer, 3, 4]] = 1.0;  // First captured ring
-        spatial[[config.ring_layer, 3, 5]] = 1.0;  // First landing ring
-        spatial[[config.ring_layer, 2, 5]] = 1.0;  // Second captured ring (different direction)
-        spatial[[config.ring_layer, 1, 5]] = 1.0;  // Second landing ring
+        spatial[[config.ring_layer, 3, 3]] = 1.0; // Start ring
+        spatial[[config.ring_layer, 3, 4]] = 1.0; // First captured ring
+        spatial[[config.ring_layer, 3, 5]] = 1.0; // First landing ring
+        spatial[[config.ring_layer, 2, 5]] = 1.0; // Second captured ring (different direction)
+        spatial[[config.ring_layer, 1, 5]] = 1.0; // Second landing ring
 
-        spatial[[1, 3, 3]] = 1.0;  // White marble (current player)
-        spatial[[2, 3, 4]] = 1.0;  // Gray marble to capture first
-        spatial[[3, 2, 5]] = 1.0;  // Black marble forcing second capture
+        spatial[[1, 3, 3]] = 1.0; // White marble (current player)
+        spatial[[2, 3, 4]] = 1.0; // Gray marble to capture first
+        spatial[[3, 2, 5]] = 1.0; // Black marble forcing second capture
 
         global[config.cur_player] = config.player_1 as f32;
 
-        let east_dir = config.directions.iter()
+        let east_dir = config
+            .directions
+            .iter()
             .position(|&(dy, dx)| dy == 0 && dx == 1)
             .unwrap();
 
@@ -851,7 +867,7 @@ mod tests {
         apply_placement(
             &mut spatial,
             &mut global,
-            0,            // white marble
+            0, // white marble
             d4.0,
             d4.1,
             Some(f2.0),
