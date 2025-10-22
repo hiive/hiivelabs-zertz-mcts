@@ -27,8 +27,13 @@ pub struct ZobristHasher {
 }
 
 impl ZobristHasher {
-    pub fn new(width: usize, seed: u64) -> Self {
-        let mut rng = Pcg64::seed_from_u64(seed);
+    pub fn new(width: usize, seed: Option<u64>) -> Self {
+        let mut rng = match seed
+        {
+            Some(s) => Pcg64::seed_from_u64(s),
+            None => Pcg64::from_rng(&mut rand::rng())
+        };
+
         let ring = make_matrix(&mut rng, width);
 
         let marble = [
@@ -187,8 +192,8 @@ mod tests {
     #[test]
     fn zobrist_hasher_generates_consistent_tables() {
         // Create two hashers with same seed
-        let hasher1 = ZobristHasher::new(7, 42);
-        let hasher2 = ZobristHasher::new(7, 42);
+        let hasher1 = ZobristHasher::new(7, Some(42));
+        let hasher2 = ZobristHasher::new(7, Some(42));
 
         // Check that ring tables match (determinism)
         assert_eq!(hasher1.ring[0][0], hasher2.ring[0][0]);

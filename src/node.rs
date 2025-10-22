@@ -122,6 +122,7 @@ impl MCTSNode {
     ///
     /// Python stores total value and divides by visits in UCB1.
     /// Rust pre-computes the average but provides this for compatibility.
+    #[allow(dead_code)]
     #[inline]
     pub fn get_total_value(&self) -> f32 {
         if let Some(stats) = &self.shared_stats {

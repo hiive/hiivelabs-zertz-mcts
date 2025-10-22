@@ -76,7 +76,7 @@ impl TranspositionTable {
         if let Some(existing) = guard.get(&width) {
             return Arc::clone(existing);
         }
-        let hasher = Arc::new(ZobristHasher::new(width, 42));
+        let hasher = Arc::new(ZobristHasher::new(width, None));
         guard.insert(width, Arc::clone(&hasher));
         hasher
     }

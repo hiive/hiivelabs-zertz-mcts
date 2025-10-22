@@ -325,8 +325,8 @@ impl MCTSSearch {
             f(seeded)
         } else {
             drop(guard);
-            let mut thread_rng = rand::thread_rng();
-            f(&mut thread_rng)
+            let mut rng = rand::rng();
+            f(&mut rng)
         }
     }
 
@@ -496,7 +496,7 @@ impl MCTSSearch {
         }
 
         // Select random untried action
-        let action_idx = self.with_rng(|rng| rng.gen_range(0..untried_actions.len()));
+        let action_idx = self.with_rng(|rng| rng.random_range(0..untried_actions.len()));
         let action = untried_actions[action_idx].clone();
 
         // Apply action to create child state
@@ -635,7 +635,7 @@ impl MCTSSearch {
             }
 
             if !captures.is_empty() {
-                let idx = self.with_rng(|rng| rng.gen_range(0..captures.len()));
+                let idx = self.with_rng(|rng| rng.random_range(0..captures.len()));
                 let (direction, start_y, start_x) = captures[idx];
                 apply_capture(
                     &mut sim_spatial,
@@ -669,7 +669,7 @@ impl MCTSSearch {
                 }
 
                 if !placements.is_empty() {
-                    let idx = self.with_rng(|rng| rng.gen_range(0..placements.len()));
+                    let idx = self.with_rng(|rng| rng.random_range(0..placements.len()));
                     let (marble_type, dst_y, dst_x, remove_y, remove_x) = placements[idx];
                     apply_placement(
                         &mut sim_spatial,
