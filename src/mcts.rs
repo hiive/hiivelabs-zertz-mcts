@@ -270,7 +270,7 @@ impl MCTSSearch {
         let start = Instant::now();
 
         // Release GIL for parallel work
-        py.allow_threads(|| {
+        py.detach(|| {
             (0..iterations).into_par_iter().for_each(|_| {
                 self.run_iteration(
                     Arc::clone(&root),

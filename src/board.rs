@@ -112,8 +112,8 @@ impl BoardState {
         let global_arr = global.as_array().to_owned();
 
         Ok(BoardState {
-            spatial: PyArray3::from_array_bound(py, &spatial_arr).into(),
-            global: PyArray1::from_array_bound(py, &global_arr).into(),
+            spatial: PyArray3::from_array(py, &spatial_arr).into(),
+            global: PyArray1::from_array(py, &global_arr).into(),
             config,
         })
     }
@@ -124,8 +124,8 @@ impl BoardState {
         let global_arr = self.global.bind(py).readonly().as_array().to_owned();
 
         Ok(BoardState {
-            spatial: PyArray3::from_array_bound(py, &spatial_arr).into(),
-            global: PyArray1::from_array_bound(py, &global_arr).into(),
+            spatial: PyArray3::from_array(py, &spatial_arr).into(),
+            global: PyArray1::from_array(py, &global_arr).into(),
             config: self.config.clone(),
         })
     }
@@ -142,8 +142,8 @@ impl BoardState {
             crate::game::get_valid_actions(&spatial.view(), &global.view(), &self.config);
 
         Ok((
-            PyArray3::from_array_bound(py, &placement_mask).into(),
-            PyArray3::from_array_bound(py, &capture_mask).into(),
+            PyArray3::from_array(py, &placement_mask).into(),
+            PyArray3::from_array(py, &capture_mask).into(),
         ))
     }
 
@@ -152,7 +152,7 @@ impl BoardState {
         let spatial = self.spatial.bind(py).readonly();
         let (canonical, transform, inverse) =
             crate::canonicalization::canonicalize_state(&spatial.as_array(), &self.config);
-        let canonical_py = PyArray3::from_array_bound(py, &canonical).into();
+        let canonical_py = PyArray3::from_array(py, &canonical).into();
         Ok((canonical_py, transform, inverse))
     }
 
@@ -183,8 +183,8 @@ impl BoardState {
         );
 
         // Update stored arrays
-        self.spatial = PyArray3::from_array_bound(py, &spatial).into();
-        self.global = PyArray1::from_array_bound(py, &global).into();
+        self.spatial = PyArray3::from_array(py, &spatial).into();
+        self.global = PyArray1::from_array(py, &global).into();
 
         Ok(())
     }
@@ -210,8 +210,8 @@ impl BoardState {
         );
 
         // Update stored arrays
-        self.spatial = PyArray3::from_array_bound(py, &spatial).into();
-        self.global = PyArray1::from_array_bound(py, &global).into();
+        self.spatial = PyArray3::from_array(py, &spatial).into();
+        self.global = PyArray1::from_array(py, &global).into();
 
         Ok(())
     }

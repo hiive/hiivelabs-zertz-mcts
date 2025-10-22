@@ -86,6 +86,7 @@ impl TranspositionTable {
         }
     }
 
+    #[allow(dead_code)]
     /// Get the number of hash collisions detected
     pub fn collision_count(&self) -> u32 {
         self.collisions.load(Ordering::Relaxed)
