@@ -11,6 +11,7 @@ use crate::board::BoardConfig;
 use crate::game::{
     apply_capture, apply_placement, get_game_outcome, get_valid_actions, is_game_over,
 };
+use crate::metrics::MCTSMetrics;
 use crate::node::{Action, MCTSNode};
 use crate::transposition::TranspositionTable;
 
@@ -27,6 +28,8 @@ pub struct MCTSSearch {
     last_root_visits: u32,
     last_root_value: f32,
     rng: Mutex<Option<StdRng>>,
+    #[cfg(feature = "metrics")]
+    metrics: Arc<MCTSMetrics>,
 }
 
 #[pymethods]
@@ -79,7 +82,27 @@ impl MCTSSearch {
             last_root_visits: 0,
             last_root_value: 0.0,
             rng: Mutex::new(None),
+            #[cfg(feature = "metrics")]
+            metrics: Arc::new(MCTSMetrics::new()),
         }
+    }
+
+    /// Get metrics as JSON (only available with 'metrics' feature)
+    #[cfg(feature = "metrics")]
+    pub fn get_metrics_json(&self) -> String {
+        self.metrics.to_json()
+    }
+
+    /// Print metrics summary to stderr (only available with 'metrics' feature)
+    #[cfg(feature = "metrics")]
+    pub fn print_metrics(&self) {
+        self.metrics.print_summary();
+    }
+
+    /// Reset metrics (only available with 'metrics' feature)
+    #[cfg(feature = "metrics")]
+    pub fn reset_metrics(&mut self) {
+        self.metrics = Arc::new(MCTSMetrics::new());
     }
 
     /// Set deterministic RNG seed (pass None to restore system randomness)
@@ -964,4 +987,53 @@ impl SearchOptions {
     fn use_lookups(&self) -> bool {
         self.use_lookups
     }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::board::BoardConfig;
+
+    // Note: Most MCTS testing is done via Python integration tests
+    // due to the PyO3 boundary (PyReadonlyArray types can only be created from Python)
+
+    #[test]
+    fn test_actions_equal() {
+        let action1 = Action::Pass;
+        let action2 = Action::Pass;
+        assert!(actions_equal(&action1, &action2));
+
+        let placement1 = Action::Placement {
+            marble_type: 0,
+            dst_y: 3,
+            dst_x: 4,
+            remove_y: Some(1),
+            remove_x: Some(2),
+        };
+        let placement2 = Action::Placement {
+            marble_type: 0,
+            dst_y: 3,
+            dst_x: 4,
+            remove_y: Some(1),
+            remove_x: Some(2),
+        };
+        assert!(actions_equal(&placement1, &placement2));
+
+        let capture1 = Action::Capture {
+            start_y: 2,
+            start_x: 3,
+            direction: 1,
+        };
+        let capture2 = Action::Capture {
+            start_y: 2,
+            start_x: 3,
+            direction: 1,
+        };
+        assert!(actions_equal(&capture1, &capture2));
+
+        // Different actions should not be equal
+        assert!(!actions_equal(&action1, &placement1));
+        assert!(!actions_equal(&placement1, &capture1));
+    }
+
 }

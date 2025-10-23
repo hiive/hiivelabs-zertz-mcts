@@ -478,7 +478,15 @@ pub fn apply_capture(
     // Find marble layer at start position
     let marble_layer = (1..4)
         .find(|&layer| spatial[[layer, start_y, start_x]] > 0.0)
-        .expect("No marble at start position");
+        .unwrap_or_else(|| {
+            eprintln!("ERROR: Invalid capture attempted at ({}, {})", start_y, start_x);
+            eprintln!("  Direction: {}", direction);
+            eprintln!("  Ring present: {}", spatial[[config.ring_layer, start_y, start_x]] > 0.0);
+            eprintln!("  White marble: {}", spatial[[1, start_y, start_x]]);
+            eprintln!("  Gray marble: {}", spatial[[2, start_y, start_x]]);
+            eprintln!("  Black marble: {}", spatial[[3, start_y, start_x]]);
+            panic!("Game logic violation: attempted capture from empty position at ({}, {})", start_y, start_x)
+        });
 
     // Get direction offset
     let (dy, dx) = config.directions[direction];
@@ -492,7 +500,14 @@ pub fn apply_capture(
     // Find captured marble type
     let captured_marble_layer = (1..4)
         .find(|&layer| spatial[[layer, cap_y, cap_x]] > 0.0)
-        .expect("No marble to capture");
+        .unwrap_or_else(|| {
+            eprintln!("ERROR: No marble found at capture position ({}, {})", cap_y, cap_x);
+            eprintln!("  Start position: ({}, {})", start_y, start_x);
+            eprintln!("  Direction: {} (offset: {:?})", direction, config.directions[direction]);
+            eprintln!("  Landing position: ({}, {})", land_y, land_x);
+            eprintln!("  Ring at capture pos: {}", spatial[[config.ring_layer, cap_y, cap_x]] > 0.0);
+            panic!("Game logic violation: attempted to capture from empty position at ({}, {})", cap_y, cap_x)
+        });
 
     // Remove marble from start
     spatial[[marble_layer, start_y, start_x]] = 0.0;
@@ -1168,7 +1183,7 @@ pub fn get_game_outcome(
 #[cfg(test)]
 mod termination_tests {
     use super::*;
-    use ndarray::{Array1, Array3};
+    use ndarray::{s, Array1, Array3};
 
     fn create_test_config() -> BoardConfig {
         BoardConfig::standard(37, 1).unwrap()
@@ -1619,6 +1634,43 @@ mod termination_tests {
         assert_eq!(
             get_game_outcome(&spatial.view(), &global.view(), &config),
             BOTH_LOSE
+        );
+    }
+
+    #[test]
+    fn test_apply_placement_no_ring_removal() {
+        let config = create_test_config();
+        let (mut spatial, mut global) = create_empty_state(&config);
+
+        // Setup: place marble at center with ring present
+        spatial[[config.ring_layer, 3, 3]] = 1.0;
+        global[config.supply_w] = 5.0;
+        global[config.cur_player] = config.player_1 as f32;
+
+        // Count rings before placement
+        let rings_before = spatial.slice(s![config.ring_layer, .., ..]).sum();
+
+        // Apply placement with no ring removal (None, None)
+        apply_placement(&mut spatial, &mut global, 0, 3, 3, None, None, &config);
+
+        // Check marble placed
+        assert_eq!(spatial[[1, 3, 3]], 1.0, "Marble should be placed");
+
+        // Check no ring was removed
+        let rings_after = spatial.slice(s![config.ring_layer, .., ..]).sum();
+        assert_eq!(
+            rings_after, rings_before,
+            "No ring should be removed when None is passed"
+        );
+
+        // Check supply decremented
+        assert_eq!(global[config.supply_w], 4.0, "Supply should be decremented");
+
+        // Check player switched
+        assert_eq!(
+            global[config.cur_player] as usize,
+            config.player_2,
+            "Turn should pass to next player"
         );
     }
 }

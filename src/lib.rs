@@ -4,6 +4,7 @@ mod board;
 mod canonicalization;
 mod game;
 mod mcts;
+mod metrics;
 mod node;
 mod transposition;
 mod zobrist;
