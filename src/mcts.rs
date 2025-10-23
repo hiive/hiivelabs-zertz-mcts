@@ -104,7 +104,8 @@ impl MCTSSearch {
         use_transposition_lookups=None,
         clear_table=false,
         verbose=false,
-        seed=None
+        seed=None,
+        blitz=false
     ))]
     fn search(
         &mut self,
@@ -120,6 +121,7 @@ impl MCTSSearch {
         clear_table: bool,
         verbose: Option<bool>,
         seed: Option<u64>,
+        blitz: Option<bool>,
     ) -> PyResult<(String, Option<(usize, usize, usize)>)> {
         let search_options = SearchOptions::new(
             self,
@@ -130,13 +132,18 @@ impl MCTSSearch {
 
         let t = t.unwrap_or(1);
         let verbose = verbose.unwrap_or(false);
+        let blitz = blitz.unwrap_or(false);
         if let Some(value) = seed {
             self.set_seed(Some(value));
         }
 
         let config = Arc::new(
-            BoardConfig::standard(rings, t)
-                .map_err(|e| pyo3::exceptions::PyValueError::new_err(e))?,
+            if blitz {
+                BoardConfig::blitz(rings, t)
+            } else {
+                BoardConfig::standard(rings, t)
+            }
+            .map_err(|e| pyo3::exceptions::PyValueError::new_err(e))?,
         );
 
         let spatial_arr = spatial.as_array().to_owned();
@@ -206,7 +213,8 @@ impl MCTSSearch {
         clear_table=false,
         num_threads=16,
         verbose=false,
-        seed=None
+        seed=None,
+        blitz=false
     ))]
     fn search_parallel(
         &mut self,
@@ -224,6 +232,7 @@ impl MCTSSearch {
         num_threads: Option<usize>,
         verbose: Option<bool>,
         seed: Option<u64>,
+        blitz: Option<bool>,
     ) -> PyResult<(String, Option<(usize, usize, usize)>)> {
         let search_options = SearchOptions::new(
             self,
@@ -234,6 +243,7 @@ impl MCTSSearch {
         let t = t.unwrap_or(1);
         let num_threads = num_threads.unwrap_or(16);
         let verbose = verbose.unwrap_or(false);
+        let blitz = blitz.unwrap_or(false);
         if let Some(value) = seed {
             self.set_seed(Some(value));
         }
@@ -245,8 +255,12 @@ impl MCTSSearch {
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
 
         let config = Arc::new(
-            BoardConfig::standard(rings, t)
-                .map_err(|e| pyo3::exceptions::PyValueError::new_err(e))?,
+            if blitz {
+                BoardConfig::blitz(rings, t)
+            } else {
+                BoardConfig::standard(rings, t)
+            }
+            .map_err(|e| pyo3::exceptions::PyValueError::new_err(e))?,
         );
 
         let spatial_arr = spatial.as_array().to_owned();

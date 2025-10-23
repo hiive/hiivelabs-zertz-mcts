@@ -152,15 +152,30 @@ pub struct BoardState {
 #[pymethods]
 impl BoardState {
     #[new]
+    #[pyo3(signature = (
+        spatial,
+        global,
+        rings,
+        t=1,
+        blitz=false
+    ))]
     fn new(
         py: Python<'_>,
         spatial: PyReadonlyArray3<f32>,
         global: PyReadonlyArray1<f32>,
         rings: usize,
-        t: usize,
+        t: Option<usize>,
+        blitz: Option<bool>,
     ) -> PyResult<Self> {
-        let config = BoardConfig::standard(rings, t)
-            .map_err(|e| pyo3::exceptions::PyValueError::new_err(e))?;
+        let t = t.unwrap_or(1);
+        let blitz = blitz.unwrap_or(false);
+
+        let config = if blitz {
+            BoardConfig::blitz(rings, t)
+        } else {
+            BoardConfig::standard(rings, t)
+        }
+        .map_err(|e| pyo3::exceptions::PyValueError::new_err(e))?;
 
         // Create owned Python arrays
         let spatial_arr = spatial.as_array().to_owned();
