@@ -1,5 +1,6 @@
 use crate::board::BoardConfig;
 use ndarray::{Array1, Array3, ArrayView1, ArrayView3};
+use smallvec::SmallVec;
 use std::collections::{HashSet, VecDeque};
 
 // Game outcome constants (mirrors Python constants.py)
@@ -18,10 +19,15 @@ fn is_inbounds(y: i32, x: i32, width: usize) -> bool {
     y >= 0 && x >= 0 && (y as usize) < width && (x as usize) < width
 }
 
+/// Type alias for neighbor lists - uses SmallVec to avoid heap allocations
+/// Hexagonal grids have exactly 6 neighbors, so this fits on the stack
+type NeighborList = SmallVec<[(usize, usize); 6]>;
+type NeighborListRaw = SmallVec<[(i32, i32); 6]>;
+
 /// Get list of neighboring indices (including out-of-bounds)
 /// Returns i32 coordinates which may be negative or >= width
 #[inline]
-pub fn get_neighbors_raw(y: usize, x: usize, config: &BoardConfig) -> Vec<(i32, i32)> {
+pub fn get_neighbors_raw(y: usize, x: usize, config: &BoardConfig) -> NeighborListRaw {
     config
         .directions
         .iter()
@@ -31,7 +37,7 @@ pub fn get_neighbors_raw(y: usize, x: usize, config: &BoardConfig) -> Vec<(i32, 
 
 /// Get list of neighboring indices (filtered to in-bounds only)
 #[inline]
-pub fn get_neighbors(y: usize, x: usize, config: &BoardConfig) -> Vec<(usize, usize)> {
+pub fn get_neighbors(y: usize, x: usize, config: &BoardConfig) -> NeighborList {
     config
         .directions
         .iter()
