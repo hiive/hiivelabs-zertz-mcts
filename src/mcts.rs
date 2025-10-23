@@ -416,6 +416,9 @@ impl MCTSSearch {
         use_lookups: bool,
     ) -> Arc<MCTSNode> {
         loop {
+            // Apply virtual loss to make this path less attractive to other threads
+            node.add_virtual_loss();
+
             // Check if node is fully expanded
             if !node.is_fully_expanded(self.progressive_widening, self.widening_constant) {
                 return self.expand(Arc::clone(&node), table, use_lookups);
@@ -610,6 +613,10 @@ impl MCTSSearch {
         // Add child to parent (thread-safe)
         node.add_child(action, Arc::clone(&child));
 
+        // Add virtual loss to the newly expanded child
+        // This ensures it's included in the backpropagation path correctly
+        child.add_virtual_loss();
+
         child
     }
 
@@ -748,6 +755,7 @@ impl MCTSSearch {
     /// Backpropagation phase: update statistics up the tree
     ///
     /// Values are flipped at each level since players alternate (zero-sum game).
+    /// Removes virtual loss before adding real simulation value.
     fn backpropagate(
         &self,
         node: &Arc<MCTSNode>,
@@ -757,6 +765,10 @@ impl MCTSSearch {
         let mut current = Some(Arc::clone(node));
 
         while let Some(current_node) = current {
+            // Remove virtual loss first (added during selection)
+            current_node.remove_virtual_loss();
+
+            // Then add real simulation value
             current_node.update(value);
 
             if let Some(table_ref) = table {
@@ -1034,6 +1046,63 @@ mod tests {
         // Different actions should not be equal
         assert!(!actions_equal(&action1, &placement1));
         assert!(!actions_equal(&placement1, &capture1));
+    }
+
+    #[test]
+    #[cfg(debug_assertions)]
+    fn test_virtual_loss_on_expanded_node() {
+        // This test verifies that newly expanded nodes get virtual loss
+        // added during expand(), so backpropagation can correctly remove it.
+
+        let config = Arc::new(BoardConfig::standard(37, 1).unwrap());
+
+        // Create a simple initial state with rings
+        let mut spatial = Array3::zeros((config.layers_per_timestep * config.t + 1, config.width, config.width));
+        let mut global = Array1::zeros(10);
+
+        // Add some rings
+        for y in 0..config.width {
+            for x in 0..config.width {
+                spatial[[config.ring_layer, y, x]] = 1.0;
+            }
+        }
+
+        // Set supply
+        global[config.supply_w] = 5.0;
+        global[config.supply_g] = 8.0;
+        global[config.supply_b] = 7.0;
+        global[config.cur_player] = config.player_1 as f32;
+
+        // Create MCTS search instance and root node
+        let mcts = MCTSSearch::new(None, None, None, None, None);
+        let root = Arc::new(MCTSNode::new(spatial, global, Arc::clone(&config), None));
+
+        // Simulate the select→expand→backprop flow:
+        // 1. Add virtual loss to root (what select() does)
+        root.add_virtual_loss();
+
+        // 2. Verify root is not fully expanded
+        assert!(!root.is_fully_expanded(false, 1.0));
+
+        // 3. Call expand() - this should add virtual loss to the child
+        let child = mcts.expand(Arc::clone(&root), None, false);
+
+        // 4. Verify child has virtual loss (visits should be VIRTUAL_LOSS)
+        #[cfg(debug_assertions)]
+        assert_eq!(child.virtual_loss_count.load(std::sync::atomic::Ordering::Relaxed), 1);
+
+        // 5. Now simulate backpropagation - should work correctly
+        child.remove_virtual_loss();
+        child.update(0.5);
+
+        root.remove_virtual_loss();
+        root.update(-0.5);
+
+        // 6. Verify final state is correct (virtual losses removed, real values added)
+        assert_eq!(child.get_visits(), 1);
+        assert!((child.get_value() - 0.5).abs() < 1e-3);
+        assert_eq!(root.get_visits(), 1);
+        assert!((root.get_value() + 0.5).abs() < 1e-3);
     }
 
 }

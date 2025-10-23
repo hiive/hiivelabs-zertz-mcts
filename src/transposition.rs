@@ -14,6 +14,10 @@ pub struct TranspositionEntry {
     total_value: AtomicI32,              // Scaled by 1000 for precision
     canonical_spatial: Arc<Array3<f32>>, // Stored for collision detection
     canonical_global: Arc<Array1<f32>>,  // Stored for collision detection
+
+    // Debug-only: Track virtual loss count to catch mismatched add/remove
+    #[cfg(debug_assertions)]
+    virtual_loss_count: AtomicU32,
 }
 
 impl TranspositionEntry {
@@ -23,6 +27,8 @@ impl TranspositionEntry {
             total_value: AtomicI32::new(0),
             canonical_spatial: Arc::new(canonical_spatial),
             canonical_global: Arc::new(canonical_global),
+            #[cfg(debug_assertions)]
+            virtual_loss_count: AtomicU32::new(0),
         }
     }
 
@@ -55,6 +61,39 @@ impl TranspositionEntry {
         self.visits.store(visits, Ordering::Relaxed);
         let scaled_total = (average_value * 1000.0 * visits as f32).round() as i32;
         self.total_value.store(scaled_total, Ordering::Relaxed);
+    }
+
+    /// Add virtual loss to discourage thread collision
+    #[inline]
+    pub fn add_virtual_loss(&self) {
+        use crate::node::{VIRTUAL_LOSS, VIRTUAL_LOSS_SCALED};
+
+        #[cfg(debug_assertions)]
+        self.virtual_loss_count.fetch_add(1, Ordering::Relaxed);
+
+        self.visits.fetch_add(VIRTUAL_LOSS, Ordering::Relaxed);
+        self.total_value
+            .fetch_add(VIRTUAL_LOSS_SCALED, Ordering::Relaxed);
+    }
+
+    /// Remove virtual loss after backpropagation
+    #[inline]
+    pub fn remove_virtual_loss(&self) {
+        use crate::node::{VIRTUAL_LOSS, VIRTUAL_LOSS_SCALED};
+
+        #[cfg(debug_assertions)]
+        {
+            let count = self.virtual_loss_count.fetch_sub(1, Ordering::Relaxed);
+            debug_assert!(
+                count > 0,
+                "remove_virtual_loss() called on TranspositionEntry but virtual_loss_count was 0! \
+                 This indicates a bug: remove called without matching add."
+            );
+        }
+
+        self.visits.fetch_sub(VIRTUAL_LOSS, Ordering::Relaxed);
+        self.total_value
+            .fetch_sub(VIRTUAL_LOSS_SCALED, Ordering::Relaxed);
     }
 }
 
