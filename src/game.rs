@@ -2,6 +2,16 @@ use crate::board::BoardConfig;
 use ndarray::{Array1, Array3, ArrayView1, ArrayView3};
 use std::collections::{HashSet, VecDeque};
 
+// Game outcome constants (mirrors Python constants.py)
+pub const PLAYER_1_WIN: i8 = 1;
+pub const PLAYER_2_WIN: i8 = -1;
+pub const TIE: i8 = 0;
+pub const BOTH_LOSE: i8 = -2; // Tournament rule: both players lose (collaboration detected)
+
+// NOTE: Win condition thresholds are now configured per-game-mode via BoardConfig::win_conditions
+// Standard mode: each_color=3, 4W/5G/6B (see WinConditions::standard() in board.rs)
+// Blitz mode: each_color=2, 3W/4G/5B (see WinConditions::blitz() in board.rs)
+
 /// Check if index is within board bounds
 #[inline]
 fn is_inbounds(y: i32, x: i32, width: usize) -> bool {
@@ -908,6 +918,699 @@ mod tests {
             None,
             None,
             &config,
+        );
+    }
+}
+
+// ============================================================================
+// GAME TERMINATION CHECKS
+// ============================================================================
+
+/// Check if game is over (any terminal condition).
+///
+/// Checks:
+/// - Win by captures (3-of-each, or 4W/5G/6B)
+/// - Board completely filled
+/// - Current player has no marbles (supply + captured all zero)
+///
+/// Returns true if any terminal condition is met.
+pub fn is_game_over(
+    spatial: &ArrayView3<f32>,
+    global: &ArrayView1<f32>,
+    config: &BoardConfig,
+) -> bool {
+    let p1_caps = [
+        global[config.p1_cap_w],
+        global[config.p1_cap_g],
+        global[config.p1_cap_b],
+    ];
+
+    let p2_caps = [
+        global[config.p2_cap_w],
+        global[config.p2_cap_g],
+        global[config.p2_cap_b],
+    ];
+
+    // Check 3-of-each win (uses mode-specific threshold)
+    if p1_caps.iter().all(|&x| x >= config.win_conditions.each_color)
+        || p2_caps.iter().all(|&x| x >= config.win_conditions.each_color)
+    {
+        return true;
+    }
+
+    // Check specific marble wins (uses mode-specific thresholds)
+    if p1_caps[0] >= config.win_conditions.white_only
+        || p1_caps[1] >= config.win_conditions.gray_only
+        || p1_caps[2] >= config.win_conditions.black_only
+    {
+        return true;
+    }
+    if p2_caps[0] >= config.win_conditions.white_only
+        || p2_caps[1] >= config.win_conditions.gray_only
+        || p2_caps[2] >= config.win_conditions.black_only
+    {
+        return true;
+    }
+
+    // Check if all remaining rings are occupied by marbles
+    let mut all_occupied = true;
+    for y in 0..config.width {
+        for x in 0..config.width {
+            if spatial[[config.ring_layer, y, x]] == 1.0 {
+                let mut has_marble = false;
+                for layer in config.marble_layers.0..config.marble_layers.1 {
+                    if spatial[[layer, y, x]] > 0.0 {
+                        has_marble = true;
+                        break;
+                    }
+                }
+                if !has_marble {
+                    all_occupied = false;
+                    break;
+                }
+            }
+        }
+        if !all_occupied {
+            break;
+        }
+    }
+    if all_occupied {
+        return true;
+    }
+
+    // Check if current player has no marbles to play (supply + captured)
+    let cur_player = global[config.cur_player] as usize;
+    let supply = [
+        global[config.supply_w],
+        global[config.supply_g],
+        global[config.supply_b],
+    ];
+
+    let captured_slice = if cur_player == config.player_1 {
+        [config.p1_cap_w, config.p1_cap_g, config.p1_cap_b]
+    } else {
+        [config.p2_cap_w, config.p2_cap_g, config.p2_cap_b]
+    };
+
+    let captured = [
+        global[captured_slice[0]],
+        global[captured_slice[1]],
+        global[captured_slice[2]],
+    ];
+
+    if supply
+        .iter()
+        .zip(captured.iter())
+        .all(|(&s, &c)| s + c == 0.0)
+    {
+        return true;
+    }
+
+    false
+}
+
+/// Get game outcome from Player 1's perspective.
+///
+/// Returns:
+/// - PLAYER_1_WIN (1): Player 1 wins
+/// - PLAYER_2_WIN (-1): Player 2 wins
+/// - TIE (0): Tie/Draw
+/// - BOTH_LOSE (-2): Both players lose (collaboration detected)
+///
+/// Note: This returns the outcome from Player 1's perspective.
+/// The caller must convert to their own perspective if needed.
+pub fn get_game_outcome(
+    spatial: &ArrayView3<f32>,
+    global: &ArrayView1<f32>,
+    config: &BoardConfig,
+) -> i8 {
+    let p1_caps = [
+        global[config.p1_cap_w],
+        global[config.p1_cap_g],
+        global[config.p1_cap_b],
+    ];
+
+    let p2_caps = [
+        global[config.p2_cap_w],
+        global[config.p2_cap_g],
+        global[config.p2_cap_b],
+    ];
+
+    // Determine winner by captures (uses mode-specific thresholds)
+    let p1_won = p1_caps.iter().all(|&x| x >= config.win_conditions.each_color)
+        || p1_caps[0] >= config.win_conditions.white_only
+        || p1_caps[1] >= config.win_conditions.gray_only
+        || p1_caps[2] >= config.win_conditions.black_only;
+
+    let p2_won = p2_caps.iter().all(|&x| x >= config.win_conditions.each_color)
+        || p2_caps[0] >= config.win_conditions.white_only
+        || p2_caps[1] >= config.win_conditions.gray_only
+        || p2_caps[2] >= config.win_conditions.black_only;
+
+    if p1_won && p2_won {
+        // Both won (simultaneous), shouldn't happen but treat as draw
+        return TIE;
+    } else if p1_won {
+        return PLAYER_1_WIN;
+    } else if p2_won {
+        return PLAYER_2_WIN;
+    }
+
+    // Check for BOTH_LOSE condition (tournament collaboration rule):
+    // If board is full AND both players have zero captures, both lose
+
+    // First check if board is full
+    let mut all_occupied = true;
+    'outer: for y in 0..config.width {
+        for x in 0..config.width {
+            if spatial[[config.ring_layer, y, x]] == 1.0 {
+                let mut has_marble = false;
+                for layer in config.marble_layers.0..config.marble_layers.1 {
+                    if spatial[[layer, y, x]] > 0.0 {
+                        has_marble = true;
+                        break;
+                    }
+                }
+                if !has_marble {
+                    all_occupied = false;
+                    break 'outer;
+                }
+            }
+        }
+    }
+
+    // If board is full, check for zero captures or determine winner
+    if all_occupied {
+        let p1_has_zero = p1_caps.iter().all(|&x| x == 0.0);
+        let p2_has_zero = p2_caps.iter().all(|&x| x == 0.0);
+
+        if p1_has_zero && p2_has_zero {
+            // Both players lose (collaboration detected)
+            return BOTH_LOSE;
+        }
+
+        // Normal full board: last player to move wins (current player loses)
+        let cur_player = global[config.cur_player] as usize;
+        if cur_player == config.player_1 {
+            // Player 1 to move, Player 2 wins
+            return PLAYER_2_WIN;
+        } else {
+            // Player 2 to move, Player 1 wins
+            return PLAYER_1_WIN;
+        }
+    }
+
+    // Check if current player has no marbles (opponent wins)
+    let cur_player = global[config.cur_player] as usize;
+    let supply = [
+        global[config.supply_w],
+        global[config.supply_g],
+        global[config.supply_b],
+    ];
+
+    let captured_slice = if cur_player == config.player_1 {
+        [config.p1_cap_w, config.p1_cap_g, config.p1_cap_b]
+    } else {
+        [config.p2_cap_w, config.p2_cap_g, config.p2_cap_b]
+    };
+
+    let captured = [
+        global[captured_slice[0]],
+        global[captured_slice[1]],
+        global[captured_slice[2]],
+    ];
+
+    if supply
+        .iter()
+        .zip(captured.iter())
+        .all(|(&s, &c)| s + c == 0.0)
+    {
+        // Current player has no marbles, opponent wins
+        if cur_player == config.player_1 {
+            return PLAYER_2_WIN;
+        } else {
+            return PLAYER_1_WIN;
+        }
+    }
+
+    // No terminal condition (shouldn't happen if is_game_over returned true)
+    TIE
+}
+
+#[cfg(test)]
+mod termination_tests {
+    use super::*;
+    use ndarray::{Array1, Array3};
+
+    fn create_test_config() -> BoardConfig {
+        BoardConfig::standard(37, 1).unwrap()
+    }
+
+    fn create_empty_state(config: &BoardConfig) -> (Array3<f32>, Array1<f32>) {
+        let num_layers = config.t * config.layers_per_timestep + 1;
+        let global_size = 10;
+        let spatial = Array3::zeros((num_layers, config.width, config.width));
+        let global = Array1::zeros(global_size);
+        (spatial, global)
+    }
+
+    // ========================================================================
+    // is_game_over() tests
+    // ========================================================================
+
+    #[test]
+    fn test_is_game_over_three_of_each_p1() {
+        let config = create_test_config();
+        let (spatial, mut global) = create_empty_state(&config);
+
+        // Player 1 has 3 of each
+        global[config.p1_cap_w] = 3.0;
+        global[config.p1_cap_g] = 3.0;
+        global[config.p1_cap_b] = 3.0;
+
+        assert!(is_game_over(&spatial.view(), &global.view(), &config));
+    }
+
+    #[test]
+    fn test_is_game_over_three_of_each_p2() {
+        let config = create_test_config();
+        let (spatial, mut global) = create_empty_state(&config);
+
+        // Player 2 has 3 of each
+        global[config.p2_cap_w] = 3.0;
+        global[config.p2_cap_g] = 3.0;
+        global[config.p2_cap_b] = 3.0;
+
+        assert!(is_game_over(&spatial.view(), &global.view(), &config));
+    }
+
+    #[test]
+    fn test_is_game_over_4_white() {
+        let config = create_test_config();
+        let (spatial, mut global) = create_empty_state(&config);
+
+        // Player 1 has 4 white
+        global[config.p1_cap_w] = 4.0;
+
+        assert!(is_game_over(&spatial.view(), &global.view(), &config));
+    }
+
+    #[test]
+    fn test_is_game_over_5_gray() {
+        let config = create_test_config();
+        let (spatial, mut global) = create_empty_state(&config);
+
+        // Player 2 has 5 gray
+        global[config.p2_cap_g] = 5.0;
+
+        assert!(is_game_over(&spatial.view(), &global.view(), &config));
+    }
+
+    #[test]
+    fn test_is_game_over_6_black() {
+        let config = create_test_config();
+        let (spatial, mut global) = create_empty_state(&config);
+
+        // Player 1 has 6 black
+        global[config.p1_cap_b] = 6.0;
+
+        assert!(is_game_over(&spatial.view(), &global.view(), &config));
+    }
+
+    #[test]
+    fn test_is_game_over_board_full() {
+        let config = create_test_config();
+        let (mut spatial, global) = create_empty_state(&config);
+
+        // Fill one ring with marble
+        spatial[[config.ring_layer, 3, 3]] = 1.0;
+        spatial[[1, 3, 3]] = 1.0; // White marble
+
+        assert!(is_game_over(&spatial.view(), &global.view(), &config));
+    }
+
+    #[test]
+    fn test_is_game_over_current_player_no_marbles() {
+        let config = create_test_config();
+        let (spatial, mut global) = create_empty_state(&config);
+
+        // Player 1's turn, no marbles in supply or captured
+        global[config.cur_player] = config.player_1 as f32;
+        global[config.supply_w] = 0.0;
+        global[config.supply_g] = 0.0;
+        global[config.supply_b] = 0.0;
+        global[config.p1_cap_w] = 0.0;
+        global[config.p1_cap_g] = 0.0;
+        global[config.p1_cap_b] = 0.0;
+
+        assert!(is_game_over(&spatial.view(), &global.view(), &config));
+    }
+
+    #[test]
+    fn test_is_game_over_false_not_enough_captures() {
+        let config = create_test_config();
+        let (mut spatial, mut global) = create_empty_state(&config);
+
+        // Player 1 has 2 of each (not 3)
+        global[config.p1_cap_w] = 2.0;
+        global[config.p1_cap_g] = 2.0;
+        global[config.p1_cap_b] = 2.0;
+
+        // Board not full
+        spatial[[config.ring_layer, 3, 3]] = 1.0; // Empty ring
+
+        // Supply has marbles
+        global[config.supply_w] = 1.0;
+
+        assert!(!is_game_over(&spatial.view(), &global.view(), &config));
+    }
+
+    // ========================================================================
+    // get_game_outcome() tests
+    // ========================================================================
+
+    #[test]
+    fn test_get_game_outcome_p1_wins_three_of_each() {
+        let config = create_test_config();
+        let (spatial, mut global) = create_empty_state(&config);
+
+        global[config.p1_cap_w] = 3.0;
+        global[config.p1_cap_g] = 3.0;
+        global[config.p1_cap_b] = 3.0;
+
+        assert_eq!(
+            get_game_outcome(&spatial.view(), &global.view(), &config),
+            PLAYER_1_WIN
+        );
+    }
+
+    #[test]
+    fn test_get_game_outcome_p2_wins_three_of_each() {
+        let config = create_test_config();
+        let (spatial, mut global) = create_empty_state(&config);
+
+        global[config.p2_cap_w] = 3.0;
+        global[config.p2_cap_g] = 3.0;
+        global[config.p2_cap_b] = 3.0;
+
+        assert_eq!(
+            get_game_outcome(&spatial.view(), &global.view(), &config),
+            PLAYER_2_WIN
+        );
+    }
+
+    #[test]
+    fn test_get_game_outcome_p1_wins_4_white() {
+        let config = create_test_config();
+        let (spatial, mut global) = create_empty_state(&config);
+
+        global[config.p1_cap_w] = 4.0;
+
+        assert_eq!(
+            get_game_outcome(&spatial.view(), &global.view(), &config),
+            PLAYER_1_WIN
+        );
+    }
+
+    #[test]
+    fn test_get_game_outcome_p2_wins_5_gray() {
+        let config = create_test_config();
+        let (spatial, mut global) = create_empty_state(&config);
+
+        global[config.p2_cap_g] = 5.0;
+
+        assert_eq!(
+            get_game_outcome(&spatial.view(), &global.view(), &config),
+            PLAYER_2_WIN
+        );
+    }
+
+    #[test]
+    fn test_get_game_outcome_p1_wins_6_black() {
+        let config = create_test_config();
+        let (spatial, mut global) = create_empty_state(&config);
+
+        global[config.p1_cap_b] = 6.0;
+
+        assert_eq!(
+            get_game_outcome(&spatial.view(), &global.view(), &config),
+            PLAYER_1_WIN
+        );
+    }
+
+    #[test]
+    fn test_get_game_outcome_both_lose() {
+        let config = create_test_config();
+        let (mut spatial, mut global) = create_empty_state(&config);
+
+        // Board full (one ring, one marble)
+        spatial[[config.ring_layer, 3, 3]] = 1.0;
+        spatial[[1, 3, 3]] = 1.0; // White marble
+
+        // Both players have zero captures
+        global[config.p1_cap_w] = 0.0;
+        global[config.p1_cap_g] = 0.0;
+        global[config.p1_cap_b] = 0.0;
+        global[config.p2_cap_w] = 0.0;
+        global[config.p2_cap_g] = 0.0;
+        global[config.p2_cap_b] = 0.0;
+
+        assert_eq!(
+            get_game_outcome(&spatial.view(), &global.view(), &config),
+            BOTH_LOSE
+        );
+    }
+
+    #[test]
+    fn test_get_game_outcome_board_full_p1_to_move_p2_wins() {
+        let config = create_test_config();
+        let (mut spatial, mut global) = create_empty_state(&config);
+
+        // Board full
+        spatial[[config.ring_layer, 3, 3]] = 1.0;
+        spatial[[1, 3, 3]] = 1.0; // White marble
+
+        // Player 1 to move
+        global[config.cur_player] = config.player_1 as f32;
+
+        // Player 1 has some captures (not zero)
+        global[config.p1_cap_w] = 1.0;
+
+        // Player 2 wins (last to move)
+        assert_eq!(
+            get_game_outcome(&spatial.view(), &global.view(), &config),
+            PLAYER_2_WIN
+        );
+    }
+
+    #[test]
+    fn test_get_game_outcome_board_full_p2_to_move_p1_wins() {
+        let config = create_test_config();
+        let (mut spatial, mut global) = create_empty_state(&config);
+
+        // Board full
+        spatial[[config.ring_layer, 3, 3]] = 1.0;
+        spatial[[1, 3, 3]] = 1.0; // White marble
+
+        // Player 2 to move
+        global[config.cur_player] = config.player_2 as f32;
+
+        // Player 2 has some captures (not zero)
+        global[config.p2_cap_w] = 1.0;
+
+        // Player 1 wins (last to move)
+        assert_eq!(
+            get_game_outcome(&spatial.view(), &global.view(), &config),
+            PLAYER_1_WIN
+        );
+    }
+
+    #[test]
+    fn test_get_game_outcome_p1_no_marbles_p2_wins() {
+        let config = create_test_config();
+        let (mut spatial, mut global) = create_empty_state(&config);
+
+        // Add a ring with a marble so board is not empty (not triggering BOTH_LOSE)
+        spatial[[config.ring_layer, 3, 3]] = 1.0;
+        spatial[[1, 3, 3]] = 1.0; // white marble on ring
+
+        // Player 1's turn
+        global[config.cur_player] = config.player_1 as f32;
+
+        // No marbles in supply or captured for P1
+        global[config.supply_w] = 0.0;
+        global[config.supply_g] = 0.0;
+        global[config.supply_b] = 0.0;
+        global[config.p1_cap_w] = 0.0;
+        global[config.p1_cap_g] = 0.0;
+        global[config.p1_cap_b] = 0.0;
+
+        // P2 has some marbles (to avoid BOTH_LOSE)
+        global[config.p2_cap_w] = 1.0;
+
+        assert_eq!(
+            get_game_outcome(&spatial.view(), &global.view(), &config),
+            PLAYER_2_WIN
+        );
+    }
+
+    #[test]
+    fn test_get_game_outcome_p2_no_marbles_p1_wins() {
+        let config = create_test_config();
+        let (mut spatial, mut global) = create_empty_state(&config);
+
+        // Add a ring with a marble so board is not empty (not triggering BOTH_LOSE)
+        spatial[[config.ring_layer, 3, 3]] = 1.0;
+        spatial[[1, 3, 3]] = 1.0; // white marble on ring
+
+        // Player 2's turn
+        global[config.cur_player] = config.player_2 as f32;
+
+        // No marbles in supply or captured for P2
+        global[config.supply_w] = 0.0;
+        global[config.supply_g] = 0.0;
+        global[config.supply_b] = 0.0;
+        global[config.p2_cap_w] = 0.0;
+        global[config.p2_cap_g] = 0.0;
+        global[config.p2_cap_b] = 0.0;
+
+        // P1 has some marbles (to avoid BOTH_LOSE)
+        global[config.p1_cap_w] = 1.0;
+
+        assert_eq!(
+            get_game_outcome(&spatial.view(), &global.view(), &config),
+            PLAYER_1_WIN
+        );
+    }
+
+    // ========================================================================
+    // Blitz mode tests - verify mode-specific win conditions
+    // ========================================================================
+
+    #[test]
+    fn test_blitz_mode_two_of_each_p1_wins() {
+        let config = BoardConfig::blitz(37, 1).unwrap();
+        let (spatial, mut global) = create_empty_state(&config);
+
+        // Player 1 has 2 of each (Blitz win condition)
+        global[config.p1_cap_w] = 2.0;
+        global[config.p1_cap_g] = 2.0;
+        global[config.p1_cap_b] = 2.0;
+
+        assert!(is_game_over(&spatial.view(), &global.view(), &config));
+        assert_eq!(
+            get_game_outcome(&spatial.view(), &global.view(), &config),
+            PLAYER_1_WIN
+        );
+    }
+
+    #[test]
+    fn test_blitz_mode_three_white_p2_wins() {
+        let config = BoardConfig::blitz(37, 1).unwrap();
+        let (spatial, mut global) = create_empty_state(&config);
+
+        // Player 2 has 3 white (Blitz win condition)
+        global[config.p2_cap_w] = 3.0;
+
+        assert!(is_game_over(&spatial.view(), &global.view(), &config));
+        assert_eq!(
+            get_game_outcome(&spatial.view(), &global.view(), &config),
+            PLAYER_2_WIN
+        );
+    }
+
+    #[test]
+    fn test_blitz_mode_four_gray_p1_wins() {
+        let config = BoardConfig::blitz(37, 1).unwrap();
+        let (spatial, mut global) = create_empty_state(&config);
+
+        // Player 1 has 4 gray (Blitz win condition)
+        global[config.p1_cap_g] = 4.0;
+
+        assert!(is_game_over(&spatial.view(), &global.view(), &config));
+        assert_eq!(
+            get_game_outcome(&spatial.view(), &global.view(), &config),
+            PLAYER_1_WIN
+        );
+    }
+
+    #[test]
+    fn test_blitz_mode_five_black_p2_wins() {
+        let config = BoardConfig::blitz(37, 1).unwrap();
+        let (spatial, mut global) = create_empty_state(&config);
+
+        // Player 2 has 5 black (Blitz win condition)
+        global[config.p2_cap_b] = 5.0;
+
+        assert!(is_game_over(&spatial.view(), &global.view(), &config));
+        assert_eq!(
+            get_game_outcome(&spatial.view(), &global.view(), &config),
+            PLAYER_2_WIN
+        );
+    }
+
+    #[test]
+    fn test_blitz_mode_not_enough_captures() {
+        let config = BoardConfig::blitz(37, 1).unwrap();
+        let (mut spatial, mut global) = create_empty_state(&config);
+
+        // Player 1 has only 1 black (not enough for Blitz 2-of-each)
+        global[config.p1_cap_w] = 2.0;
+        global[config.p1_cap_g] = 2.0;
+        global[config.p1_cap_b] = 1.0; // Only 1 black (not enough for Blitz)
+
+        // Add ring so board isn't considered full
+        spatial[[config.ring_layer, 3, 3]] = 1.0;
+
+        // Supply has marbles
+        global[config.supply_w] = 1.0;
+
+        // Should NOT be game over - needs 2 of EACH (has only 1 black)
+        assert!(!is_game_over(&spatial.view(), &global.view(), &config));
+    }
+
+    #[test]
+    fn test_standard_mode_not_enough_blitz_captures() {
+        let config = BoardConfig::standard(37, 1).unwrap();
+        let (mut spatial, mut global) = create_empty_state(&config);
+
+        // Player 1 has Blitz win conditions (2 of each)
+        // but this should NOT trigger win in Standard mode
+        global[config.p1_cap_w] = 2.0;
+        global[config.p1_cap_g] = 2.0;
+        global[config.p1_cap_b] = 2.0;
+
+        // Add ring so board isn't considered full
+        spatial[[config.ring_layer, 3, 3]] = 1.0;
+
+        // Supply has marbles
+        global[config.supply_w] = 1.0;
+
+        // Should NOT be game over - needs 3 of each in Standard mode
+        assert!(!is_game_over(&spatial.view(), &global.view(), &config));
+    }
+
+    #[test]
+    fn test_blitz_mode_board_full_both_lose() {
+        let config = BoardConfig::blitz(37, 1).unwrap();
+        let (mut spatial, mut global) = create_empty_state(&config);
+
+        // Board full (one ring, one marble)
+        spatial[[config.ring_layer, 3, 3]] = 1.0;
+        spatial[[1, 3, 3]] = 1.0; // White marble
+
+        // Both players have zero captures
+        global[config.p1_cap_w] = 0.0;
+        global[config.p1_cap_g] = 0.0;
+        global[config.p1_cap_b] = 0.0;
+        global[config.p2_cap_w] = 0.0;
+        global[config.p2_cap_g] = 0.0;
+        global[config.p2_cap_b] = 0.0;
+
+        // BOTH_LOSE condition should work in Blitz mode too
+        assert_eq!(
+            get_game_outcome(&spatial.view(), &global.view(), &config),
+            BOTH_LOSE
         );
     }
 }

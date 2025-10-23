@@ -9,6 +9,29 @@ Rust-accelerated Monte Carlo Tree Search (MCTS) engine for the abstract strategy
 - PyO3 bindings that accept/return NumPy arrays without extra copies.
 - Utilities that mirror the Python engine (move generation, placement/capture application) for cross-validation.
 
+## Architecture
+
+The Rust backend mirrors the Python implementation's architecture:
+
+**Delegation Pattern:**
+- `mcts.rs` → `game.rs` for all game logic (same as Python's `mcts_tree.py` → `zertz_logic.py`)
+- Single source of truth: all game rules live in `game.rs`
+- MCTS focuses on tree search algorithms only
+
+**Key Design Decisions:**
+- Game termination checking: `is_game_over()` and `get_game_outcome()` in game.rs (lines 915-1140)
+- Win condition logic: Centralized in game.rs (3-of-each, 4W/5G/6B, board full, BOTH_LOSE)
+- MCTS only handles perspective conversion (absolute outcome → player-relative value)
+- Outcome constants: `1` (P1 wins), `-1` (P2 wins), `0` (tie), `-2` (both lose)
+
+**Module Responsibilities:**
+- `game.rs`: Pure stateless game logic, single source of truth for rules
+- `mcts.rs`: Tree search (selection, expansion, simulation, backpropagation) - delegates to game.rs
+- `node.rs`: Thread-safe node structure with atomic statistics
+- `transposition.rs`: Lock-free transposition table (DashMap)
+- `zobrist.rs`: Fast state hashing for transposition detection
+- `canonicalization.rs`: Symmetry handling and canonical states
+
 ## Installation
 - Rust toolchain (1.74+ recommended) and Python 3.8+ (ABI3 wheel target).
 - Install `maturin` into the desired Python environment:  

@@ -2,9 +2,47 @@ use numpy::{PyArray1, PyArray3, PyArrayMethods, PyReadonlyArray1, PyReadonlyArra
 use pyo3::prelude::*;
 use std::collections::HashMap;
 
+/// Game mode (Standard or Blitz)
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum GameMode {
+    Standard,
+    Blitz,
+}
+
+/// Win condition thresholds for a game mode
+#[derive(Clone, Debug)]
+pub struct WinConditions {
+    pub each_color: f32,  // Threshold for having all three colors
+    pub white_only: f32,
+    pub gray_only: f32,
+    pub black_only: f32,
+}
+
+impl WinConditions {
+    pub fn standard() -> Self {
+        WinConditions {
+            each_color: 3.0,
+            white_only: 4.0,
+            gray_only: 5.0,
+            black_only: 6.0,
+        }
+    }
+
+    pub fn blitz() -> Self {
+        WinConditions {
+            each_color: 2.0,
+            white_only: 3.0,
+            gray_only: 4.0,
+            black_only: 5.0,
+        }
+    }
+}
+
 /// Immutable board configuration (mirrors Python BoardConfig)
 #[derive(Clone, Debug)]
 pub struct BoardConfig {
+    pub mode: GameMode,
+    pub win_conditions: WinConditions,
     pub width: usize,
     pub rings: usize,
     pub t: usize,
@@ -41,6 +79,16 @@ pub struct BoardConfig {
 impl BoardConfig {
     /// Create standard BoardConfig for common board sizes
     pub fn standard(rings: usize, t: usize) -> Result<Self, String> {
+        Self::with_mode(rings, t, GameMode::Standard)
+    }
+
+    /// Create blitz BoardConfig for common board sizes
+    pub fn blitz(rings: usize, t: usize) -> Result<Self, String> {
+        Self::with_mode(rings, t, GameMode::Blitz)
+    }
+
+    /// Create BoardConfig with specified mode
+    fn with_mode(rings: usize, t: usize, mode: GameMode) -> Result<Self, String> {
         let width = match rings {
             37 => 7,
             48 => 8,
@@ -53,12 +101,19 @@ impl BoardConfig {
             }
         };
 
+        let win_conditions = match mode {
+            GameMode::Standard => WinConditions::standard(),
+            GameMode::Blitz => WinConditions::blitz(),
+        };
+
         let mut marble_to_layer = HashMap::new();
         marble_to_layer.insert("w".to_string(), 1);
         marble_to_layer.insert("g".to_string(), 2);
         marble_to_layer.insert("b".to_string(), 3);
 
         Ok(BoardConfig {
+            mode,
+            win_conditions,
             width,
             rings,
             t,

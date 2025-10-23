@@ -8,7 +8,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 use crate::board::BoardConfig;
-use crate::game::{apply_capture, apply_placement, get_valid_actions};
+use crate::game::{apply_capture, apply_placement, get_game_outcome, get_valid_actions, is_game_over};
 use crate::node::{Action, MCTSNode};
 use crate::transposition::TranspositionTable;
 
@@ -749,141 +749,45 @@ impl MCTSSearch {
         global: &Array1<f32>,
         config: &BoardConfig,
     ) -> bool {
-        let p1_caps = [
-            global[config.p1_cap_w],
-            global[config.p1_cap_g],
-            global[config.p1_cap_b],
-        ];
-
-        let p2_caps = [
-            global[config.p2_cap_w],
-            global[config.p2_cap_g],
-            global[config.p2_cap_b],
-        ];
-
-        // Check 3-of-each win
-        if p1_caps.iter().all(|&x| x >= 3.0) || p2_caps.iter().all(|&x| x >= 3.0) {
-            return true;
-        }
-
-        // Check specific marble wins (4W/5G/6B)
-        if p1_caps[0] >= 4.0 || p1_caps[1] >= 5.0 || p1_caps[2] >= 6.0 {
-            return true;
-        }
-        if p2_caps[0] >= 4.0 || p2_caps[1] >= 5.0 || p2_caps[2] >= 6.0 {
-            return true;
-        }
-
-        // Check if all remaining rings are occupied by marbles
-        let mut all_occupied = true;
-        for y in 0..config.width {
-            for x in 0..config.width {
-                if spatial[[config.ring_layer, y, x]] == 1.0 {
-                    let mut has_marble = false;
-                    for layer in config.marble_layers.0..config.marble_layers.1 {
-                        if spatial[[layer, y, x]] > 0.0 {
-                            has_marble = true;
-                            break;
-                        }
-                    }
-                    if !has_marble {
-                        all_occupied = false;
-                        break;
-                    }
-                }
-            }
-            if !all_occupied {
-                break;
-            }
-        }
-        if all_occupied {
-            return true;
-        }
-
-        // Check if current player has no marbles to play (supply + captured)
-        let cur_player = global[config.cur_player] as usize;
-        let supply = [
-            global[config.supply_w],
-            global[config.supply_g],
-            global[config.supply_b],
-        ];
-
-        let captured_slice = if cur_player == config.player_1 {
-            [config.p1_cap_w, config.p1_cap_g, config.p1_cap_b]
-        } else {
-            [config.p2_cap_w, config.p2_cap_g, config.p2_cap_b]
-        };
-
-        let captured = [
-            global[captured_slice[0]],
-            global[captured_slice[1]],
-            global[captured_slice[2]],
-        ];
-
-        if supply
-            .iter()
-            .zip(captured.iter())
-            .all(|(&s, &c)| s + c == 0.0)
-        {
-            return true;
-        }
-
-        false
+        // Delegate to game.rs function (single source of truth)
+        is_game_over(&spatial.view(), &global.view(), config)
     }
 
     /// Evaluate terminal state from root player's perspective
     ///
-    /// Returns +1 if root_player won, -1 if lost, 0 if draw
+    /// Returns +1 if root_player won, -1 if lost, 0 if draw, -2 if both lose
     fn evaluate_terminal(
         &self,
-        _spatial: &Array3<f32>,
+        spatial: &Array3<f32>,
         global: &Array1<f32>,
         config: &BoardConfig,
         root_player: usize,
     ) -> f32 {
-        let p1_caps = [
-            global[config.p1_cap_w],
-            global[config.p1_cap_g],
-            global[config.p1_cap_b],
-        ];
+        // Delegate to game.rs function (single source of truth)
+        // Returns: 1 (P1 wins), -1 (P2 wins), 0 (tie), -2 (both lose)
+        let outcome = get_game_outcome(&spatial.view(), &global.view(), config);
 
-        let p2_caps = [
-            global[config.p2_cap_w],
-            global[config.p2_cap_g],
-            global[config.p2_cap_b],
-        ];
-
-        // Determine winner
-        let p1_won = p1_caps.iter().all(|&x| x >= 3.0)
-            || p1_caps[0] >= 4.0
-            || p1_caps[1] >= 5.0
-            || p1_caps[2] >= 6.0;
-
-        let p2_won = p2_caps.iter().all(|&x| x >= 3.0)
-            || p2_caps[0] >= 4.0
-            || p2_caps[1] >= 5.0
-            || p2_caps[2] >= 6.0;
-
-        if p1_won && p2_won {
-            // Both won (simultaneous), shouldn't happen but treat as draw
-            0.0
-        } else if p1_won {
-            // Player 1 won
-            if root_player == config.player_1 {
-                1.0
-            } else {
-                -1.0
+        // Convert from Player 1's perspective to root_player's perspective
+        match outcome {
+            -2 => -2.0,  // Both lose
+            0 => 0.0,    // Tie
+            1 => {
+                // Player 1 wins
+                if root_player == config.player_1 {
+                    1.0
+                } else {
+                    -1.0
+                }
             }
-        } else if p2_won {
-            // Player 2 won
-            if root_player == config.player_2 {
-                1.0
-            } else {
-                -1.0
+            -1 => {
+                // Player 2 wins
+                if root_player == config.player_2 {
+                    1.0
+                } else {
+                    -1.0
+                }
             }
-        } else {
-            // No winner yet
-            0.0
+            _ => 0.0,  // Unknown outcome, treat as draw
         }
     }
 
