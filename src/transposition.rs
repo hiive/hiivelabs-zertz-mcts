@@ -11,7 +11,7 @@ use std::sync::{Arc, Mutex};
 /// Stores the canonical state for collision detection.
 pub struct TranspositionEntry {
     visits: AtomicU32,
-    total_value: AtomicI32, // Scaled by 1000 for precision
+    total_value: AtomicI32,              // Scaled by 1000 for precision
     canonical_spatial: Arc<Array3<f32>>, // Stored for collision detection
     canonical_global: Arc<Array1<f32>>,  // Stored for collision detection
 }
@@ -289,7 +289,11 @@ mod tests {
 
         // Pre-register a fake hasher that always returns hash=42
         let fake_hasher = Arc::new(ZobristHasher::new(config.width, Some(999)));
-        table.hashers.lock().unwrap().insert(config.width, fake_hasher.clone());
+        table
+            .hashers
+            .lock()
+            .unwrap()
+            .insert(config.width, fake_hasher.clone());
 
         // Manually insert states with forced collision (same hash, different states)
         let (canonical1, _, _) = canonicalization::canonicalize_state(&spatial1.view(), &config);
@@ -299,12 +303,18 @@ mod tests {
         let forced_hash = 42u64;
 
         // Insert first entry
-        let entry1 = Arc::new(TranspositionEntry::new(canonical1.to_owned(), global1.clone()));
+        let entry1 = Arc::new(TranspositionEntry::new(
+            canonical1.to_owned(),
+            global1.clone(),
+        ));
         table.table.insert(forced_hash, vec![Arc::clone(&entry1)]);
         entry1.add_sample(0.5);
 
         // Now insert second entry with same hash but different state (this will trigger collision)
-        let entry2 = Arc::new(TranspositionEntry::new(canonical2.to_owned(), global2.clone()));
+        let entry2 = Arc::new(TranspositionEntry::new(
+            canonical2.to_owned(),
+            global2.clone(),
+        ));
         let mut chain = table.table.get_mut(&forced_hash).unwrap();
         table.collisions.fetch_add(1, Ordering::Relaxed);
         chain.push(Arc::clone(&entry2));

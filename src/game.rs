@@ -176,12 +176,12 @@ fn apply_isolation_capture(
 
     let mut main_idx = 0usize;
     let mut main_size = regions[0].len();
-    let mut main_has_anchor = regions[0].iter().any(|&coord| coord == anchor);
+    let mut main_has_anchor = regions[0].contains(&anchor);
     let mut main_min = regions[0].iter().cloned().min().unwrap_or(anchor);
 
     for (idx, region) in regions.iter().enumerate().skip(1) {
         let size = region.len();
-        let has_anchor = region.iter().any(|&coord| coord == anchor);
+        let has_anchor = region.contains(&anchor);
         let region_min = region.iter().cloned().min().unwrap_or(anchor);
 
         let better = size > main_size
@@ -952,8 +952,12 @@ pub fn is_game_over(
     ];
 
     // Check 3-of-each win (uses mode-specific threshold)
-    if p1_caps.iter().all(|&x| x >= config.win_conditions.each_color)
-        || p2_caps.iter().all(|&x| x >= config.win_conditions.each_color)
+    if p1_caps
+        .iter()
+        .all(|&x| x >= config.win_conditions.each_color)
+        || p2_caps
+            .iter()
+            .all(|&x| x >= config.win_conditions.each_color)
     {
         return true;
     }
@@ -1057,12 +1061,16 @@ pub fn get_game_outcome(
     ];
 
     // Determine winner by captures (uses mode-specific thresholds)
-    let p1_won = p1_caps.iter().all(|&x| x >= config.win_conditions.each_color)
+    let p1_won = p1_caps
+        .iter()
+        .all(|&x| x >= config.win_conditions.each_color)
         || p1_caps[0] >= config.win_conditions.white_only
         || p1_caps[1] >= config.win_conditions.gray_only
         || p1_caps[2] >= config.win_conditions.black_only;
 
-    let p2_won = p2_caps.iter().all(|&x| x >= config.win_conditions.each_color)
+    let p2_won = p2_caps
+        .iter()
+        .all(|&x| x >= config.win_conditions.each_color)
         || p2_caps[0] >= config.win_conditions.white_only
         || p2_caps[1] >= config.win_conditions.gray_only
         || p2_caps[2] >= config.win_conditions.black_only;

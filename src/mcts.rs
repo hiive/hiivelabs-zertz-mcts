@@ -8,7 +8,9 @@ use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 use crate::board::BoardConfig;
-use crate::game::{apply_capture, apply_placement, get_game_outcome, get_valid_actions, is_game_over};
+use crate::game::{
+    apply_capture, apply_placement, get_game_outcome, get_valid_actions, is_game_over,
+};
 use crate::node::{Action, MCTSNode};
 use crate::transposition::TranspositionTable;
 
@@ -143,7 +145,7 @@ impl MCTSSearch {
             } else {
                 BoardConfig::standard(rings, t)
             }
-            .map_err(|e| pyo3::exceptions::PyValueError::new_err(e))?,
+            .map_err(pyo3::exceptions::PyValueError::new_err)?,
         );
 
         let spatial_arr = spatial.as_array().to_owned();
@@ -260,7 +262,7 @@ impl MCTSSearch {
             } else {
                 BoardConfig::standard(rings, t)
             }
-            .map_err(|e| pyo3::exceptions::PyValueError::new_err(e))?,
+            .map_err(pyo3::exceptions::PyValueError::new_err)?,
         );
 
         let spatial_arr = spatial.as_array().to_owned();
@@ -783,8 +785,8 @@ impl MCTSSearch {
 
         // Convert from Player 1's perspective to root_player's perspective
         match outcome {
-            -2 => -2.0,  // Both lose
-            0 => 0.0,    // Tie
+            -2 => -2.0, // Both lose
+            0 => 0.0,   // Tie
             1 => {
                 // Player 1 wins
                 if root_player == config.player_1 {
@@ -801,7 +803,7 @@ impl MCTSSearch {
                     -1.0
                 }
             }
-            _ => 0.0,  // Unknown outcome, treat as draw
+            _ => 0.0, // Unknown outcome, treat as draw
         }
     }
 
@@ -950,7 +952,7 @@ impl SearchOptions {
         }
 
         Self {
-            table: search.transposition_table.as_ref().map(|t| Arc::clone(t)),
+            table: search.transposition_table.as_ref().map(Arc::clone),
             use_lookups: search.use_transposition_lookups,
         }
     }

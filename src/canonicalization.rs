@@ -18,10 +18,10 @@ fn symmetry_transforms(config: &BoardConfig) -> Vec<(String, i32, bool, bool)> {
     for &k in &rot_steps {
         let deg = k * 60;
         if k != 0 {
-            transforms.push((format!("R{}", deg), k as i32, false, false));
+            transforms.push((format!("R{}", deg), k, false, false));
         }
-        transforms.push((format!("MR{}", deg), k as i32, true, false));
-        transforms.push((format!("R{}M", deg), k as i32, true, true));
+        transforms.push((format!("MR{}", deg), k, true, false));
+        transforms.push((format!("R{}M", deg), k, true, true));
     }
 
     transforms
@@ -290,14 +290,14 @@ fn inverse_transform_name(name: &str) -> String {
         return format!("MR{}", inv_angle);
     }
 
-    if name.starts_with("MR") {
-        let angle: i32 = name[2..].parse().unwrap_or(0);
+    if let Some(stripped) = name.strip_prefix("MR") {
+        let angle: i32 = stripped.parse().unwrap_or(0);
         let inv_angle = (360 - angle) % 360;
         return format!("R{}M", inv_angle);
     }
 
-    if name.starts_with('R') {
-        let angle: i32 = name[1..].parse().unwrap_or(0);
+    if let Some(stripped) = name.strip_prefix('R') {
+        let angle: i32 = stripped.parse().unwrap_or(0);
         let inv_angle = (360 - angle) % 360;
         return format!("R{}", inv_angle);
     }
@@ -336,9 +336,9 @@ fn generate_standard_layout_mask(rings: usize, width: usize) -> Vec<Vec<bool>> {
         width, r_max
     );
 
-    let is_even = r_max % 2 == 0;
+    let is_even = r_max.is_multiple_of(2);
     let h_max =
-        |idx: usize| -> usize { r_max - (idx as isize - (r_max / 2) as isize).abs() as usize };
+        |idx: usize| -> usize { r_max - (idx as isize - (r_max / 2) as isize).unsigned_abs() };
 
     let mut r_min = h_max(0);
     if is_even {
@@ -382,7 +382,7 @@ fn build_layout_mask(config: &BoardConfig) -> Vec<Vec<bool>> {
 #[allow(dead_code)]
 fn build_axial_maps(
     config: &BoardConfig,
-    layout: &Vec<Vec<bool>>,
+    layout: &[Vec<bool>],
 ) -> (
     HashMap<(i32, i32), (i32, i32)>,
     HashMap<(i32, i32), (i32, i32)>,
@@ -558,11 +558,11 @@ fn parse_rot_component(component: &str) -> (i32, bool, bool) {
             .parse::<i32>()
             .unwrap_or(0);
         (angle / 60, true, true)
-    } else if component.starts_with("MR") {
-        let angle = component[2..].parse::<i32>().unwrap_or(0);
+    } else if let Some(stripped) = component.strip_prefix("MR") {
+        let angle = stripped.parse::<i32>().unwrap_or(0);
         (angle / 60, true, false)
-    } else if component.starts_with('R') {
-        let angle = component[1..].parse::<i32>().unwrap_or(0);
+    } else if let Some(stripped) = component.strip_prefix('R') {
+        let angle = stripped.parse::<i32>().unwrap_or(0);
         (angle / 60, false, false)
     } else {
         (0, false, false)
@@ -581,8 +581,7 @@ pub fn transform_action(action: &Action, transform: &str, config: &BoardConfig) 
     let mut current_action = action.clone();
 
     for part in parse_transform(transform) {
-        if part.starts_with('T') {
-            let coords = &part[1..];
+        if let Some(coords) = part.strip_prefix('T') {
             let mut split = coords.split(',');
             let dy = split.next().unwrap().parse::<i32>().unwrap();
             let dx = split.next().unwrap().parse::<i32>().unwrap();
@@ -610,7 +609,7 @@ fn translate_action(
     dy: i32,
     dx: i32,
     config: &BoardConfig,
-    layout: &Vec<Vec<bool>>,
+    layout: &[Vec<bool>],
 ) -> Action {
     let width = config.width as i32;
     match action {

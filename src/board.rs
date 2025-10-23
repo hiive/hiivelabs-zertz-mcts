@@ -12,7 +12,7 @@ pub enum GameMode {
 /// Win condition thresholds for a game mode
 #[derive(Clone, Debug)]
 pub struct WinConditions {
-    pub each_color: f32,  // Threshold for having all three colors
+    pub each_color: f32, // Threshold for having all three colors
     pub white_only: f32,
     pub gray_only: f32,
     pub black_only: f32,
@@ -175,7 +175,7 @@ impl BoardState {
         } else {
             BoardConfig::standard(rings, t)
         }
-        .map_err(|e| pyo3::exceptions::PyValueError::new_err(e))?;
+        .map_err(pyo3::exceptions::PyValueError::new_err)?;
 
         // Create owned Python arrays
         let spatial_arr = spatial.as_array().to_owned();

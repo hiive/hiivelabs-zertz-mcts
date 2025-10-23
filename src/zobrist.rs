@@ -28,10 +28,9 @@ pub struct ZobristHasher {
 
 impl ZobristHasher {
     pub fn new(width: usize, seed: Option<u64>) -> Self {
-        let mut rng = match seed
-        {
+        let mut rng = match seed {
             Some(s) => Pcg64::seed_from_u64(s),
-            None => Pcg64::from_rng(&mut rand::rng())
+            None => Pcg64::from_rng(&mut rand::rng()),
         };
 
         let ring = make_matrix(&mut rng, width);
@@ -72,9 +71,15 @@ impl ZobristHasher {
 
     fn marble_layers(config: &BoardConfig) -> [usize; 3] {
         [
-            *config.marble_to_layer.get("w").expect("missing white layer"),
+            *config
+                .marble_to_layer
+                .get("w")
+                .expect("missing white layer"),
             *config.marble_to_layer.get("g").expect("missing gray layer"),
-            *config.marble_to_layer.get("b").expect("missing black layer"),
+            *config
+                .marble_to_layer
+                .get("b")
+                .expect("missing black layer"),
         ]
     }
 
@@ -105,11 +110,7 @@ impl ZobristHasher {
         h
     }
 
-    fn hash_supply_and_captures(
-        &self,
-        global: &ArrayView1<f32>,
-        config: &BoardConfig,
-    ) -> u64 {
+    fn hash_supply_and_captures(&self, global: &ArrayView1<f32>, config: &BoardConfig) -> u64 {
         let mut h = 0u64;
 
         let supply_indices = [config.supply_w, config.supply_g, config.supply_b];
@@ -155,11 +156,7 @@ impl ZobristHasher {
     }
 
     #[allow(dead_code)]
-    pub fn hash_canonical_spatial(
-        &self,
-        spatial: &ArrayView3<f32>,
-        config: &BoardConfig,
-    ) -> u64 {
+    pub fn hash_canonical_spatial(&self, spatial: &ArrayView3<f32>, config: &BoardConfig) -> u64 {
         self.hash_spatial(spatial, config)
     }
 
@@ -186,7 +183,10 @@ mod tests {
         let mut rng2 = Pcg64::seed_from_u64(42);
         let first2 = rand63(&mut rng2);
 
-        assert_eq!(first, first2, "PCG64 should be deterministic with same seed");
+        assert_eq!(
+            first, first2,
+            "PCG64 should be deterministic with same seed"
+        );
     }
 
     #[test]
