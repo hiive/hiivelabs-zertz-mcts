@@ -8,6 +8,7 @@ Rust-accelerated Monte Carlo Tree Search (MCTS) engine for the abstract strategy
 - Thread-safe tree with Rayon-powered parallel rollout mode for high iteration counts.
 - PyO3 bindings that accept/return NumPy arrays without extra copies.
 - Utilities that mirror the Python engine (move generation, placement/capture application) for cross-validation.
+- **Full parity support for both Standard and Blitz game modes** with mode-specific win conditions.
 
 ## Architecture
 
@@ -20,9 +21,10 @@ The Rust backend mirrors the Python implementation's architecture:
 
 **Key Design Decisions:**
 - Game termination checking: `is_game_over()` and `get_game_outcome()` in game.rs (lines 915-1140)
-- Win condition logic: Centralized in game.rs (3-of-each, 4W/5G/6B, board full, BOTH_LOSE)
+- Win condition logic: Centralized in game.rs with mode-specific thresholds (Standard: 3-of-each/4W/5G/6B, Blitz: 2-of-each/3W/4G/5B)
 - MCTS only handles perspective conversion (absolute outcome → player-relative value)
 - Outcome constants: `1` (P1 wins), `-1` (P2 wins), `0` (tie), `-2` (both lose)
+- Game mode support: `BoardConfig::standard()` and `BoardConfig::blitz()` for different rule variants
 
 **Module Responsibilities:**
 - `game.rs`: Pure stateless game logic, single source of truth for rules
