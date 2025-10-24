@@ -141,8 +141,8 @@ class MCTSSearch:
         self,
         *,
         exploration_constant: Optional[float] = None,
-        progressive_widening: Optional[bool] = None,
         widening_constant: Optional[float] = None,
+        fpu_reduction: Optional[float] = None,
         use_transposition_table: Optional[bool] = None,
         use_transposition_lookups: Optional[bool] = None
     ) -> None:
@@ -150,9 +150,13 @@ class MCTSSearch:
         Create a new MCTS search instance.
 
         Args:
-            exploration_constant: UCB1 exploration parameter (default: 1.41)
-            progressive_widening: Enable progressive widening (default: True)
-            widening_constant: Progressive widening constant (default: 10.0)
+            exploration_constant: UCB1 exploration parameter (default: 1.41, √2)
+            widening_constant: Progressive widening constant. When None (default), all
+                legal actions are explored. When set to a value (e.g., 10.0), limits
+                child expansion: max_children = widening_constant * sqrt(visits + 1)
+            fpu_reduction: First Play Urgency reduction parameter. When set, unvisited
+                nodes are estimated as parent_value - fpu_reduction instead of having
+                infinite urgency. Set to None to use standard UCB1 (default: None)
             use_transposition_table: Enable transposition table (default: True)
             use_transposition_lookups: Enable transposition lookups (default: True)
         """

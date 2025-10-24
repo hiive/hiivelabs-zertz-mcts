@@ -19,8 +19,8 @@ use crate::transposition::TranspositionTable;
 #[pyclass]
 pub struct MCTSSearch {
     exploration_constant: f32,
-    progressive_widening: bool,
-    widening_constant: f32,
+    widening_constant: Option<f32>,
+    fpu_reduction: Option<f32>,
     use_transposition_table: bool,
     use_transposition_lookups: bool,
     transposition_table: Option<Arc<TranspositionTable>>,
@@ -59,22 +59,22 @@ impl MCTSSearch {
     #[new]
     #[pyo3(signature = (
         exploration_constant=None,
-        progressive_widening=None,
         widening_constant=None,
+        fpu_reduction=None,
         use_transposition_table=None,
         use_transposition_lookups=None
     ))]
     fn new(
         exploration_constant: Option<f32>,
-        progressive_widening: Option<bool>,
         widening_constant: Option<f32>,
+        fpu_reduction: Option<f32>,
         use_transposition_table: Option<bool>,
         use_transposition_lookups: Option<bool>,
     ) -> Self {
         Self {
             exploration_constant: exploration_constant.unwrap_or(1.41),
-            progressive_widening: progressive_widening.unwrap_or(true),
-            widening_constant: widening_constant.unwrap_or(10.0),
+            widening_constant,
+            fpu_reduction,
             use_transposition_table: use_transposition_table.unwrap_or(true),
             use_transposition_lookups: use_transposition_lookups.unwrap_or(true),
             transposition_table: None,
@@ -420,7 +420,7 @@ impl MCTSSearch {
             node.add_virtual_loss();
 
             // Check if node is fully expanded
-            if !node.is_fully_expanded(self.progressive_widening, self.widening_constant) {
+            if !node.is_fully_expanded(self.widening_constant) {
                 return self.expand(Arc::clone(&node), table, use_lookups);
             }
 
@@ -429,12 +429,13 @@ impl MCTSSearch {
                 return node;
             }
 
-            // Select best child using UCB1
+            // Select best child using UCB1 (with optional FPU)
             let parent_visits = node.get_visits();
+            let parent_value = node.get_value();
             let children = node.children.lock().unwrap();
             let best_child = children.iter().max_by(|(_, child_a), (_, child_b)| {
-                let score_a = child_a.ucb1_score(parent_visits, self.exploration_constant);
-                let score_b = child_b.ucb1_score(parent_visits, self.exploration_constant);
+                let score_a = child_a.ucb1_score(parent_visits, parent_value, self.exploration_constant, self.fpu_reduction);
+                let score_b = child_b.ucb1_score(parent_visits, parent_value, self.exploration_constant, self.fpu_reduction);
                 // Handle NaN gracefully (treat equal if either is NaN)
                 score_a
                     .partial_cmp(&score_b)
@@ -1082,7 +1083,7 @@ mod tests {
         root.add_virtual_loss();
 
         // 2. Verify root is not fully expanded
-        assert!(!root.is_fully_expanded(false, 1.0));
+        assert!(!root.is_fully_expanded(None));
 
         // 3. Call expand() - this should add virtual loss to the child
         let child = mcts.expand(Arc::clone(&root), None, false);

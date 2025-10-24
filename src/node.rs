@@ -204,16 +204,34 @@ impl MCTSNode {
         }
     }
 
-    /// Calculate UCB1 score
+    /// Calculate UCB1 score with optional FPU (First Play Urgency)
+    ///
+    /// For unvisited nodes (visits == 0):
+    ///   - If fpu_reduction is Some: estimated_q = -(parent_value - fpu_reduction), u = c * sqrt(parent_visits)
+    ///   - If fpu_reduction is None: returns f32::INFINITY (standard behavior)
+    ///
+    /// For visited nodes, uses standard UCB1:
+    ///   q = -child.value (negated for parent's perspective)
+    ///   u = c * sqrt(ln(parent_visits) / visits)
     ///
     /// Note: child.value is from child's player perspective (due to value flipping in backprop).
     /// We negate to convert to parent's player perspective (opponent of child's player).
-    pub fn ucb1_score(&self, parent_visits: u32, exploration_constant: f32) -> f32 {
+    pub fn ucb1_score(&self, parent_visits: u32, parent_value: f32, exploration_constant: f32, fpu_reduction: Option<f32>) -> f32 {
         let visits = self.get_visits();
         if visits == 0 {
-            return f32::INFINITY;
+            if let Some(reduction) = fpu_reduction {
+                // FPU: estimate using parent value with reduction
+                // Parent's value from parent's perspective, child will have opposite sign
+                let estimated_q = -(parent_value - reduction);
+                let exploration = exploration_constant * (parent_visits as f32).sqrt();
+                return estimated_q + exploration;
+            } else {
+                // Standard behavior: unvisited nodes have infinite urgency
+                return f32::INFINITY;
+            }
         }
 
+        // Standard UCB1 for visited nodes
         // Negate value to convert from child's perspective to parent's perspective
         let exploitation = -self.get_value();
         let exploration =
@@ -227,20 +245,27 @@ impl MCTSNode {
     }
 
     /// Check if fully expanded (based on progressive widening)
-    pub fn is_fully_expanded(&self, progressive_widening: bool, widening_constant: f32) -> bool {
+    ///
+    /// Args:
+    ///     widening_constant: If None, standard MCTS (expand all children).
+    ///                       If Some(k), progressive widening with constant k.
+    pub fn is_fully_expanded(&self, widening_constant: Option<f32>) -> bool {
         let children_count = self.children.lock().unwrap().len();
         let legal_actions = self.count_legal_actions();
 
-        if !progressive_widening {
-            return children_count == legal_actions;
+        match widening_constant {
+            None => {
+                // Standard MCTS: expand until all actions tried
+                children_count == legal_actions
+            }
+            Some(constant) => {
+                // Progressive widening: allow sqrt(visits + 1) * constant children
+                // The +1 ensures nodes start with some children even at 0 visits
+                let max_children = (constant * ((self.get_visits() + 1) as f32).sqrt()) as usize;
+                let max_children = max_children.min(legal_actions);
+                children_count >= max_children
+            }
         }
-
-        // Progressive widening: allow sqrt(visits + 1) * constant children
-        // The +1 ensures nodes start with some children even at 0 visits
-        let max_children = (widening_constant * ((self.get_visits() + 1) as f32).sqrt()) as usize;
-        let max_children = max_children.min(legal_actions);
-
-        children_count >= max_children
     }
 
     /// Count legal actions
@@ -433,5 +458,104 @@ mod tests {
         node.remove_virtual_loss();
         assert_eq!(shared.visits(), 0);
         assert_eq!(shared.average_value(), 0.0);
+    }
+
+    #[test]
+    fn fpu_unvisited_node_with_reduction() {
+        let config = Arc::new(BoardConfig::standard(37, 1).unwrap());
+        let (spatial, global) = empty_state(&config);
+        let node = MCTSNode::new(spatial, global, Arc::clone(&config), None);
+
+        // Unvisited node with FPU reduction = 0.2
+        let parent_visits = 10;
+        let parent_value = 0.5;
+        let exploration_constant = 1.41;
+        let fpu_reduction = Some(0.2);
+
+        let score = node.ucb1_score(parent_visits, parent_value, exploration_constant, fpu_reduction);
+
+        // Expected: -(parent_value - fpu_reduction) + c * sqrt(parent_visits)
+        // = -(0.5 - 0.2) + 1.41 * sqrt(10)
+        // = -0.3 + 4.459...
+        // = 4.159...
+        let expected_q = -(parent_value - 0.2);
+        let expected_u = exploration_constant * (parent_visits as f32).sqrt();
+        let expected = expected_q + expected_u;
+
+        assert!((score - expected).abs() < 1e-6, "FPU score mismatch: got {}, expected {}", score, expected);
+    }
+
+    #[test]
+    fn fpu_unvisited_node_without_reduction() {
+        let config = Arc::new(BoardConfig::standard(37, 1).unwrap());
+        let (spatial, global) = empty_state(&config);
+        let node = MCTSNode::new(spatial, global, Arc::clone(&config), None);
+
+        // Unvisited node with no FPU (standard UCB1)
+        let parent_visits = 10;
+        let parent_value = 0.5;
+        let exploration_constant = 1.41;
+        let fpu_reduction = None;
+
+        let score = node.ucb1_score(parent_visits, parent_value, exploration_constant, fpu_reduction);
+
+        // Should return infinity for standard UCB1
+        assert_eq!(score, f32::INFINITY, "Without FPU, unvisited nodes should have infinite score");
+    }
+
+    #[test]
+    fn fpu_visited_node_ignores_fpu() {
+        let config = Arc::new(BoardConfig::standard(37, 1).unwrap());
+        let (spatial, global) = empty_state(&config);
+        let node = MCTSNode::new(spatial, global, Arc::clone(&config), None);
+
+        // Visit the node
+        node.update(0.6);
+
+        let parent_visits = 10;
+        let parent_value = 0.5;
+        let exploration_constant = 1.41;
+
+        // Compute score with FPU
+        let score_with_fpu = node.ucb1_score(parent_visits, parent_value, exploration_constant, Some(0.2));
+
+        // Compute score without FPU
+        let score_without_fpu = node.ucb1_score(parent_visits, parent_value, exploration_constant, None);
+
+        // For visited nodes, FPU should have no effect
+        assert_eq!(score_with_fpu, score_without_fpu, "FPU should not affect visited nodes");
+
+        // Verify it matches standard UCB1 formula
+        let expected_q = -node.get_value();  // -0.6
+        let expected_u = exploration_constant * ((parent_visits as f32).ln() / (node.get_visits() as f32)).sqrt();
+        let expected = expected_q + expected_u;
+
+        assert!((score_with_fpu - expected).abs() < 1e-6, "Visited node score should match standard UCB1");
+    }
+
+    #[test]
+    fn fpu_negative_parent_value() {
+        let config = Arc::new(BoardConfig::standard(37, 1).unwrap());
+        let (spatial, global) = empty_state(&config);
+        let node = MCTSNode::new(spatial, global, Arc::clone(&config), None);
+
+        // Parent has negative value (losing position from parent's perspective)
+        let parent_visits = 10;
+        let parent_value = -0.4;
+        let exploration_constant = 1.41;
+        let fpu_reduction = Some(0.2);
+
+        let score = node.ucb1_score(parent_visits, parent_value, exploration_constant, fpu_reduction);
+
+        // Expected: -(parent_value - fpu_reduction) + u
+        // = -(-0.4 - 0.2) + u
+        // = -(-0.6) + u
+        // = 0.6 + u
+        let expected_q = -(parent_value - 0.2);
+        let expected_u = exploration_constant * (parent_visits as f32).sqrt();
+        let expected = expected_q + expected_u;
+
+        assert!((score - expected).abs() < 1e-6, "FPU with negative parent value");
+        assert!(expected_q > 0.0, "Negative parent value should result in positive estimated Q for child");
     }
 }
