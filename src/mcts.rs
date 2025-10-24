@@ -27,6 +27,8 @@ pub struct MCTSSearch {
     last_root_children: usize,
     last_root_visits: u32,
     last_root_value: f32,
+    last_child_stats: Mutex<Vec<(Action, f32)>>, // Store normalized visit scores per action
+    last_board_width: usize, // Board width for coordinate conversion
     rng: Mutex<Option<StdRng>>,
     #[cfg(feature = "metrics")]
     metrics: Arc<MCTSMetrics>,
@@ -81,6 +83,8 @@ impl MCTSSearch {
             last_root_children: 0,
             last_root_visits: 0,
             last_root_value: 0.0,
+            last_child_stats: Mutex::new(Vec::new()),
+            last_board_width: 7,
             rng: Mutex::new(None),
             #[cfg(feature = "metrics")]
             metrics: Arc::new(MCTSMetrics::new()),
@@ -352,6 +356,50 @@ impl MCTSSearch {
     pub fn last_root_value(&self) -> f32 {
         self.last_root_value
     }
+
+    /// Get per-child statistics from last search as (action_type, action_data, normalized_score) tuples
+    ///
+    /// Returns a list of tuples where each tuple contains:
+    /// - action_type: "PUT", "CAP", or "PASS"
+    /// - action_data: Action-specific tuple (depends on type)
+    /// - normalized_score: Visit count normalized to [0.0, 1.0] range
+    ///
+    /// For PUT actions: action_data = (marble_type, dst_flat, remove_flat)
+    /// For CAP actions: action_data = (direction, start_y, start_x)
+    /// For PASS actions: action_data = None
+    pub fn last_child_statistics(&self) -> Vec<(String, Option<(usize, usize, usize)>, f32)> {
+        let child_stats = self.last_child_stats.lock().unwrap();
+        let width = self.last_board_width;
+
+        child_stats.iter().map(|(action, score)| {
+            match action {
+                Action::Placement {
+                    marble_type,
+                    dst_y,
+                    dst_x,
+                    remove_y,
+                    remove_x,
+                } => {
+                    let dst_flat = dst_y * width + dst_x;
+                    let remove_flat = match (remove_y, remove_x) {
+                        (Some(ry), Some(rx)) => ry * width + rx,
+                        _ => width * width,
+                    };
+                    ("PUT".to_string(), Some((*marble_type, dst_flat, remove_flat)), *score)
+                }
+                Action::Capture {
+                    start_y,
+                    start_x,
+                    direction,
+                } => {
+                    ("CAP".to_string(), Some((*direction, *start_y, *start_x)), *score)
+                }
+                Action::Pass => {
+                    ("PASS".to_string(), None, *score)
+                }
+            }
+        }).collect()
+    }
 }
 
 impl MCTSSearch {
@@ -372,8 +420,28 @@ impl MCTSSearch {
     fn capture_root_stats(&mut self, root: &MCTSNode) {
         if let Ok(children) = root.children.lock() {
             self.last_root_children = children.len();
+            self.last_board_width = root.config.width;
+
+            // Capture per-child statistics and normalize visit counts
+            let max_visits = children.iter()
+                .map(|(_, child)| child.get_visits())
+                .max()
+                .unwrap_or(1) as f32;
+
+            let mut child_stats = Vec::with_capacity(children.len());
+            for (action, child) in children.iter() {
+                let normalized_score = if max_visits > 0.0 {
+                    child.get_visits() as f32 / max_visits
+                } else {
+                    0.0
+                };
+                child_stats.push((action.clone(), normalized_score));
+            }
+
+            *self.last_child_stats.lock().unwrap() = child_stats;
         } else {
             self.last_root_children = 0;
+            self.last_child_stats.lock().unwrap().clear();
         }
 
         self.last_root_visits = root.get_visits();

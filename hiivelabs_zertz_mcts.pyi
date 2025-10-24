@@ -318,3 +318,19 @@ class MCTSSearch:
             Average value (from current player's perspective)
         """
         ...
+
+    def last_child_statistics(self) -> list[tuple[str, tuple[int, int, int] | None, float]]:
+        """
+        Get per-child statistics from last search as (action_type, action_data, normalized_score) tuples.
+
+        Returns:
+            List of tuples where each tuple contains:
+            - action_type: "PUT", "CAP", or "PASS"
+            - action_data: Action-specific tuple (depends on type), or None for PASS
+            - normalized_score: Visit count normalized to [0.0, 1.0] range
+
+            For PUT actions: action_data = (marble_type, dst_flat, remove_flat)
+            For CAP actions: action_data = (direction, start_y, start_x)
+            For PASS actions: action_data = None
+        """
+        ...
