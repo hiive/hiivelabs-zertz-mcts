@@ -1,17 +1,17 @@
 use ndarray::{Array1, Array3};
 use numpy::{PyReadonlyArray1, PyReadonlyArray3};
 use pyo3::prelude::*;
+use pyo3::types::PyDict;
 use rand::rngs::StdRng;
 use rand::{Rng, RngCore, SeedableRng};
 use rayon::prelude::*;
 use std::sync::{Arc, Mutex};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use crate::board::BoardConfig;
 use crate::game::{
     apply_capture, apply_placement, get_game_outcome, get_valid_actions, is_game_over,
 };
-use crate::metrics::MCTSMetrics;
 use crate::node::{Action, MCTSNode};
 use crate::transposition::TranspositionTable;
 
@@ -134,10 +134,13 @@ impl MCTSSearch {
         clear_table=false,
         verbose=false,
         seed=None,
-        blitz=false
+        blitz=false,
+        progress_callback=None,
+        progress_interval_ms=100
     ))]
     fn search(
         &mut self,
+        py: Python<'_>,
         spatial: PyReadonlyArray3<f32>,
         global: PyReadonlyArray1<f32>,
         rings: usize,
@@ -151,6 +154,8 @@ impl MCTSSearch {
         verbose: Option<bool>,
         seed: Option<u64>,
         blitz: Option<bool>,
+        progress_callback: Option<PyObject>,
+        progress_interval_ms: Option<u64>,
     ) -> PyResult<(String, Option<(usize, usize, usize)>)> {
         let search_options = SearchOptions::new(
             self,
@@ -194,9 +199,17 @@ impl MCTSSearch {
         ));
 
         let start = Instant::now();
+        let progress_interval = Duration::from_millis(progress_interval_ms.unwrap_or(100));
+        let mut last_progress_time = start;
+        let mut iteration_count = 0usize;
+
+        // Fire SearchStarted event
+        if let Some(ref callback) = progress_callback {
+            self.fire_search_started(py, callback, &root, iterations)?;
+        }
 
         // Run MCTS iterations
-        for _ in 0..iterations {
+        for i in 0..iterations {
             if !self.run_iteration(
                 Arc::clone(&root),
                 &search_options,
@@ -206,9 +219,25 @@ impl MCTSSearch {
             ) {
                 break;
             }
+
+            iteration_count = i + 1;
+
+            // Fire SearchProgress event at intervals
+            if let Some(ref callback) = progress_callback {
+                let elapsed_since_last = start.elapsed() - (last_progress_time - start);
+                if elapsed_since_last >= progress_interval {
+                    self.fire_search_progress(py, callback, &root, iteration_count)?;
+                    last_progress_time = start + start.elapsed();
+                }
+            }
         }
 
         let elapsed = start.elapsed();
+
+        // Fire SearchEnded event
+        if let Some(ref callback) = progress_callback {
+            self.fire_search_ended(py, callback, &root, iteration_count, elapsed)?;
+        }
 
         if verbose {
             let value = root.get_value();
@@ -243,7 +272,9 @@ impl MCTSSearch {
         num_threads=16,
         verbose=false,
         seed=None,
-        blitz=false
+        blitz=false,
+        progress_callback=None,
+        progress_interval_ms=100
     ))]
     fn search_parallel(
         &mut self,
@@ -262,6 +293,8 @@ impl MCTSSearch {
         verbose: Option<bool>,
         seed: Option<u64>,
         blitz: Option<bool>,
+        progress_callback: Option<PyObject>,
+        progress_interval_ms: Option<u64>,
     ) -> PyResult<(String, Option<(usize, usize, usize)>)> {
         let search_options = SearchOptions::new(
             self,
@@ -312,20 +345,58 @@ impl MCTSSearch {
 
         let start = Instant::now();
 
+        // Fire SearchStarted event (with GIL)
+        if let Some(ref callback) = progress_callback {
+            self.fire_search_started(py, callback, &root, iterations)?;
+        }
+
         // Release GIL for parallel work
-        py.detach(|| {
-            (0..iterations).into_par_iter().for_each(|_| {
-                self.run_iteration(
-                    Arc::clone(&root),
-                    &search_options,
-                    max_depth,
-                    time_limit,
-                    start,
-                );
-            });
+        py.allow_threads(|| {
+            let progress_interval = Duration::from_millis(progress_interval_ms.unwrap_or(100));
+            let mut last_progress_time = start;
+            let mut completed = 0;
+
+            // Run iterations in batches to allow periodic progress callbacks
+            let batch_size = 100; // Check for progress every 100 iterations
+            for batch_start in (0..iterations).step_by(batch_size) {
+                let batch_end = (batch_start + batch_size).min(iterations);
+                let batch_iterations = batch_end - batch_start;
+
+                // Run batch in parallel without GIL
+                (0..batch_iterations).into_par_iter().for_each(|_| {
+                    self.run_iteration(
+                        Arc::clone(&root),
+                        &search_options,
+                        max_depth,
+                        time_limit,
+                        start,
+                    );
+                });
+
+                completed = batch_end;
+
+                // Fire progress callback if interval elapsed
+                if let Some(ref callback) = progress_callback {
+                    let elapsed_since_last = start.elapsed() - (last_progress_time - start);
+                    if elapsed_since_last >= progress_interval {
+                        // Reacquire GIL for callback
+                        Python::with_gil(|py| {
+                            if let Err(e) = self.fire_search_progress(py, callback, &root, completed) {
+                                eprintln!("SearchProgress error: {}", e);
+                            }
+                        });
+                        last_progress_time = start + start.elapsed();
+                    }
+                }
+            }
         });
 
         let elapsed = start.elapsed();
+
+        // Fire SearchEnded event (with GIL - automatically reacquired after detach)
+        if let Some(ref callback) = progress_callback {
+            self.fire_search_ended(py, callback, &root, iterations, elapsed)?;
+        }
 
         if verbose {
             let value = root.get_value();
@@ -987,6 +1058,152 @@ impl MCTSSearch {
         } else {
             Ok(("PASS".to_string(), None))
         }
+    }
+
+    /// Fire SearchStarted event callback
+    fn fire_search_started(
+        &self,
+        py: Python,
+        callback: &PyObject,
+        root: &MCTSNode,
+        total_iterations: usize,
+    ) -> PyResult<()> {
+        // Get valid actions for the root state
+        let (placement_mask, _capture_mask) =
+            get_valid_actions(&root.spatial.view(), &root.global.view(), &root.config);
+
+        // Extract unique placement and removal positions
+        let width = root.config.width;
+        let width2 = width * width;
+        let mut placement_set = std::collections::HashSet::new();
+        let mut removal_set = std::collections::HashSet::new();
+
+        for marble_type in 0..3 {
+            for dst_flat in 0..width2 {
+                // Check if any removal option is valid for this destination
+                let has_valid_placement = (0..=width2)
+                    .any(|remove_flat| placement_mask[[marble_type, dst_flat, remove_flat]] > 0.0);
+
+                if has_valid_placement {
+                    placement_set.insert(dst_flat);
+                }
+
+                // Check for valid removals (when not "no removal")
+                for remove_flat in 0..width2 {
+                    if placement_mask[[marble_type, dst_flat, remove_flat]] > 0.0 {
+                        removal_set.insert(remove_flat);
+                    }
+                }
+            }
+        }
+
+        // Convert to sorted vectors
+        let mut placement_positions: Vec<usize> = placement_set.into_iter().collect();
+        let mut removal_positions: Vec<usize> = removal_set.into_iter().collect();
+        placement_positions.sort_unstable();
+        removal_positions.sort_unstable();
+
+        // Build event dict
+        let event = PyDict::new(py);
+        event.set_item("event", "SearchStarted")?;
+        event.set_item("total_iterations", total_iterations)?;
+        event.set_item("placement_positions", placement_positions)?;  // Flat indices
+        event.set_item("removal_positions", removal_positions)?;      // Flat indices
+        event.set_item("board_width", width)?;
+
+        // Call Python callback with GIL
+        callback.call1(py, (event,))?;
+        Ok(())
+    }
+
+    /// Fire SearchProgress event callback
+    fn fire_search_progress(
+        &self,
+        py: Python,
+        callback: &PyObject,
+        root: &MCTSNode,
+        iteration: usize,
+    ) -> PyResult<()> {
+        // Capture current statistics
+        let children = root.children.lock().unwrap();
+
+        // Calculate normalized visit counts
+        let max_visits = children.iter()
+            .map(|(_, child)| child.get_visits())
+            .max()
+            .unwrap_or(1) as f32;
+
+        let width = root.config.width;
+
+        // Build list of (action_type, action_data, score) tuples (copied data - GIL safe)
+        // Same format as last_child_statistics() for consistency with final scores
+        let action_stats: Vec<(String, Option<(usize, usize, usize)>, f32)> = children.iter()
+            .map(|(action, child)| {
+                let score = if max_visits > 0.0 {
+                    child.get_visits() as f32 / max_visits
+                } else {
+                    0.0
+                };
+
+                // Convert action to Python tuple format
+                let (action_type, action_data) = match action {
+                    Action::Placement {
+                        marble_type,
+                        dst_y,
+                        dst_x,
+                        remove_y,
+                        remove_x,
+                    } => {
+                        let dst_flat = dst_y * width + dst_x;
+                        let remove_flat = match (remove_y, remove_x) {
+                            (Some(ry), Some(rx)) => ry * width + rx,
+                            _ => width * width, // No removal (sentinel value)
+                        };
+                        ("PUT".to_string(), Some((*marble_type, dst_flat, remove_flat)))
+                    }
+                    Action::Capture {
+                        start_y,
+                        start_x,
+                        direction,
+                    } => ("CAP".to_string(), Some((*direction, *start_y, *start_x))),
+                    Action::Pass => ("PASS".to_string(), None),
+                };
+
+                (action_type, action_data, score)
+            })
+            .collect();
+
+        drop(children); // Release lock before Python call
+
+        // Build event dict
+        let event = PyDict::new(py);
+        event.set_item("event", "SearchProgress")?;
+        event.set_item("iteration", iteration)?;
+        event.set_item("action_stats", action_stats)?;
+
+        // Call Python callback with GIL
+        callback.call1(py, (event,))?;
+        Ok(())
+    }
+
+    /// Fire SearchEnded event callback
+    fn fire_search_ended(
+        &self,
+        py: Python,
+        callback: &PyObject,
+        _root: &MCTSNode,
+        total_iterations: usize,
+        elapsed: Duration,
+    ) -> PyResult<()> {
+        // Build event dict
+        let event = PyDict::new(py);
+        event.set_item("event", "SearchEnded")?;
+        event.set_item("total_iterations", total_iterations)?;
+        event.set_item("total_time_ms", elapsed.as_millis() as u64)?;
+
+        // Call Python callback with GIL
+        callback.call1(py, (event,))?;
+        Ok(())
     }
 }
 
