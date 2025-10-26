@@ -382,6 +382,36 @@ def ax_mirror_q_axis(q: int, r: int) -> Tuple[int, int]:
     ...
 
 
+def build_axial_maps(
+    config: BoardConfig,
+    layout: list[list[bool]]
+) -> Tuple[dict[Tuple[int, int], Tuple[int, int]], dict[Tuple[int, int], Tuple[int, int]]]:
+    """
+    Build bidirectional maps between (y,x) and axial (q,r) coordinates.
+
+    Converts all valid board positions to centered, scaled axial coordinates suitable
+    for rotation and reflection transformations. Applies board-specific centering and
+    scaling (48-ring boards use scale=3 for D3 symmetry).
+
+    Args:
+        config: BoardConfig specifying board size and layout
+        layout: 2D boolean array indicating valid positions (width × width)
+
+    Returns:
+        Tuple of two dictionaries: (yx_to_ax, ax_to_yx)
+            - yx_to_ax: Maps (y, x) tuples to (q, r) axial coordinates
+            - ax_to_yx: Maps (q, r) axial coordinates to (y, x) tuples
+
+    Example:
+        >>> config = BoardConfig.standard_config(37)
+        >>> layout = [[True, False], [False, True]]  # Example layout
+        >>> yx_to_ax, ax_to_yx = build_axial_maps(config, layout)
+        >>> yx_to_ax[(3, 3)]  # Center of 37-ring board
+        (0, 0)
+    """
+    ...
+
+
 # Isolation Capture
 # ============================================================================
 

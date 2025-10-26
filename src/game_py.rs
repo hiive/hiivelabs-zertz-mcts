@@ -4,9 +4,11 @@
 //! allowing Python code to call Rust game logic directly.
 
 use crate::board::BoardConfig;
+use crate::canonicalization;
 use crate::game;
 use numpy::{PyArray1, PyArray3, PyArrayMethods, PyReadonlyArray1, PyReadonlyArray3, ToPyArray};
 use pyo3::prelude::*;
+use std::collections::HashMap;
 
 // ============================================================================
 // Axial Coordinate Transformations
@@ -37,6 +39,28 @@ pub fn ax_rot60(q: i32, r: i32, k: i32) -> (i32, i32) {
 #[pyfunction]
 pub fn ax_mirror_q_axis(q: i32, r: i32) -> (i32, i32) {
     game::ax_mirror_q_axis(q, r)
+}
+
+/// Build bidirectional maps between (y,x) and axial (q,r) coordinates
+///
+/// Converts all valid board positions to centered, scaled axial coordinates suitable
+/// for rotation and reflection transformations. Applies board-specific centering and
+/// scaling (48-ring boards use scale=3 for D3 symmetry).
+///
+/// Args:
+///     config: BoardConfig specifying board size and layout
+///     layout: 2D boolean array indicating valid positions (width × width)
+///
+/// Returns:
+///     Tuple of two dictionaries: (yx_to_ax, ax_to_yx)
+///         - yx_to_ax: Maps (y, x) tuples to (q, r) axial coordinates
+///         - ax_to_yx: Maps (q, r) axial coordinates to (y, x) tuples
+#[pyfunction]
+pub fn build_axial_maps(
+    config: &BoardConfig,
+    layout: Vec<Vec<bool>>,
+) -> (HashMap<(i32, i32), (i32, i32)>, HashMap<(i32, i32), (i32, i32)>) {
+    canonicalization::build_axial_maps(config, &layout)
 }
 
 // ============================================================================
@@ -309,6 +333,7 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     // Axial coordinate transformations
     m.add_function(wrap_pyfunction!(ax_rot60, m)?)?;
     m.add_function(wrap_pyfunction!(ax_mirror_q_axis, m)?)?;
+    m.add_function(wrap_pyfunction!(build_axial_maps, m)?)?;
 
     // Utility functions
     m.add_function(wrap_pyfunction!(is_inbounds, m)?)?;

@@ -463,8 +463,7 @@ fn build_layout_mask(config: &BoardConfig) -> Vec<Vec<bool>> {
 /// - This is specific to the 48-ring hexagonal layout
 ///
 /// **Returns**: `(yx_to_ax, ax_to_yx)` bidirectional lookup maps
-#[allow(dead_code)]
-fn build_axial_maps(
+pub fn build_axial_maps(
     config: &BoardConfig,
     layout: &[Vec<bool>],
 ) -> (
