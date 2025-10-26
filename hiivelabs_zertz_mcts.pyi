@@ -412,6 +412,184 @@ def build_axial_maps(
     ...
 
 
+def canonicalize_state(
+    spatial: npt.NDArray[np.float32],
+    config: BoardConfig
+) -> Tuple[npt.NDArray[np.float32], str, str]:
+    """
+    Canonicalize a board state to its standard form.
+
+    Finds the lexicographically minimal representation of the board state
+    under all valid symmetry transforms (rotations, reflections, translations).
+    This is the core function for exploiting board symmetries in transposition tables.
+
+    Args:
+        spatial: 3D array of shape (L, H, W) containing board layers
+        config: BoardConfig specifying board size and symmetry group
+
+    Returns:
+        Tuple of (canonical_spatial, transform_name, inverse_transform_name):
+            - canonical_spatial: Canonicalized spatial array
+            - transform_name: String describing the applied transform (e.g., "R60", "MR120", "T1,0_R180")
+            - inverse_transform_name: String describing the inverse transform
+
+    Example:
+        >>> config = BoardConfig.standard_config(37)
+        >>> spatial = np.zeros((5, 7, 7), dtype=np.float32)
+        >>> canonical, transform, inverse = canonicalize_state(spatial, config)
+        >>> # Apply inverse to recover original: recovered = transform_state(canonical, ...)
+    """
+    ...
+
+
+def transform_state(
+    spatial: npt.NDArray[np.float32],
+    config: BoardConfig,
+    rot60_k: int,
+    mirror: bool,
+    mirror_first: bool
+) -> npt.NDArray[np.float32]:
+    """
+    Transform a board state by applying rotation and/or reflection.
+
+    Applies a symmetry transformation (rotation, reflection, or combination)
+    to a board state using hexagonal axial coordinates.
+
+    Args:
+        spatial: 3D array of shape (L, H, W) containing board layers
+        config: BoardConfig specifying board size
+        rot60_k: Number of 60° rotation steps (0-5)
+        mirror: Whether to apply mirror reflection across q-axis
+        mirror_first: If True, mirror then rotate; if False, rotate then mirror
+
+    Returns:
+        Transformed spatial array
+
+    Example:
+        >>> config = BoardConfig.standard_config(37)
+        >>> spatial = np.zeros((5, 7, 7), dtype=np.float32)
+        >>> # Rotate 60° counterclockwise
+        >>> rotated = transform_state(spatial, config, rot60_k=1, mirror=False, mirror_first=False)
+        >>> # Mirror across q-axis
+        >>> mirrored = transform_state(spatial, config, rot60_k=0, mirror=True, mirror_first=False)
+    """
+    ...
+
+
+def inverse_transform_name(transform_name: str) -> str:
+    """
+    Compute the inverse of a transform name.
+
+    Given a transform name like "R60", "MR120", or "T1,0_R180M", computes
+    the inverse transform that undoes the original operation.
+
+    Transform notation:
+        - R{angle}: Pure rotation (e.g., R60, R120, R180)
+        - MR{angle}: Mirror THEN rotate
+        - R{angle}M: Rotate THEN mirror
+        - T{dy},{dx}: Translation by (dy, dx)
+
+    Inverse relationships:
+        - R(k)⁻¹ = R(-k)
+        - MR(k)⁻¹ = R(-k)M
+        - R(k)M⁻¹ = MR(-k)
+        - T(dy,dx)⁻¹ = T(-dy,-dx)
+
+    Args:
+        transform_name: String describing the transform
+
+    Returns:
+        String describing the inverse transform
+
+    Example:
+        >>> inverse_transform_name("R60")
+        'R300'
+        >>> inverse_transform_name("MR120")
+        'R240M'
+        >>> inverse_transform_name("T1,0_R180M")
+        'MR180_T-1,0'
+    """
+    ...
+
+
+def translate_state(
+    spatial: npt.NDArray[np.float32],
+    config: BoardConfig
+) -> Tuple[npt.NDArray[np.float32], str]:
+    """
+    Translate board state to normalize bounding box position.
+
+    Finds the bounding box of all remaining rings and translates the state
+    so the bounding box starts at (0, 0).
+
+    Args:
+        spatial: 3D array of shape (L, H, W) containing board layers
+        config: BoardConfig specifying board size
+
+    Returns:
+        Tuple of (translated_spatial, translation_name):
+        - translated_spatial: State translated to normalized position
+        - translation_name: Transform string describing the translation (e.g., "T-1,2")
+
+    Example:
+        >>> spatial, translation = translate_state(state, config)
+        >>> # translation might be "T-2,-1" meaning we shifted by (-2, -1)
+    """
+    ...
+
+
+def canonical_key(
+    spatial: npt.NDArray[np.float32],
+    config: BoardConfig
+) -> bytes:
+    """
+    Compute canonical key for lexicographic comparison.
+
+    Returns a byte vector representing the board state over valid positions only.
+    This is used for finding the lexicographically minimal state representation.
+
+    Args:
+        spatial: 3D array of shape (L, H, W) containing board layers
+        config: BoardConfig specifying board size
+
+    Returns:
+        Bytes object containing the canonical key
+
+    Example:
+        >>> key1 = canonical_key(state1, config)
+        >>> key2 = canonical_key(state2, config)
+        >>> if key1 < key2:
+        ...     print("state1 is lexicographically smaller")
+    """
+    ...
+
+
+def get_bounding_box(
+    spatial: npt.NDArray[np.float32],
+    config: BoardConfig
+) -> Optional[Tuple[int, int, int, int]]:
+    """
+    Get bounding box of all remaining rings.
+
+    Finds the minimum and maximum y and x coordinates of all positions with rings.
+    Returns None if no rings exist on the board.
+
+    Args:
+        spatial: 3D array of shape (L, H, W) containing board layers
+        config: BoardConfig specifying board size
+
+    Returns:
+        Optional tuple of (min_y, max_y, min_x, max_x), or None if no rings exist
+
+    Example:
+        >>> bbox = get_bounding_box(state, config)
+        >>> if bbox:
+        ...     min_y, max_y, min_x, max_x = bbox
+        ...     print(f"Rings span from ({min_y},{min_x}) to ({max_y},{max_x})")
+    """
+    ...
+
+
 # Isolation Capture
 # ============================================================================
 

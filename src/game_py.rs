@@ -4,7 +4,7 @@
 //! allowing Python code to call Rust game logic directly.
 
 use crate::board::BoardConfig;
-use crate::canonicalization;
+use crate::canonicalization::{self, TransformFlags as RustTransformFlags};
 use crate::game;
 use numpy::{PyArray1, PyArray3, PyArrayMethods, PyReadonlyArray1, PyReadonlyArray3, ToPyArray};
 use pyo3::prelude::*;
@@ -61,6 +61,276 @@ pub fn build_axial_maps(
     layout: Vec<Vec<bool>>,
 ) -> (HashMap<(i32, i32), (i32, i32)>, HashMap<(i32, i32), (i32, i32)>) {
     canonicalization::build_axial_maps(config, &layout)
+}
+
+// ============================================================================
+// Transform Flags
+// ============================================================================
+
+/// Flags for controlling which transforms to use in canonicalization.
+///
+/// TransformFlags uses bit flags to specify which types of symmetries to include:
+/// - ROTATION: Include rotational symmetries (0°, 60°, 120°, etc.)
+/// - MIRROR: Include reflection symmetries
+/// - TRANSLATION: Include translational symmetries
+///
+/// Common combinations:
+/// - ALL: rotation + mirror + translation (full canonicalization)
+/// - ROTATION_MIRROR: rotation + mirror only (canonical orientation, no translation)
+/// - NONE: identity only (no transforms)
+#[pyclass]
+#[derive(Clone)]
+pub struct TransformFlags {
+    inner: RustTransformFlags,
+}
+
+#[pymethods]
+impl TransformFlags {
+    /// All transforms enabled (rotation + mirror + translation)
+    #[classattr]
+    fn ALL() -> Self {
+        TransformFlags { inner: RustTransformFlags::ALL }
+    }
+
+    /// Only rotational symmetries
+    #[classattr]
+    fn ROTATION() -> Self {
+        TransformFlags { inner: RustTransformFlags::ROTATION }
+    }
+
+    /// Only mirror symmetries
+    #[classattr]
+    fn MIRROR() -> Self {
+        TransformFlags { inner: RustTransformFlags::MIRROR }
+    }
+
+    /// Only translation symmetries
+    #[classattr]
+    fn TRANSLATION() -> Self {
+        TransformFlags { inner: RustTransformFlags::TRANSLATION }
+    }
+
+    /// Rotation and mirror only (no translation)
+    #[classattr]
+    fn ROTATION_MIRROR() -> Self {
+        TransformFlags { inner: RustTransformFlags::ROTATION_MIRROR }
+    }
+
+    /// No transforms (identity only)
+    #[classattr]
+    fn NONE() -> Self {
+        TransformFlags { inner: RustTransformFlags::NONE }
+    }
+
+    /// Create TransformFlags from bit flags
+    ///
+    /// Args:
+    ///     bits: Bit flags (0-7). Use constants like TransformFlags.ALL,
+    ///           TransformFlags.ROTATION_MIRROR, etc.
+    ///
+    /// Returns:
+    ///     TransformFlags instance
+    ///
+    /// Raises:
+    ///     ValueError: If bits > 7
+    #[new]
+    pub fn new(bits: u8) -> PyResult<Self> {
+        RustTransformFlags::from_bits(bits)
+            .map(|inner| TransformFlags { inner })
+            .ok_or_else(|| {
+                pyo3::exceptions::PyValueError::new_err(format!(
+                    "Invalid transform flags bits: {} (must be 0-7)",
+                    bits
+                ))
+            })
+    }
+
+    /// Get the raw bit flags
+    pub fn bits(&self) -> u8 {
+        self.inner.bits()
+    }
+
+    /// Check if rotation flag is set
+    pub fn has_rotation(&self) -> bool {
+        self.inner.has_rotation()
+    }
+
+    /// Check if mirror flag is set
+    pub fn has_mirror(&self) -> bool {
+        self.inner.has_mirror()
+    }
+
+    /// Check if translation flag is set
+    pub fn has_translation(&self) -> bool {
+        self.inner.has_translation()
+    }
+
+    fn __repr__(&self) -> String {
+        let bits = self.inner.bits();
+        let names = match bits {
+            0b111 => "ALL",
+            0b011 => "ROTATION_MIRROR",
+            0b001 => "ROTATION",
+            0b010 => "MIRROR",
+            0b100 => "TRANSLATION",
+            0b000 => "NONE",
+            _ => return format!("TransformFlags({})", bits),
+        };
+        format!("TransformFlags.{}", names)
+    }
+
+    fn __eq__(&self, other: &TransformFlags) -> bool {
+        self.inner == other.inner
+    }
+}
+
+/// Canonicalize a board state to its standard form
+///
+/// Finds the lexicographically minimal representation of the board state
+/// under selected symmetry transforms (rotations, reflections, translations).
+///
+/// Args:
+///     spatial: 3D array of shape (L, H, W) containing board layers
+///     config: BoardConfig specifying board size and symmetry group
+///     flags: TransformFlags specifying which transforms to include (default: ALL)
+///
+/// Returns:
+///     Tuple of (canonical_spatial, transform_name, inverse_transform_name):
+///     - canonical_spatial: Canonicalized spatial array
+///     - transform_name: String describing the applied transform (e.g., "R60", "MR120")
+///     - inverse_transform_name: String describing the inverse transform
+#[pyfunction]
+#[pyo3(signature = (spatial, config, flags=None))]
+pub fn canonicalize_state<'py>(
+    py: Python<'py>,
+    spatial: PyReadonlyArray3<'py, f32>,
+    config: &BoardConfig,
+    flags: Option<&TransformFlags>,
+) -> (Py<PyArray3<f32>>, String, String) {
+    let spatial = spatial.as_array();
+    let transform_flags = flags.map(|f| f.inner).unwrap_or(RustTransformFlags::ALL);
+    let (canonical, transform, inverse) = canonicalization::canonicalize_internal(&spatial, config, transform_flags);
+    (
+        PyArray3::from_array(py, &canonical).into(),
+        transform,
+        inverse,
+    )
+}
+
+/// Transform a board state by a named transform
+///
+/// Applies a symmetry transformation (rotation, reflection, or combination)
+/// to a board state.
+///
+/// Args:
+///     spatial: 3D array of shape (L, H, W) containing board layers
+///     config: BoardConfig specifying board size
+///     rot60_k: Number of 60° rotation steps (0-5)
+///     mirror: Whether to apply mirror reflection
+///     mirror_first: If true, mirror then rotate; if false, rotate then mirror
+///
+/// Returns:
+///     Transformed spatial array
+#[pyfunction]
+pub fn transform_state<'py>(
+    py: Python<'py>,
+    spatial: PyReadonlyArray3<'py, f32>,
+    config: &BoardConfig,
+    rot60_k: i32,
+    mirror: bool,
+    mirror_first: bool,
+) -> Py<PyArray3<f32>> {
+    let spatial = spatial.as_array();
+    let transformed =
+        canonicalization::transform_state(&spatial, config, rot60_k, mirror, mirror_first);
+    PyArray3::from_array(py, &transformed).into()
+}
+
+/// Translate a board state by (dy, dx) offset
+///
+/// Translates ring and marble data, preserving layout validity.
+/// Returns None if translation would move rings off the board.
+///
+/// Args:
+///     spatial: 3D array of shape (L, H, W) containing board layers
+///     config: BoardConfig specifying board size
+///     dy: Translation offset in y direction
+///     dx: Translation offset in x direction
+///
+/// Returns:
+///     Translated spatial array, or None if translation is invalid
+#[pyfunction]
+pub fn translate_state<'py>(
+    py: Python<'py>,
+    spatial: PyReadonlyArray3<'py, f32>,
+    config: &BoardConfig,
+    dy: i32,
+    dx: i32,
+) -> Option<Py<PyArray3<f32>>> {
+    let spatial = spatial.as_array();
+    let layout = canonicalization::build_layout_mask(config);
+    canonicalization::translate_state(&spatial, config, &layout, dy, dx)
+        .map(|translated| PyArray3::from_array(py, &translated).into())
+}
+
+/// Get bounding box of all remaining rings
+///
+/// Finds the minimum and maximum y and x coordinates of all positions with rings.
+/// Returns None if no rings exist on the board.
+///
+/// Args:
+///     spatial: 3D array of shape (L, H, W) containing board layers
+///     config: BoardConfig specifying board size
+///
+/// Returns:
+///     Option containing (min_y, max_y, min_x, max_x) tuple, or None if no rings
+#[pyfunction]
+pub fn get_bounding_box(
+    spatial: PyReadonlyArray3<f32>,
+    config: &BoardConfig,
+) -> Option<(usize, usize, usize, usize)> {
+    let spatial = spatial.as_array();
+    canonicalization::bounding_box(&spatial, config)
+}
+
+/// Compute canonical key for lexicographic comparison
+///
+/// Returns a byte vector representing the board state over valid positions only.
+/// Used for finding the lexicographically minimal state representation.
+///
+/// Args:
+///     spatial: 3D array of shape (L, H, W) containing board layers
+///     config: BoardConfig specifying board size
+///
+/// Returns:
+///     Bytes object containing the canonical key
+#[pyfunction]
+pub fn canonical_key(spatial: PyReadonlyArray3<f32>, config: &BoardConfig) -> Vec<u8> {
+    let spatial = spatial.as_array();
+    canonicalization::compute_canonical_key(&spatial, config)
+}
+
+/// Compute the inverse of a transform name
+///
+/// Given a transform name like "R60", "MR120", or "T1,0_R180M", computes
+/// the inverse transform that undoes the original operation.
+///
+/// Args:
+///     transform_name: String describing the transform (e.g., "R60", "MR120")
+///
+/// Returns:
+///     String describing the inverse transform
+///
+/// Examples:
+///     >>> inverse_transform_name("R60")
+///     "R300"
+///     >>> inverse_transform_name("MR120")
+///     "R240M"
+///     >>> inverse_transform_name("T1,0_R180M")
+///     "MR180_T-1,0"
+#[pyfunction]
+pub fn inverse_transform_name(transform_name: &str) -> String {
+    canonicalization::inverse_transform_name(transform_name)
 }
 
 // ============================================================================
@@ -334,6 +604,17 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(ax_rot60, m)?)?;
     m.add_function(wrap_pyfunction!(ax_mirror_q_axis, m)?)?;
     m.add_function(wrap_pyfunction!(build_axial_maps, m)?)?;
+
+    // Transform flags
+    m.add_class::<TransformFlags>()?;
+
+    // Canonicalization
+    m.add_function(wrap_pyfunction!(canonicalize_state, m)?)?;
+    m.add_function(wrap_pyfunction!(transform_state, m)?)?;
+    m.add_function(wrap_pyfunction!(translate_state, m)?)?;
+    m.add_function(wrap_pyfunction!(get_bounding_box, m)?)?;
+    m.add_function(wrap_pyfunction!(canonical_key, m)?)?;
+    m.add_function(wrap_pyfunction!(inverse_transform_name, m)?)?;
 
     // Utility functions
     m.add_function(wrap_pyfunction!(is_inbounds, m)?)?;

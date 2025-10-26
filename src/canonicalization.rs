@@ -56,6 +56,66 @@ use crate::node::Action;
 use ndarray::{s, Array3, ArrayView3};
 
 // ============================================================================
+// TRANSFORM FLAGS
+// ============================================================================
+
+/// Flags for controlling which transforms to use in canonicalization.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TransformFlags {
+    bits: u8,
+}
+
+impl TransformFlags {
+    /// Include rotational symmetries
+    pub const ROTATION: Self = Self { bits: 0b001 };
+    /// Include mirror symmetries
+    pub const MIRROR: Self = Self { bits: 0b010 };
+    /// Include translation symmetries
+    pub const TRANSLATION: Self = Self { bits: 0b100 };
+    /// All transforms (rotation + mirror + translation)
+    pub const ALL: Self = Self { bits: 0b111 };
+    /// Rotation and mirror only (no translation)
+    pub const ROTATION_MIRROR: Self = Self { bits: 0b011 };
+    /// No transforms (identity only)
+    pub const NONE: Self = Self { bits: 0b000 };
+
+    /// Check if rotation flag is set
+    pub fn has_rotation(self) -> bool {
+        (self.bits & Self::ROTATION.bits) != 0
+    }
+
+    /// Check if mirror flag is set
+    pub fn has_mirror(self) -> bool {
+        (self.bits & Self::MIRROR.bits) != 0
+    }
+
+    /// Check if translation flag is set
+    pub fn has_translation(self) -> bool {
+        (self.bits & Self::TRANSLATION.bits) != 0
+    }
+
+    /// Create from bits
+    pub fn from_bits(bits: u8) -> Option<Self> {
+        if bits <= 0b111 {
+            Some(Self { bits })
+        } else {
+            None
+        }
+    }
+
+    /// Get the raw bits
+    pub fn bits(self) -> u8 {
+        self.bits
+    }
+}
+
+impl Default for TransformFlags {
+    fn default() -> Self {
+        TransformFlags::ALL
+    }
+}
+
+// ============================================================================
 // SYMMETRY TRANSFORMS
 // ============================================================================
 
@@ -150,7 +210,7 @@ fn canonical_key(
     key
 }
 
-fn bounding_box(
+pub fn bounding_box(
     spatial: &ArrayView3<f32>,
     config: &BoardConfig,
 ) -> Option<(usize, usize, usize, usize)> {
@@ -198,7 +258,7 @@ fn get_translations(spatial: &ArrayView3<f32>, config: &BoardConfig) -> Vec<(Str
     }
 }
 
-fn translate_state(
+pub fn translate_state(
     spatial: &ArrayView3<f32>,
     config: &BoardConfig,
     layout: &[Vec<bool>],
@@ -278,10 +338,10 @@ fn transform_state_cached(
     out
 }
 
-fn canonicalize_internal(
+pub fn canonicalize_internal(
     spatial: &ArrayView3<f32>,
     config: &BoardConfig,
-    include_translations: bool,
+    flags: TransformFlags,
 ) -> (Array3<f32>, String, String) {
     let layout = build_layout_mask(config);
     let (yx_to_ax, ax_to_yx) = build_axial_maps(config, &layout);
@@ -291,12 +351,42 @@ fn canonicalize_internal(
     let mut best_key = canonical_key(spatial, &layout, board_layers.clone());
     let mut best_name = "R0".to_string();
 
-    let translations = if include_translations {
+    // Get translations based on flags
+    let translations = if flags.has_translation() {
         get_translations(spatial, config)
     } else {
         vec![("T0,0".to_string(), 0, 0)]
     };
-    let sym_ops = symmetry_transforms(config);
+
+    // Get rotation/mirror symmetries based on flags
+    let sym_ops = if flags.has_rotation() || flags.has_mirror() {
+        symmetry_transforms(config)
+            .into_iter()
+            .filter(|(name, _, mirror, _)| {
+                // Filter based on flags
+                if name == "R0" {
+                    true // Always include identity
+                } else if name.starts_with("R") && !name.starts_with("MR") {
+                    // Pure rotation or mirror-then-rotate (R{k} or R{k}M)
+                    if name.contains('M') {
+                        // R{k}M requires both rotation and mirror flags
+                        flags.has_rotation() && flags.has_mirror()
+                    } else {
+                        // Pure rotation requires only rotation flag
+                        flags.has_rotation()
+                    }
+                } else if name.starts_with("MR") {
+                    // Rotate-then-mirror (MR{k}) requires both flags
+                    flags.has_rotation() && flags.has_mirror()
+                } else {
+                    false
+                }
+            })
+            .collect()
+    } else {
+        // No rotation/mirror flags: identity only
+        vec![("R0".to_string(), 0, false, false)]
+    };
 
     for (trans_name, dy, dx) in translations.iter() {
         let translated_state = if *dy == 0 && *dx == 0 {
@@ -331,7 +421,7 @@ fn canonicalize_internal(
     (best_state, best_name, inverse)
 }
 
-fn inverse_transform_name(name: &str) -> String {
+pub fn inverse_transform_name(name: &str) -> String {
     if name == "R0" {
         return "R0".to_string();
     }
@@ -380,14 +470,26 @@ pub fn canonicalize_spatial(
     spatial: &ArrayView3<f32>,
     config: &BoardConfig,
 ) -> (Array3<f32>, String, String) {
-    canonicalize_internal(spatial, config, false)
+    // Only rotation and mirror (no translation) - finds canonical orientation
+    canonicalize_internal(spatial, config, TransformFlags::ROTATION_MIRROR)
 }
 
 pub fn canonicalize_state(
     spatial: &ArrayView3<f32>,
     config: &BoardConfig,
 ) -> (Array3<f32>, String, String) {
-    canonicalize_internal(spatial, config, true)
+    // Full canonicalization with rotation, mirror, and translation
+    canonicalize_internal(spatial, config, TransformFlags::ALL)
+}
+
+/// Compute canonical key for lexicographic comparison
+///
+/// Returns a byte vector representing the board state over valid positions only.
+/// This is used for finding the lexicographically minimal state representation.
+pub fn compute_canonical_key(spatial: &ArrayView3<f32>, config: &BoardConfig) -> Vec<u8> {
+    let layout = build_layout_mask(config);
+    let board_layers = board_layers_range(config);
+    canonical_key(spatial, &layout, board_layers)
 }
 
 #[allow(dead_code)]
@@ -445,7 +547,7 @@ fn generate_standard_layout_mask(rings: usize, width: usize) -> Vec<Vec<bool>> {
 }
 
 #[allow(dead_code)]
-fn build_layout_mask(config: &BoardConfig) -> Vec<Vec<bool>> {
+pub fn build_layout_mask(config: &BoardConfig) -> Vec<Vec<bool>> {
     generate_standard_layout_mask(config.rings, config.width)
 }
 
