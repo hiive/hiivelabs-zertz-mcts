@@ -334,3 +334,551 @@ class MCTSSearch:
             For PASS actions: action_data = None
         """
         ...
+
+
+# ============================================================================
+# Stateless Game Logic Functions
+# ============================================================================
+
+# Axial Coordinate Transformations
+# ============================================================================
+
+def ax_rot60(q: int, r: int, k: int) -> Tuple[int, int]:
+    """
+    Rotate axial coordinate by k * 60° counterclockwise.
+
+    Args:
+        q: Axial q coordinate
+        r: Axial r coordinate
+        k: Number of 60° rotations (will be normalized to 0-5)
+
+    Returns:
+        Tuple of (q, r) rotated coordinates
+
+    Example:
+        >>> ax_rot60(1, 0, 1)  # 60° rotation
+        (0, 1)
+        >>> ax_rot60(2, 3, 3)  # 180° rotation
+        (-2, -1)
+    """
+    ...
+
+
+def ax_mirror_q_axis(q: int, r: int) -> Tuple[int, int]:
+    """
+    Mirror axial coordinate across the q-axis.
+
+    Args:
+        q: Axial q coordinate
+        r: Axial r coordinate
+
+    Returns:
+        Tuple of (q, r) mirrored coordinates
+
+    Example:
+        >>> ax_mirror_q_axis(1, 0)
+        (1, -1)
+    """
+    ...
+
+
+# Isolation Capture
+# ============================================================================
+
+def check_for_isolation_capture(
+    spatial: npt.NDArray[np.float32],
+    global_: npt.NDArray[np.float32],
+    config: BoardConfig
+) -> Tuple[npt.NDArray[np.float32], npt.NDArray[np.float32], list[tuple[int, int, int]]]:
+    """
+    Check for isolated regions and capture marbles (stateless).
+
+    After a ring is removed, the board may split into multiple disconnected regions.
+    If ALL rings in an isolated region are fully occupied (each has a marble),
+    then the current player captures all those marbles and removes those rings.
+
+    Args:
+        spatial: 3D array of shape (L, H, W) containing board layers
+        global_: 1D array containing supply and captured marble counts
+        config: BoardConfig with game configuration
+
+    Returns:
+        Tuple of (updated_spatial, updated_global, captured_marbles_list):
+        - updated_spatial: Updated spatial state after isolation capture
+        - updated_global: Updated global state with incremented capture counts
+        - captured_marbles_list: List of (marble_layer, y, x) tuples for captured marbles
+    """
+    ...
+
+
+class BoardConfig:
+    """Board configuration for stateless game logic.
+
+    Contains all constants and indices needed for stateless game operations.
+    """
+
+    @staticmethod
+    def standard_config(rings: int, *, t: int = 1) -> BoardConfig:
+        """
+        Create a standard BoardConfig for the given number of rings.
+
+        Args:
+            rings: Number of rings (37, 48, or 61)
+            t: Time history depth (default: 1)
+
+        Returns:
+            BoardConfig instance
+
+        Raises:
+            ValueError: If rings is not 37, 48, or 61
+        """
+        ...
+
+    @staticmethod
+    def blitz_config(rings: int, *, t: int = 1) -> BoardConfig:
+        """
+        Create a blitz mode BoardConfig for the given number of rings.
+
+        Args:
+            rings: Number of rings (37, 48, or 61)
+            t: Time history depth (default: 1)
+
+        Returns:
+            BoardConfig instance with blitz mode enabled
+
+        Raises:
+            ValueError: If rings is not 37, 48, or 61
+        """
+        ...
+
+    def is_blitz(self) -> bool:
+        """Check if this config is for blitz mode."""
+        ...
+
+    def get_directions(self) -> list[tuple[int, int]]:
+        """Get the 6 hexagonal direction vectors."""
+        ...
+
+    def get_marble_layer(self, marble_type: str) -> int:
+        """
+        Get layer index for marble type.
+
+        Args:
+            marble_type: 'w', 'g', or 'b'
+
+        Returns:
+            Layer index (1, 2, or 3)
+        """
+        ...
+
+    # Board dimensions
+    @property
+    def rings(self) -> int:
+        """Number of rings on the board (37, 48, or 61)."""
+        ...
+
+    @property
+    def width(self) -> int:
+        """Board grid width (7, 8, or 9)."""
+        ...
+
+    @property
+    def t(self) -> int:
+        """Time history depth."""
+        ...
+
+    @property
+    def layers_per_timestep(self) -> int:
+        """Number of layers per timestep (always 4)."""
+        ...
+
+    # Layer indices
+    @property
+    def ring_layer(self) -> int:
+        """Ring layer index (0)."""
+        ...
+
+    @property
+    def capture_layer(self) -> int:
+        """Capture layer index (4)."""
+        ...
+
+    # Player constants
+    @property
+    def player_1(self) -> int:
+        """Player 1 index (0)."""
+        ...
+
+    @property
+    def player_2(self) -> int:
+        """Player 2 index (1)."""
+        ...
+
+    # Global state indices - Supply
+    @property
+    def supply_w(self) -> int:
+        """White marble supply index (0)."""
+        ...
+
+    @property
+    def supply_g(self) -> int:
+        """Grey marble supply index (1)."""
+        ...
+
+    @property
+    def supply_b(self) -> int:
+        """Black marble supply index (2)."""
+        ...
+
+    # Global state indices - Player 1 captures
+    @property
+    def p1_cap_w(self) -> int:
+        """Player 1 white captures index (3)."""
+        ...
+
+    @property
+    def p1_cap_g(self) -> int:
+        """Player 1 grey captures index (4)."""
+        ...
+
+    @property
+    def p1_cap_b(self) -> int:
+        """Player 1 black captures index (5)."""
+        ...
+
+    @property
+    def p1_cap_slice(self) -> slice:
+        """Player 1 capture slice (indices 3-6: w, g, b)."""
+        ...
+
+    # Global state indices - Player 2 captures
+    @property
+    def p2_cap_w(self) -> int:
+        """Player 2 white captures index (6)."""
+        ...
+
+    @property
+    def p2_cap_g(self) -> int:
+        """Player 2 grey captures index (7)."""
+        ...
+
+    @property
+    def p2_cap_b(self) -> int:
+        """Player 2 black captures index (8)."""
+        ...
+
+    @property
+    def p2_cap_slice(self) -> slice:
+        """Player 2 capture slice (indices 6-9: w, g, b)."""
+        ...
+
+    # Current player index
+    @property
+    def cur_player(self) -> int:
+        """Current player index in global state (9)."""
+        ...
+
+
+# Module constants
+PLAYER_1: int  # = 0
+PLAYER_2: int  # = 1
+
+
+# ============================================================================
+# Additional Stateless Game Logic Functions
+# ============================================================================
+
+def is_inbounds(y: int, x: int, width: int) -> bool:
+    """
+    Check if (y, x) coordinates are within board bounds.
+
+    Args:
+        y: Y coordinate
+        x: X coordinate
+        width: Board width
+
+    Returns:
+        True if coordinates are in bounds, False otherwise
+    """
+    ...
+
+
+def get_neighbors(y: int, x: int, config: BoardConfig) -> list[tuple[int, int]]:
+    """
+    Get list of neighboring indices (filtered to in-bounds only).
+
+    Args:
+        y: Y coordinate
+        x: X coordinate
+        config: BoardConfig
+
+    Returns:
+        List of (y, x) neighbor coordinate tuples
+    """
+    ...
+
+
+def get_jump_destination(start_y: int, start_x: int, cap_y: int, cap_x: int) -> tuple[int, int]:
+    """
+    Calculate landing position after capturing marble.
+
+    Args:
+        start_y: Starting Y coordinate
+        start_x: Starting X coordinate
+        cap_y: Captured marble Y coordinate
+        cap_x: Captured marble X coordinate
+
+    Returns:
+        Tuple of (dst_y, dst_x) landing coordinates
+    """
+    ...
+
+
+def get_regions(spatial: npt.NDArray[np.float32], config: BoardConfig) -> list[list[tuple[int, int]]]:
+    """
+    Find all connected regions on the board.
+
+    Args:
+        spatial: 3D array of shape (L, H, W) containing board layers
+        config: BoardConfig
+
+    Returns:
+        List of regions, where each region is a list of (y, x) indices
+    """
+    ...
+
+
+def get_open_rings(spatial: npt.NDArray[np.float32], config: BoardConfig) -> list[tuple[int, int]]:
+    """
+    Get list of empty ring indices across the entire board.
+
+    Args:
+        spatial: Board state array
+        config: BoardConfig
+
+    Returns:
+        List of (y, x) indices of empty rings
+    """
+    ...
+
+
+def is_ring_removable(spatial: npt.NDArray[np.float32], y: int, x: int, config: BoardConfig) -> bool:
+    """
+    Check if ring at index can be removed.
+
+    A ring is removable if:
+    1. It's empty (no marble)
+    2. Two consecutive neighbors are missing
+
+    Args:
+        spatial: Board state array
+        y: Y coordinate
+        x: X coordinate
+        config: BoardConfig
+
+    Returns:
+        True if ring can be removed, False otherwise
+    """
+    ...
+
+
+def get_removable_rings(spatial: npt.NDArray[np.float32], config: BoardConfig) -> list[tuple[int, int]]:
+    """
+    Get list of removable ring indices.
+
+    Args:
+        spatial: Board state array
+        config: BoardConfig
+
+    Returns:
+        List of (y, x) indices of removable rings
+    """
+    ...
+
+
+def get_supply_index(marble_type: str) -> int:
+    """
+    Get global_state index for marble in supply.
+
+    Args:
+        marble_type: Marble type ('w', 'g', or 'b')
+
+    Returns:
+        Index in global_state array
+    """
+    ...
+
+
+def get_captured_index(player: int, marble_type: str) -> int:
+    """
+    Get global_state index for captured marble for given player.
+
+    Args:
+        player: Player index (0 or 1)
+        marble_type: Marble type ('w', 'g', or 'b')
+
+    Returns:
+        Index in global_state array
+    """
+    ...
+
+
+def get_marble_type_at(spatial: npt.NDArray[np.float32], y: int, x: int) -> str:
+    """
+    Get marble type at given position.
+
+    Args:
+        spatial: (L, H, W) spatial state array
+        y: Y coordinate
+        x: X coordinate
+
+    Returns:
+        Marble type ('w', 'g', 'b', or '' if no marble)
+    """
+    ...
+
+
+def get_placement_moves(
+    spatial: npt.NDArray[np.float32],
+    global_: npt.NDArray[np.float32],
+    config: BoardConfig
+) -> npt.NDArray[np.float32]:
+    """
+    Get valid placement moves as boolean array.
+
+    Args:
+        spatial: (L, H, W) spatial state array
+        global_: (10,) global state array
+        config: BoardConfig
+
+    Returns:
+        Boolean array of shape (3, width², width² + 1)
+    """
+    ...
+
+
+def get_capture_moves(
+    spatial: npt.NDArray[np.float32],
+    config: BoardConfig
+) -> npt.NDArray[np.float32]:
+    """
+    Get valid capture moves as boolean array.
+
+    Args:
+        spatial: (L, H, W) spatial state array
+        config: BoardConfig
+
+    Returns:
+        Boolean array of shape (6, width, width)
+    """
+    ...
+
+
+def get_valid_actions(
+    spatial: npt.NDArray[np.float32],
+    global_: npt.NDArray[np.float32],
+    config: BoardConfig
+) -> Tuple[npt.NDArray[np.float32], npt.NDArray[np.float32]]:
+    """
+    Get valid actions for current state.
+
+    Args:
+        spatial: (L, H, W) spatial state array
+        global_: (10,) global state array
+        config: BoardConfig
+
+    Returns:
+        (placement_mask, capture_mask) tuple
+        - placement_mask: (3, width², width² + 1) boolean array
+        - capture_mask: (6, width, width) boolean array
+
+    Note: If any captures are available, placement_mask will be all zeros
+          (captures are mandatory in Zertz rules)
+    """
+    ...
+
+
+def apply_placement_action(
+    spatial: npt.NDArray[np.float32],
+    global_: npt.NDArray[np.float32],
+    marble_type: int,
+    dst_y: int,
+    dst_x: int,
+    remove_y: Optional[int],
+    remove_x: Optional[int],
+    config: BoardConfig
+) -> None:
+    """
+    Apply placement action to state IN-PLACE.
+
+    Args:
+        spatial: (L, H, W) spatial state array (MUTATED IN-PLACE)
+        global_: (10,) global state array (MUTATED IN-PLACE)
+        marble_type: Marble type index (0=white, 1=gray, 2=black)
+        dst_y: Destination Y coordinate
+        dst_x: Destination X coordinate
+        remove_y: Ring to remove Y coordinate (or None)
+        remove_x: Ring to remove X coordinate (or None)
+        config: BoardConfig
+    """
+    ...
+
+
+def apply_capture_action(
+    spatial: npt.NDArray[np.float32],
+    global_: npt.NDArray[np.float32],
+    start_y: int,
+    start_x: int,
+    direction: int,
+    config: BoardConfig
+) -> None:
+    """
+    Apply capture action to state IN-PLACE.
+
+    Args:
+        spatial: (L, H, W) spatial state array (MUTATED IN-PLACE)
+        global_: (10,) global state array (MUTATED IN-PLACE)
+        start_y: Starting Y coordinate
+        start_x: Starting X coordinate
+        direction: Direction index (0-5 for 6 hexagonal directions)
+        config: BoardConfig
+    """
+    ...
+
+
+def is_game_over(
+    spatial: npt.NDArray[np.float32],
+    global_: npt.NDArray[np.float32],
+    config: BoardConfig
+) -> bool:
+    """
+    Check if game has ended (stateless version).
+
+    Args:
+        spatial: (L, H, W) spatial state array
+        global_: (10,) global state array
+        config: BoardConfig
+
+    Returns:
+        True if game is over, False otherwise
+    """
+    ...
+
+
+def get_game_outcome(
+    spatial: npt.NDArray[np.float32],
+    global_: npt.NDArray[np.float32],
+    config: BoardConfig
+) -> int:
+    """
+    Determine game outcome from terminal state (stateless version).
+
+    Args:
+        spatial: (L, H, W) spatial state array
+        global_: (10,) global state array
+        config: BoardConfig
+
+    Returns:
+        1 if Player 1 wins, -1 if Player 2 wins, 0 for tie, -2 for both lose
+    """
+    ...

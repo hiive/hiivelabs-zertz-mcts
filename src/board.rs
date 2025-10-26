@@ -39,40 +39,59 @@ impl WinConditions {
 }
 
 /// Immutable board configuration (mirrors Python BoardConfig)
+#[pyclass]
 #[derive(Clone, Debug)]
 pub struct BoardConfig {
     pub mode: GameMode,
     pub win_conditions: WinConditions,
+    #[pyo3(get)]
     pub width: usize,
+    #[pyo3(get)]
     pub rings: usize,
+    #[pyo3(get)]
     pub t: usize,
 
     // Layer indices
+    #[pyo3(get)]
     pub ring_layer: usize,
     pub marble_layers: (usize, usize),
+    #[pyo3(get)]
     pub capture_layer: usize,
+    #[pyo3(get)]
     pub layers_per_timestep: usize,
 
     // Global state indices
+    #[pyo3(get)]
     pub supply_w: usize,
+    #[pyo3(get)]
     pub supply_g: usize,
+    #[pyo3(get)]
     pub supply_b: usize,
+    #[pyo3(get)]
     pub p1_cap_w: usize,
+    #[pyo3(get)]
     pub p1_cap_g: usize,
+    #[pyo3(get)]
     pub p1_cap_b: usize,
+    #[pyo3(get)]
     pub p2_cap_w: usize,
+    #[pyo3(get)]
     pub p2_cap_g: usize,
+    #[pyo3(get)]
     pub p2_cap_b: usize,
+    #[pyo3(get)]
     pub cur_player: usize,
 
     // Player constants
+    #[pyo3(get)]
     pub player_1: usize,
+    #[pyo3(get)]
     pub player_2: usize,
 
-    // Hex directions (y, x) offsets
+    // Hex directions (y, x) offsets - not exposed to Python (Vec is complex)
     pub directions: Vec<(i32, i32)>,
 
-    // Marble type mappings
+    // Marble type mappings - not exposed to Python (HashMap is complex)
     pub marble_to_layer: HashMap<String, usize>,
 }
 
@@ -136,6 +155,55 @@ impl BoardConfig {
             directions: vec![(1, 0), (0, -1), (-1, -1), (-1, 0), (0, 1), (1, 1)],
             marble_to_layer,
         })
+    }
+}
+
+/// Python methods for BoardConfig
+#[pymethods]
+impl BoardConfig {
+    /// Create standard BoardConfig (Python constructor)
+    #[staticmethod]
+    #[pyo3(signature = (rings, t=1))]
+    fn standard_config(rings: usize, t: Option<usize>) -> PyResult<Self> {
+        let t = t.unwrap_or(1);
+        BoardConfig::standard(rings, t).map_err(pyo3::exceptions::PyValueError::new_err)
+    }
+
+    /// Create blitz BoardConfig (Python constructor)
+    #[staticmethod]
+    #[pyo3(signature = (rings, t=1))]
+    fn blitz_config(rings: usize, t: Option<usize>) -> PyResult<Self> {
+        let t = t.unwrap_or(1);
+        BoardConfig::blitz(rings, t).map_err(pyo3::exceptions::PyValueError::new_err)
+    }
+
+    /// Get marble type for a layer index
+    fn get_marble_layer(&self, marble_type: &str) -> Option<usize> {
+        self.marble_to_layer.get(marble_type).copied()
+    }
+
+    /// Get hex direction offsets
+    fn get_directions(&self) -> Vec<(i32, i32)> {
+        self.directions.clone()
+    }
+
+    /// Check if game is in blitz mode
+    fn is_blitz(&self) -> bool {
+        self.mode == GameMode::Blitz
+    }
+
+    /// Get Player 1 capture slice (indices 3-6: w, g, b)
+    #[getter]
+    fn p1_cap_slice(&self, py: Python<'_>) -> PyResult<PyObject> {
+        let slice = pyo3::types::PySlice::new(py, 3, 6, 1);
+        Ok(slice.into())
+    }
+
+    /// Get Player 2 capture slice (indices 6-9: w, g, b)
+    #[getter]
+    fn p2_cap_slice(&self, py: Python<'_>) -> PyResult<PyObject> {
+        let slice = pyo3::types::PySlice::new(py, 6, 9, 1);
+        Ok(slice.into())
     }
 }
 
@@ -242,8 +310,8 @@ impl BoardState {
         let mut global = self.global.bind(py).readonly().as_array().to_owned();
 
         crate::game::apply_placement(
-            &mut spatial,
-            &mut global,
+            &mut spatial.view_mut(),
+            &mut global.view_mut(),
             marble_type,
             dst_y,
             dst_x,
@@ -271,8 +339,8 @@ impl BoardState {
         let mut global = self.global.bind(py).readonly().as_array().to_owned();
 
         crate::game::apply_capture(
-            &mut spatial,
-            &mut global,
+            &mut spatial.view_mut(),
+            &mut global.view_mut(),
             start_y,
             start_x,
             direction,

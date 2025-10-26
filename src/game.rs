@@ -1,21 +1,95 @@
+//! # Game Logic Module
+//!
+//! Pure, stateless game logic for Zèrtz. This module mirrors Python's `zertz_logic.py`
+//! and serves as the single source of truth for all game rules.
+//!
+//! ## Architecture
+//!
+//! This module is **stateless** - all functions take game state as input and return
+//! results without side effects (except `apply_*` functions which mutate provided arrays).
+//!
+//! ## State Representation
+//!
+//! - **Spatial**: `Array3<f32>` shape `(layers, height, width)`
+//!   - Layer 0: Rings (1.0 = present, 0.0 = removed)
+//!   - Layers 1-3: Marbles (white/gray/black)
+//!
+//! - **Global**: `Array1<f32>` shape `(10,)`
+//!   - [0-2]: Supply counts (W/G/B)
+//!   - [3-5]: P1 captured (W/G/B)
+//!   - [6-8]: P2 captured (W/G/B)
+//!   - [9]: Current player (1 or 2)
+
 use crate::board::BoardConfig;
-use ndarray::{Array1, Array3, ArrayView1, ArrayView3};
+use ndarray::{Array1, Array3, ArrayView1, ArrayView3, ArrayViewMut1, ArrayViewMut3};
 use smallvec::SmallVec;
 use std::collections::{HashSet, VecDeque};
 
-// Game outcome constants (mirrors Python constants.py)
+// ============================================================================
+// GAME OUTCOME CONSTANTS
+// ============================================================================
+
+/// Game outcome from Player 1's perspective
 pub const PLAYER_1_WIN: i8 = 1;
 pub const PLAYER_2_WIN: i8 = -1;
 pub const TIE: i8 = 0;
-pub const BOTH_LOSE: i8 = -2; // Tournament rule: both players lose (collaboration detected)
+pub const BOTH_LOSE: i8 = -2; // Tournament rule: both lose (collaboration detected)
 
-// NOTE: Win condition thresholds are now configured per-game-mode via BoardConfig::win_conditions
-// Standard mode: each_color=3, 4W/5G/6B (see WinConditions::standard() in board.rs)
-// Blitz mode: each_color=2, 3W/4G/5B (see WinConditions::blitz() in board.rs)
+// NOTE: Win thresholds configured per mode via BoardConfig::win_conditions
+// Standard: 3-of-each, or 4W/5G/6B
+// Blitz: 2-of-each, or 3W/4G/5B
 
-/// Check if index is within board bounds
+// ============================================================================
+// UTILITY FUNCTIONS
+// ============================================================================
+
+// ============================================================================
+// Axial Coordinate Transformations
+// ============================================================================
+
+/// Rotate axial coordinate by k * 60° counterclockwise
+///
+/// In axial coordinates (q, r), a 60° CCW rotation is: (q, r) -> (-r, q + r)
+/// This works for both regular and doubled coordinates (used for even-width boards).
+///
+/// # Arguments
+/// * `q` - Axial q coordinate
+/// * `r` - Axial r coordinate
+/// * `k` - Number of 60° rotations (will be normalized to 0-5)
+///
+/// # Returns
+/// Rotated (q, r) coordinates
+pub fn ax_rot60(mut q: i32, mut r: i32, k: i32) -> (i32, i32) {
+    let k_norm = k.rem_euclid(6);
+    for _ in 0..k_norm {
+        let temp = q;
+        q = -r;
+        r = temp + r;
+    }
+    (q, r)
+}
+
+/// Mirror axial coordinate across the q-axis
+///
+/// In cube coordinates (x=q, y=-q-r, z=r), mirroring across the q-axis
+/// swaps y and z, giving (x, z, y) = (q, r, -q-r) = (q, -q-r) in axial.
+///
+/// # Arguments
+/// * `q` - Axial q coordinate
+/// * `r` - Axial r coordinate
+///
+/// # Returns
+/// Mirrored (q, r) coordinates
+pub fn ax_mirror_q_axis(q: i32, r: i32) -> (i32, i32) {
+    (q, -q - r)
+}
+
+// ============================================================================
+
+/// Check if (y, x) coordinates are within board bounds
+/// Used by Python wrapper
 #[inline]
-fn is_inbounds(y: i32, x: i32, width: usize) -> bool {
+pub fn is_inbounds(y: i32, x: i32, width: usize) -> bool {
     y >= 0 && x >= 0 && (y as usize) < width && (x as usize) < width
 }
 
@@ -167,10 +241,48 @@ fn get_captured_index(config: &BoardConfig, player: usize, marble_idx: usize) ->
     }
 }
 
+/// Get global_state index for marble type in supply
+/// Used by Python wrapper
+pub fn get_supply_index(marble_type: char, config: &BoardConfig) -> usize {
+    match marble_type {
+        'w' => config.supply_w,
+        'g' => config.supply_g,
+        'b' => config.supply_b,
+        _ => panic!("Invalid marble type: {}", marble_type),
+    }
+}
+
+/// Get marble type at given position
+/// Returns: 'w', 'g', 'b', or '\0' (none)
+/// Used by Python wrapper
+pub fn get_marble_type_at(spatial: &ArrayView3<f32>, y: usize, x: usize, _config: &BoardConfig) -> char {
+    if spatial[[1, y, x]] == 1.0 {
+        'w'
+    } else if spatial[[2, y, x]] == 1.0 {
+        'g'
+    } else if spatial[[3, y, x]] == 1.0 {
+        'b'
+    } else {
+        '\0'
+    }
+}
+
+/// Calculate landing position after capturing marble
+/// Used by Python wrapper
+pub fn get_jump_destination(start_y: usize, start_x: usize, cap_y: usize, cap_x: usize) -> (i32, i32) {
+    let sy = start_y as i32;
+    let sx = start_x as i32;
+    let cy = cap_y as i32;
+    let cx = cap_x as i32;
+    let dy = (cy - sy) * 2;
+    let dx = (cx - sx) * 2;
+    (sy + dy, sx + dx)
+}
+
 /// Apply isolation captures when a placement removes a ring and disconnects regions.
 fn apply_isolation_capture(
-    spatial: &mut Array3<f32>,
-    global: &mut Array1<f32>,
+    spatial: &mut ArrayViewMut3<f32>,
+    global: &mut ArrayViewMut1<f32>,
     config: &BoardConfig,
     current_player: usize,
     anchor: (usize, usize),
@@ -324,9 +436,21 @@ pub fn get_placement_actions(
 pub fn get_capture_actions(spatial: &ArrayView3<f32>, config: &BoardConfig) -> Array3<f32> {
     let mut capture_mask = Array3::zeros((6, config.width, config.width));
 
+    // Check if this is a chain capture (CAPTURE_LAYER has a marble marked)
+    let chain_capture_pos = (0..config.width)
+        .flat_map(|y| (0..config.width).map(move |x| (y, x)))
+        .find(|&(y, x)| spatial[[config.capture_layer, y, x]] > 0.0);
+
     // For each position with a marble
     for y in 0..config.width {
         for x in 0..config.width {
+            // If chain capture is active, only allow captures from that specific position
+            if let Some((chain_y, chain_x)) = chain_capture_pos {
+                if y != chain_y || x != chain_x {
+                    continue;
+                }
+            }
+
             // Check if position has a marble
             let marble_layer = (1..4).find(|&layer| spatial[[layer, y, x]] > 0.0);
             if marble_layer.is_none() {
@@ -405,8 +529,8 @@ pub fn get_valid_actions(
 
 /// Apply a placement action
 pub fn apply_placement(
-    spatial: &mut Array3<f32>,
-    global: &mut Array1<f32>,
+    spatial: &mut ArrayViewMut3<f32>,
+    global: &mut ArrayViewMut1<f32>,
     marble_type: usize, // 0=white, 1=gray, 2=black
     dst_y: usize,
     dst_x: usize,
@@ -472,8 +596,8 @@ pub fn apply_placement(
 
 /// Apply a capture action
 pub fn apply_capture(
-    spatial: &mut Array3<f32>,
-    global: &mut Array1<f32>,
+    spatial: &mut ArrayViewMut3<f32>,
+    global: &mut ArrayViewMut1<f32>,
     start_y: usize,
     start_x: usize,
     direction: usize,
@@ -548,6 +672,83 @@ pub fn apply_capture(
     }
 }
 
+// ============================================================================
+// ISOLATION CAPTURE
+// ============================================================================
+
+/// Check for isolated regions after ring removal and capture marbles
+///
+/// After a ring is removed, the board may split into multiple disconnected regions.
+/// If ALL rings in an isolated region are fully occupied (each has a marble),
+/// then the current player captures all those marbles and removes those rings.
+///
+/// Returns tuple of (updated_spatial, updated_global, captured_marbles_list)
+/// where captured_marbles_list contains tuples of (marble_layer_idx, y, x)
+pub fn check_for_isolation_capture(
+    spatial: &ArrayView3<f32>,
+    global: &ArrayView1<f32>,
+    config: &BoardConfig,
+) -> (Array3<f32>, Array1<f32>, Vec<(usize, usize, usize)>) {
+    let mut spatial_out = spatial.to_owned();
+    let mut global_out = global.to_owned();
+    let mut captured_marbles = Vec::new();
+
+    let regions = get_regions(&spatial.view(), config);
+
+    if regions.len() > 1 {
+        // Find the largest region (main region)
+        let main_region_idx = regions
+            .iter()
+            .enumerate()
+            .max_by_key(|(_, region)| region.len())
+            .map(|(idx, _)| idx)
+            .unwrap();
+
+        let cur_player = global[config.cur_player] as usize;
+
+        // Process each isolated region (not the main region)
+        for (region_idx, region) in regions.iter().enumerate() {
+            if region_idx == main_region_idx {
+                continue; // Skip main region
+            }
+
+            // Check if ALL rings in this isolated region are fully occupied
+            let all_occupied = region.iter().all(|&(y, x)| {
+                // Check if any marble layer has a marble at this position
+                (1..4).any(|layer| spatial[[layer, y, x]] > 0.0)
+            });
+
+            if all_occupied {
+                // Capture all marbles in this fully-occupied isolated region
+                for &(y, x) in region {
+                    // Find which marble type is at this position
+                    if let Some(marble_layer) = (1..4).find(|&layer| spatial_out[[layer, y, x]] > 0.0) {
+                        // Add to current player's captured count
+                        let marble_idx = marble_layer - 1; // Convert layer to index (0,1,2)
+                        let captured_idx = if cur_player == config.player_1 {
+                            config.p1_cap_w + marble_idx
+                        } else {
+                            config.p2_cap_w + marble_idx
+                        };
+                        global_out[captured_idx] += 1.0;
+
+                        // Remove marble from board
+                        spatial_out[[marble_layer, y, x]] = 0.0;
+
+                        // Remove ring from board
+                        spatial_out[[config.ring_layer, y, x]] = 0.0;
+
+                        // Add to captured list for return value
+                        captured_marbles.push((marble_layer, y, x));
+                    }
+                }
+            }
+        }
+    }
+
+    (spatial_out, global_out, captured_marbles)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -555,6 +756,72 @@ mod tests {
 
     fn create_test_config() -> BoardConfig {
         BoardConfig::standard(37, 1).unwrap()
+    }
+
+    // ========================================================================
+    // Axial coordinate transform tests
+    // ========================================================================
+
+    #[test]
+    fn test_ax_rot60_single() {
+        // Single 60° rotation: (1, 0) -> (0, 1)
+        assert_eq!(ax_rot60(1, 0, 1), (0, 1));
+    }
+
+    #[test]
+    fn test_ax_rot60_full_cycle() {
+        // Full 360° rotation should return to origin
+        let (q, r) = (2, 3);
+        let result = ax_rot60(q, r, 6);
+        assert_eq!(result, (q, r), "Full 360° rotation should return to original");
+    }
+
+    #[test]
+    fn test_ax_rot60_negative() {
+        // Negative rotation: k=-1 is same as k=5 (330° CCW = -30° CW)
+        assert_eq!(ax_rot60(1, 0, -1), ax_rot60(1, 0, 5));
+    }
+
+    #[test]
+    fn test_ax_rot60_180() {
+        // 180° rotation of (2, 1) through three 60° steps:
+        // (2, 1) -> (-1, 3) -> (-3, 2) -> (-2, -1)
+        let (q, r) = (2, 1);
+        let (q_rot, r_rot) = ax_rot60(q, r, 3);
+        assert_eq!((q_rot, r_rot), (-2, -1));
+    }
+
+    #[test]
+    fn test_ax_rot60_origin() {
+        // Origin should be invariant under rotation
+        assert_eq!(ax_rot60(0, 0, 3), (0, 0));
+    }
+
+    #[test]
+    fn test_ax_mirror_q_axis_basic() {
+        // Mirror (1, 0) across q-axis -> (1, -1)
+        assert_eq!(ax_mirror_q_axis(1, 0), (1, -1));
+    }
+
+    #[test]
+    fn test_ax_mirror_q_axis_symmetric() {
+        // Mirroring twice should return to original
+        let (q, r) = (2, 3);
+        let (q_mir, r_mir) = ax_mirror_q_axis(q, r);
+        let (q_back, r_back) = ax_mirror_q_axis(q_mir, r_mir);
+        assert_eq!((q_back, r_back), (q, r));
+    }
+
+    #[test]
+    fn test_ax_mirror_q_axis_origin() {
+        // Origin should be invariant under mirroring
+        assert_eq!(ax_mirror_q_axis(0, 0), (0, 0));
+    }
+
+    #[test]
+    fn test_ax_mirror_q_axis_on_axis() {
+        // Points on q-axis (r=0) should mirror to (q, -q)
+        assert_eq!(ax_mirror_q_axis(3, 0), (3, -3));
     }
 
     fn create_empty_state(config: &BoardConfig) -> (Array3<f32>, Array1<f32>) {
@@ -721,8 +988,8 @@ mod tests {
 
         // Apply placement
         apply_placement(
-            &mut spatial,
-            &mut global,
+            &mut spatial.view_mut(),
+            &mut global.view_mut(),
             0,
             3,
             3,
@@ -756,7 +1023,7 @@ mod tests {
         global[config.cur_player] = config.player_1 as f32;
 
         // Apply placement
-        apply_placement(&mut spatial, &mut global, 0, 3, 3, None, None, &config);
+        apply_placement(&mut spatial.view_mut(), &mut global.view_mut(), 0, 3, 3, None, None, &config);
 
         // Check captured pool decremented
         assert_eq!(global[config.p1_cap_w], 2.0);
@@ -783,7 +1050,7 @@ mod tests {
             .unwrap();
 
         // Apply capture
-        apply_capture(&mut spatial, &mut global, 3, 3, east_dir, &config);
+        apply_capture(&mut spatial.view_mut(), &mut global.view_mut(), 3, 3, east_dir, &config);
 
         // Check marble moved
         assert_eq!(spatial[[1, 3, 3]], 0.0); // Removed from start
@@ -823,7 +1090,7 @@ mod tests {
             .unwrap();
 
         // Apply first capture
-        apply_capture(&mut spatial, &mut global, 2, 2, east_dir, &config);
+        apply_capture(&mut spatial.view_mut(), &mut global.view_mut(), 2, 2, east_dir, &config);
 
         // Player should NOT switch (chain available)
         assert_eq!(global[config.cur_player] as usize, config.player_1);
@@ -857,13 +1124,89 @@ mod tests {
             .unwrap();
 
         // Apply first capture (east)
-        apply_capture(&mut spatial, &mut global, 3, 3, east_dir, &config);
+        apply_capture(&mut spatial.view_mut(), &mut global.view_mut(), 3, 3, east_dir, &config);
 
         // Player should still be current because follow-up capture (north) is available
         assert_eq!(global[config.cur_player] as usize, config.player_1);
 
         // Marble must be at first landing position to continue chain
         assert_eq!(spatial[[1, 3, 5]], 1.0);
+    }
+
+    #[test]
+    fn test_capture_layer_restricts_to_chain_marble() {
+        let config = create_test_config();
+        let (mut spatial, _) = create_empty_state(&config);
+
+        // Setup two marbles that can both capture:
+        // Marble A at (2,2) can capture marble X at (2,3) landing at (2,4)
+        // Marble B at (4,4) can capture marble Y at (4,5) landing at (4,6)
+        spatial[[config.ring_layer, 2, 2]] = 1.0; // A start
+        spatial[[config.ring_layer, 2, 3]] = 1.0; // X (capture target for A)
+        spatial[[config.ring_layer, 2, 4]] = 1.0; // A landing
+        spatial[[config.ring_layer, 4, 4]] = 1.0; // B start
+        spatial[[config.ring_layer, 4, 5]] = 1.0; // Y (capture target for B)
+        spatial[[config.ring_layer, 4, 6]] = 1.0; // B landing
+
+        spatial[[1, 2, 2]] = 1.0; // White marble A
+        spatial[[2, 2, 3]] = 1.0; // Gray marble X
+        spatial[[1, 4, 4]] = 1.0; // White marble B
+        spatial[[2, 4, 5]] = 1.0; // Gray marble Y
+
+        // Without CAPTURE_LAYER marking, both marbles should be able to capture
+        let capture_mask_before = get_capture_actions(&spatial.view(), &config);
+        let east_dir = config
+            .directions
+            .iter()
+            .position(|&(dy, dx)| dy == 0 && dx == 1)
+            .unwrap();
+
+        assert_eq!(capture_mask_before[[east_dir, 2, 2]], 1.0, "Marble A should be able to capture");
+        assert_eq!(capture_mask_before[[east_dir, 4, 4]], 1.0, "Marble B should be able to capture");
+
+        // Now mark A as the marble in chain capture (e.g., A just captured and can continue)
+        spatial[[config.capture_layer, 2, 2]] = 1.0;
+
+        // With CAPTURE_LAYER marked, only marble A should be able to capture
+        let capture_mask_after = get_capture_actions(&spatial.view(), &config);
+
+        assert_eq!(capture_mask_after[[east_dir, 2, 2]], 1.0, "Marble A should still be able to capture (chain)");
+        assert_eq!(capture_mask_after[[east_dir, 4, 4]], 0.0, "Marble B should NOT be able to capture (not chain marble)");
+
+        // Verify only one capture is available (the chain capture)
+        let total_captures: f32 = capture_mask_after.iter().sum();
+        assert_eq!(total_captures, 1.0, "Only the chain marble should have capture moves");
+    }
+
+    #[test]
+    fn test_corner_ring_removable_with_oob_neighbors() {
+        let config = create_test_config();
+        let (mut spatial, _) = create_empty_state(&config);
+
+        // Fill entire 7x7 board with rings
+        for y in 0..config.width {
+            for x in 0..config.width {
+                spatial[[config.ring_layer, y, x]] = 1.0;
+            }
+        }
+
+        // Test position (0,0) - top-left corner
+        // Neighbors: (1,0), (0,-1), (-1,-1), (-1,0), (0,1), (1,1)
+        // Directions: [(1,0), (0,-1), (-1,-1), (-1,0), (0,1), (1,1)]
+        // Dir 0: (1,0) in-bounds with ring
+        // Dir 1: (0,-1) OOB
+        // Dir 2: (-1,-1) OOB
+        // Dir 3: (-1,0) OOB
+        // Dir 4: (0,1) in-bounds with ring
+        // Dir 5: (1,1) in-bounds with ring
+        // Has 3 consecutive OOB neighbors (dirs 1,2,3) so should be removable
+
+        let is_removable = is_ring_removable(&spatial.view(), 0, 0, &config);
+        assert!(is_removable, "Corner ring (0,0) should be removable with 3 consecutive OOB neighbors");
+
+        // Test center position (3,3) - should NOT be removable (all neighbors in-bounds with rings)
+        let is_removable_center = is_ring_removable(&spatial.view(), 3, 3, &config);
+        assert!(!is_removable_center, "Center ring (3,3) should NOT be removable on full board");
     }
 
     #[test]
@@ -896,8 +1239,8 @@ mod tests {
 
         // Apply placement at D4 removing F2, which isolates G1
         apply_placement(
-            &mut spatial,
-            &mut global,
+            &mut spatial.view_mut(),
+            &mut global.view_mut(),
             0, // white marble
             d4.0,
             d4.1,
@@ -931,8 +1274,8 @@ mod tests {
 
         // Attempt to place white marble without removing a ring
         apply_placement(
-            &mut spatial,
-            &mut global,
+            &mut spatial.view_mut(),
+            &mut global.view_mut(),
             0,
             d4.0,
             d4.1,
@@ -1657,7 +2000,7 @@ mod termination_tests {
         let rings_before = spatial.slice(s![config.ring_layer, .., ..]).sum();
 
         // Apply placement with no ring removal (None, None)
-        apply_placement(&mut spatial, &mut global, 0, 3, 3, None, None, &config);
+        apply_placement(&mut spatial.view_mut(), &mut global.view_mut(), 0, 3, 3, None, None, &config);
 
         // Check marble placed
         assert_eq!(spatial[[1, 3, 3]], 1.0, "Marble should be placed");

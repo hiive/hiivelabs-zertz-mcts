@@ -1,3 +1,53 @@
+//! # Canonicalization Module
+//!
+//! State canonicalization for exploiting board symmetries in transposition tables.
+//!
+//! ## Purpose
+//!
+//! In games with symmetries, many different board orientations represent the same
+//! strategic position. This module:
+//! 1. **Finds canonical (standard) form** of any board state
+//! 2. **Transforms actions** to work with canonical states
+//! 3. **Computes inverse transforms** to map back to original orientation
+//!
+//! ## Symmetry Groups
+//!
+//! **37/61-ring boards** (D6 dihedral group):
+//! - 6 rotations (0°, 60°, 120°, 180°, 240°, 300°)
+//! - 6 reflections (mirroring then rotating)
+//! - Total: 12 symmetries
+//!
+//! **48-ring boards** (D3 dihedral group):
+//! - 3 rotations (0°, 120°, 240°)
+//! - 3 reflections
+//! - Total: 6 symmetries
+//!
+//! ## Transform Notation
+//!
+//! - `R{angle}`: Pure rotation (e.g., R60, R120)
+//! - `MR{angle}`: Mirror, THEN rotate (e.g., MR60)
+//! - `R{angle}M`: Rotate, THEN mirror (e.g., R60M)
+//! - `T{dy},{dx}`: Translation by (dy, dx)
+//!
+//! **Inverse relationships**:
+//! - `R(k)⁻¹ = R(-k)`
+//! - `MR(k)⁻¹ = R(-k)M`
+//! - `R(k)M⁻¹ = MR(-k)`
+//!
+//! ## Hexagonal Coordinate System
+//!
+//! Uses **axial coordinates** (q, r) for rotation/reflection:
+//! - Conversion: `q = x - c`, `r = y - x` (where c = width/2)
+//! - Rotation by 60°: `(q, r) → (-r, q+r)`
+//! - Mirror over q-axis: `(q, r) → (q, -q-r)`
+//!
+//! ## Canonicalization Algorithm
+//!
+//! 1. Generate all symmetric variants (rotations + reflections + translations)
+//! 2. Compute lexicographic key for each variant
+//! 3. Select variant with smallest key as canonical form
+//! 4. Return: (canonical_state, forward_transform, inverse_transform)
+
 use std::collections::HashMap;
 use std::ops::Range;
 
@@ -5,7 +55,24 @@ use crate::board::BoardConfig;
 use crate::node::Action;
 use ndarray::{s, Array3, ArrayView3};
 
+// ============================================================================
+// SYMMETRY TRANSFORMS
+// ============================================================================
+
+/// Generate list of symmetry transforms based on board configuration
+///
+/// **Board-specific symmetries**:
+/// - **48-ring boards**: D3 symmetry (120° rotations only)
+/// - **37/61-ring boards**: D6 symmetry (60° rotations)
+///
+/// **Return format**: `(name, rotation_steps, mirror, mirror_first)`
+/// - `name`: Transform identifier (e.g., "R60", "MR120", "R180M")
+/// - `rotation_steps`: Number of 60° steps (0-5)
+/// - `mirror`: Whether to apply mirror reflection
+/// - `mirror_first`: Order of operations (true = mirror before rotate)
 fn symmetry_transforms(config: &BoardConfig) -> Vec<(String, i32, bool, bool)> {
+    // D3 symmetry for 48-ring boards (120° rotations: steps 0, 2, 4)
+    // D6 symmetry for 37/61-ring boards (60° rotations: steps 0-5)
     let rot_steps = if config.rings == 48 {
         vec![0, 2, 4]
     } else {
@@ -13,14 +80,17 @@ fn symmetry_transforms(config: &BoardConfig) -> Vec<(String, i32, bool, bool)> {
     };
 
     let mut transforms = Vec::new();
-    transforms.push(("R0".to_string(), 0, false, false));
+    transforms.push(("R0".to_string(), 0, false, false)); // Identity
 
     for &k in &rot_steps {
         let deg = k * 60;
         if k != 0 {
+            // Pure rotation: R60, R120, R180, etc.
             transforms.push((format!("R{}", deg), k, false, false));
         }
+        // Mirror-then-rotate: MR0, MR60, MR120, etc.
         transforms.push((format!("MR{}", deg), k, true, false));
+        // Rotate-then-mirror: R0M, R60M, R120M, etc.
         transforms.push((format!("R{}M", deg), k, true, true));
     }
 
@@ -379,6 +449,20 @@ fn build_layout_mask(config: &BoardConfig) -> Vec<Vec<bool>> {
     generate_standard_layout_mask(config.rings, config.width)
 }
 
+/// Build bidirectional maps between (y,x) and axial (q,r) coordinates
+///
+/// **Axial coordinate system**:
+/// - `q = x - center_x`
+/// - `r = y - x`
+/// - Allows natural rotation/reflection via simple matrix operations
+///
+/// **Centering**: Coordinates are centered on board centroid for proper rotation
+///
+/// **Scaling** (48-ring boards only):
+/// - Scale by 3.0 to convert D6 to D3 symmetry
+/// - This is specific to the 48-ring hexagonal layout
+///
+/// **Returns**: `(yx_to_ax, ax_to_yx)` bidirectional lookup maps
 #[allow(dead_code)]
 fn build_axial_maps(
     config: &BoardConfig,
@@ -394,11 +478,14 @@ fn build_axial_maps(
 
     let mut records = Vec::new();
 
+    // Step 1: Convert all valid positions to axial coordinates
     for y in 0..config.width {
         for x in 0..config.width {
             if layout[y][x] {
+                // Axial coordinates (q, r)
                 let q = x as f64 - c;
                 let r = y as f64 - x as f64;
+                // Cartesian coordinates (for centroid calculation)
                 let xc = SQRT3 * (q + r / 2.0);
                 let yc = 1.5 * r;
                 records.push((y as i32, x as i32, q, r, xc, yc));
@@ -406,16 +493,22 @@ fn build_axial_maps(
         }
     }
 
+    // Step 2: Find centroid of board in Cartesian space
     let len = records.len() as f64;
     let xc_center = records.iter().map(|(_, _, _, _, xc, _)| *xc).sum::<f64>() / len;
     let yc_center = records.iter().map(|(_, _, _, _, _, yc)| *yc).sum::<f64>() / len;
+
+    // Step 3: Convert centroid back to axial coordinates
     let q_center = (SQRT3 / 3.0) * xc_center - (1.0 / 3.0) * yc_center;
     let r_center = (2.0 / 3.0) * yc_center;
+
+    // Step 4: Scale factor for 48-ring boards (D3 vs D6 symmetry)
     let scale = if config.rings == 48 { 3.0 } else { 1.0 };
 
     let mut yx_to_ax = HashMap::new();
     let mut ax_to_yx = HashMap::new();
 
+    // Step 5: Center and scale all coordinates, build bidirectional maps
     for (y, x, q, r, _, _) in records.into_iter() {
         let q_centered = q - q_center;
         let r_centered = r - r_center;
@@ -428,10 +521,16 @@ fn build_axial_maps(
     (yx_to_ax, ax_to_yx)
 }
 
+/// Rotate axial coordinates by k × 60° (hexagonal rotation)
+///
+/// **Formula**: One 60° rotation transforms (q, r) → (-r, q+r)
+///
+/// Applied k times for rotation by k × 60°.
 #[allow(dead_code)]
 fn ax_rot60(mut q: i32, mut r: i32, k: i32) -> (i32, i32) {
-    let mut k = (k % 6 + 6) % 6;
+    let mut k = (k % 6 + 6) % 6; // Normalize to 0-5
     while k > 0 {
+        // Single 60° rotation
         let new_q = -r;
         let new_r = q + r;
         q = new_q;
@@ -441,6 +540,11 @@ fn ax_rot60(mut q: i32, mut r: i32, k: i32) -> (i32, i32) {
     (q, r)
 }
 
+/// Mirror axial coordinates across q-axis
+///
+/// **Formula**: (q, r) → (q, -q-r)
+///
+/// This is one of the 6 reflection symmetries in the D6 group.
 #[allow(dead_code)]
 fn ax_mirror_q_axis(q: i32, r: i32) -> (i32, i32) {
     (q, -q - r)

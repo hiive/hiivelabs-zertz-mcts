@@ -1,3 +1,44 @@
+//! # Monte Carlo Tree Search (MCTS) Implementation
+//!
+//! This module provides a high-performance MCTS implementation for Zèrtz with:
+//! - Serial and parallel (rayon) search modes
+//! - Transposition table for state caching
+//! - UCB1 child selection with FPU (First Play Urgency)
+//! - Progressive widening support
+//! - Virtual loss for lock-free parallel search
+//! - Python bindings via PyO3
+//!
+//! ## Architecture
+//!
+//! **Architectural Pattern**: MCTS delegates ALL game logic to `game.rs`
+//! - `mcts.rs` handles tree search algorithms (selection/expansion/simulation/backprop)
+//! - `game.rs` contains game rules (move generation, terminal checks, outcomes)
+//! - This mirrors Python: `mcts_tree.py` → `zertz_logic.py`
+//!
+//! ## MCTS Algorithm
+//!
+//! Standard MCTS phases:
+//! 1. **Selection**: Traverse tree using UCB1 until reaching unexpanded/terminal node
+//! 2. **Expansion**: Add a new child node for an untried action
+//! 3. **Simulation**: Play out a random game (rollout) from the new node
+//! 4. **Backpropagation**: Update statistics up the tree (values flip each level)
+//!
+//! ## Thread Safety
+//!
+//! - **Virtual Loss**: Added during selection, removed during backpropagation
+//!   - Makes selected path less attractive to other threads
+//!   - Enables lock-free parallel search
+//! - **Atomic Operations**: Node statistics use `AtomicU32` for thread-safe updates
+//! - **Transposition Table**: Uses `DashMap` for concurrent access
+//!
+//! ## Key Parameters
+//!
+//! - `exploration_constant`: UCB1 exploration weight (default: 1.41 = √2)
+//! - `fpu_reduction`: First Play Urgency - penalizes unvisited nodes
+//! - `widening_constant`: Progressive widening - limits expansion rate
+//! - `max_depth`: Limits rollout depth (None = full game)
+//! - `time_limit`: Max search time in seconds
+
 use ndarray::{Array1, Array3};
 use numpy::{PyReadonlyArray1, PyReadonlyArray3};
 use pyo3::prelude::*;
@@ -15,7 +56,14 @@ use crate::game::{
 use crate::node::{Action, MCTSNode};
 use crate::transposition::TranspositionTable;
 
-/// MCTS Search implementation
+// ============================================================================
+// MCTS SEARCH
+// ============================================================================
+
+/// Main MCTS search engine with Python bindings.
+///
+/// This struct maintains search configuration and exposes both serial and
+/// parallel search methods to Python via PyO3.
 #[pyclass]
 pub struct MCTSSearch {
     exploration_constant: f32,
@@ -473,15 +521,28 @@ impl MCTSSearch {
     }
 }
 
+// ============================================================================
+// INTERNAL IMPLEMENTATION
+// ============================================================================
+
 impl MCTSSearch {
+    /// Thread-safe RNG access using either seeded or system RNG
+    ///
+    /// This function uses a closure pattern to abstract over the RNG type:
+    /// - If a seed was set, uses the seeded `StdRng` (deterministic)
+    /// - Otherwise, uses system RNG (non-deterministic)
+    ///
+    /// The generic `F` closure allows any operation on `RngCore` trait objects.
     fn with_rng<T, F>(&self, f: F) -> T
     where
         F: FnOnce(&mut dyn RngCore) -> T,
     {
         let mut guard = self.rng.lock().unwrap();
         if let Some(ref mut seeded) = guard.as_mut() {
+            // Use seeded RNG (deterministic)
             f(seeded)
         } else {
+            // Drop the lock and use system RNG (non-deterministic)
             drop(guard);
             let mut rng = rand::rng();
             f(&mut rng)
@@ -547,7 +608,21 @@ impl MCTSSearch {
         true
     }
 
-    /// Selection phase: traverse tree using UCB1
+    /// Selection phase: traverse tree using UCB1 until reaching unexpanded/terminal node
+    ///
+    /// **UCB1 Formula**: `Q(child) + c * sqrt(ln(N(parent)) / N(child))`
+    /// - Q(child): Average value of child node
+    /// - c: Exploration constant (typically √2)
+    /// - N(parent): Visit count of parent
+    /// - N(child): Visit count of child
+    ///
+    /// **FPU (First Play Urgency)**: Unvisited children get score = parent_value - fpu_reduction
+    /// - Encourages exploring unvisited nodes early
+    /// - Lower FPU reduction = more optimistic about unvisited nodes
+    ///
+    /// **Progressive Widening**: Limits child expansion based on parent visits
+    /// - Controls branching factor in high-branching games
+    /// - Formula: max_children = widening_constant * sqrt(parent_visits)
     fn select(
         &self,
         mut node: Arc<MCTSNode>,
@@ -556,26 +631,41 @@ impl MCTSSearch {
     ) -> Arc<MCTSNode> {
         loop {
             // Apply virtual loss to make this path less attractive to other threads
+            // This prevents multiple threads from selecting the same path simultaneously
             node.add_virtual_loss();
 
-            // Check if node is fully expanded
+            // Check if node is fully expanded (respects progressive widening if enabled)
             if !node.is_fully_expanded(self.widening_constant) {
                 return self.expand(Arc::clone(&node), table, use_lookups);
             }
 
-            // Check if terminal
+            // Check if terminal (game over)
             if self.is_terminal(&node) {
                 return node;
             }
 
-            // Select best child using UCB1 (with optional FPU)
+            // Select best child using UCB1 (with optional FPU for unvisited nodes)
             let parent_visits = node.get_visits();
             let parent_value = node.get_value();
             let children = node.children.lock().unwrap();
+
+            // Find child with maximum UCB1 score
+            // max_by uses partial ordering since f32 can be NaN
             let best_child = children.iter().max_by(|(_, child_a), (_, child_b)| {
-                let score_a = child_a.ucb1_score(parent_visits, parent_value, self.exploration_constant, self.fpu_reduction);
-                let score_b = child_b.ucb1_score(parent_visits, parent_value, self.exploration_constant, self.fpu_reduction);
+                let score_a = child_a.ucb1_score(
+                    parent_visits,
+                    parent_value,
+                    self.exploration_constant,
+                    self.fpu_reduction
+                );
+                let score_b = child_b.ucb1_score(
+                    parent_visits,
+                    parent_value,
+                    self.exploration_constant,
+                    self.fpu_reduction
+                );
                 // Handle NaN gracefully (treat equal if either is NaN)
+                // This can happen with division by zero or invalid values
                 score_a
                     .partial_cmp(&score_b)
                     .unwrap_or(std::cmp::Ordering::Equal)
@@ -583,10 +673,11 @@ impl MCTSSearch {
 
             if let Some((_, child)) = best_child {
                 let next_node = Arc::clone(child);
-                drop(children); // Release lock before next iteration
+                drop(children); // Release lock before next iteration (critical for performance)
                 node = next_node;
             } else {
-                drop(children); // Release lock before returning
+                // No children available (shouldn't happen but handle defensively)
+                drop(children);
                 return node;
             }
         }
@@ -694,8 +785,8 @@ impl MCTSSearch {
                 remove_x,
             } => {
                 apply_placement(
-                    &mut child_spatial,
-                    &mut child_global,
+                    &mut child_spatial.view_mut(),
+                    &mut child_global.view_mut(),
                     *marble_type,
                     *dst_y,
                     *dst_x,
@@ -710,8 +801,8 @@ impl MCTSSearch {
                 direction,
             } => {
                 apply_capture(
-                    &mut child_spatial,
-                    &mut child_global,
+                    &mut child_spatial.view_mut(),
+                    &mut child_global.view_mut(),
                     *start_y,
                     *start_x,
                     *direction,
@@ -824,8 +915,8 @@ impl MCTSSearch {
                 let idx = self.with_rng(|rng| rng.random_range(0..captures.len()));
                 let (direction, start_y, start_x) = captures[idx];
                 apply_capture(
-                    &mut sim_spatial,
-                    &mut sim_global,
+                    &mut sim_spatial.view_mut(),
+                    &mut sim_global.view_mut(),
                     start_y,
                     start_x,
                     direction,
@@ -858,8 +949,8 @@ impl MCTSSearch {
                     let idx = self.with_rng(|rng| rng.random_range(0..placements.len()));
                     let (marble_type, dst_y, dst_x, remove_y, remove_x) = placements[idx];
                     apply_placement(
-                        &mut sim_spatial,
-                        &mut sim_global,
+                        &mut sim_spatial.view_mut(),
+                        &mut sim_global.view_mut(),
                         marble_type,
                         dst_y,
                         dst_x,

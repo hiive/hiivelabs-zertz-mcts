@@ -1,32 +1,90 @@
+//! # MCTS Node Implementation
+//!
+//! Thread-safe MCTS node with support for:
+//! - **Atomic statistics**: Lock-free visit/value updates via `AtomicU32`/`AtomicI32`
+//! - **Virtual loss**: Temporary pessimistic values for parallel search
+//! - **Transposition table integration**: Shared statistics across symmetric states
+//! - **Weak parent pointers**: Avoids reference cycles in tree structure
+//!
+//! ## Thread Safety Model
+//!
+//! **Lock-free statistics updates**:
+//! - `local_visits` and `local_total_value` use atomic operations
+//! - Multiple threads can update node statistics concurrently without locks
+//! - `Ordering::Relaxed` is sufficient since we don't need sequential consistency
+//!
+//! **Tree structure locking**:
+//! - `children` uses `Mutex` since tree modification requires atomicity
+//! - Lock is held only during child addition, not during traversal
+//!
+//! **Parent pointers**:
+//! - Use `Weak<MCTSNode>` to avoid reference cycles
+//! - Prevents memory leaks in the tree structure
+//! - Can upgrade to `Arc` during backpropagation traversal
+//!
+//! ## Virtual Loss Mechanism
+//!
+//! Virtual loss prevents thread collisions in parallel MCTS:
+//! 1. During selection: `add_virtual_loss()` inflates visits and adds pessimistic value
+//! 2. Makes path less attractive to other threads
+//! 3. During backpropagation: `remove_virtual_loss()` removes temporary values
+//! 4. Then real simulation result is added via `update()`
+//!
+//! This enables lock-free parallel tree search with minimal thread collisions.
+
 use crate::board::BoardConfig;
 use crate::transposition::TranspositionEntry;
 use ndarray::{Array1, Array3};
 use std::sync::atomic::{AtomicI32, AtomicU32, Ordering};
 use std::sync::{Arc, Mutex, Weak};
 
-// Virtual loss constants for parallel MCTS
-// Virtual loss temporarily inflates visit counts and adds pessimistic values
-// to discourage multiple threads from exploring the same path simultaneously
-pub(crate) const VIRTUAL_LOSS: u32 = 3;
-pub(crate) const VIRTUAL_LOSS_SCALED: i32 = -3000; // -3.0 * 1000 (pessimistic value, scaled)
+// ============================================================================
+// VIRTUAL LOSS CONSTANTS
+// ============================================================================
 
-/// Action type for MCTS
+/// Number of virtual visits to add during selection phase
+///
+/// Virtual loss temporarily inflates visit counts and adds pessimistic values
+/// to discourage multiple threads from exploring the same path simultaneously.
+/// Higher values = stronger discouragement, but may reduce parallelism.
+pub(crate) const VIRTUAL_LOSS: u32 = 3;
+
+/// Scaled virtual loss value (represents -1.0 per virtual visit, scaled by 1000)
+///
+/// We scale by 1000 because `local_total_value` is stored as i32 for atomic operations.
+/// -3000 represents a pessimistic value of -3.0 (same as VIRTUAL_LOSS * -1.0 * 1000).
+pub(crate) const VIRTUAL_LOSS_SCALED: i32 = -3000;
+
+// ============================================================================
+// ACTION TYPES
+// ============================================================================
+
+/// Game actions for MCTS tree edges
+///
+/// Each action represents a state transition in the game tree.
 #[derive(Clone, Debug)]
 pub enum Action {
+    /// Place a marble from supply/captured pool, optionally removing a ring
     Placement {
-        marble_type: usize,
-        dst_y: usize,
-        dst_x: usize,
-        remove_y: Option<usize>,
-        remove_x: Option<usize>,
+        marble_type: usize,      // 0=white, 1=gray, 2=black
+        dst_y: usize,            // Destination y coordinate
+        dst_x: usize,            // Destination x coordinate
+        remove_y: Option<usize>, // Optional ring removal y coordinate
+        remove_x: Option<usize>, // Optional ring removal x coordinate
     },
+    /// Capture by jumping over opponent's marble(s)
     Capture {
-        start_y: usize,
-        start_x: usize,
-        direction: usize,
+        start_y: usize,    // Starting position y
+        start_x: usize,    // Starting position x
+        direction: usize,  // Direction index (0-5 for hexagonal grid)
     },
+    /// Pass turn (when no valid moves available)
     Pass,
 }
+
+// ============================================================================
+// MCTS NODE
+// ============================================================================
 
 /// MCTS Node with atomic counters and Mutex for thread-safe tree modification
 pub struct MCTSNode {
