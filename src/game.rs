@@ -286,17 +286,23 @@ pub fn get_jump_destination(start_y: usize, start_x: usize, cap_y: usize, cap_x:
 ///
 /// Note: Only applies when there are multiple regions (i.e., isolation has occurred).
 /// A single region covering the entire board is not considered "isolated".
+/// Returns list of captured marble positions as (marble_layer, y, x) tuples.
 fn apply_isolation_capture(
     spatial: &mut ArrayViewMut3<f32>,
     global: &mut ArrayViewMut1<f32>,
     config: &BoardConfig,
     current_player: usize,
-) {
-    let regions = get_regions(&spatial.view(), config);
+) -> Vec<(usize, usize, usize)> {
+    let mut captured_marbles = Vec::new();
+
+    // Create immutable view from mutable view to pass to get_regions
+    let spatial_view = spatial.view();
+    let regions = get_regions(&spatial_view, config);
 
     // Only apply isolation capture if there are multiple regions
-    if regions.len() < 2 {
-        return;
+    let num_regions = regions.len();
+    if num_regions < 2 {
+        return captured_marbles;
     }
 
     for region in regions {
@@ -312,7 +318,7 @@ fn apply_isolation_capture(
 
         // If all rings are occupied, capture them
         if all_occupied {
-            eprintln!("[ISO] Capturing fully-occupied region with {} rings", region.len());
+            eprintln!("[ISO] Capturing fully-occupied region with {} rings out of {} regions", region.len(), num_regions);
             for (y, x) in region {
                 if spatial[[config.ring_layer, y, x]] == 0.0 {
                     continue;
@@ -325,6 +331,9 @@ fn apply_isolation_capture(
                     let marble_idx = marble_layer - config.marble_layers.0;
                     let captured_idx = get_captured_index(config, current_player, marble_idx);
                     global[captured_idx] += 1.0;
+
+                    // Track captured position for animation
+                    captured_marbles.push((marble_layer, y, x));
                 }
 
                 // Remove marble and ring
@@ -335,6 +344,8 @@ fn apply_isolation_capture(
             }
         }
     }
+
+    captured_marbles
 }
 
 /// Get valid placement actions
@@ -515,6 +526,7 @@ pub fn get_valid_actions(
 }
 
 /// Apply a placement action
+/// Returns list of captured marble positions from isolation as (marble_layer, y, x) tuples
 pub fn apply_placement(
     spatial: &mut ArrayViewMut3<f32>,
     global: &mut ArrayViewMut1<f32>,
@@ -524,7 +536,7 @@ pub fn apply_placement(
     remove_y: Option<usize>,
     remove_x: Option<usize>,
     config: &BoardConfig,
-) {
+) -> Vec<(usize, usize, usize)> {
     let cur_player = global[config.cur_player] as usize;
 
     // Place marble
@@ -537,7 +549,7 @@ pub fn apply_placement(
     }
 
     // Check for fully-occupied isolated regions and capture them
-    apply_isolation_capture(spatial, global, config, cur_player);
+    let captured_marbles = apply_isolation_capture(spatial, global, config, cur_player);
 
     // Decrement marble count from supply or captured pool
     let supply_idx = marble_type; // 0, 1, 2
@@ -580,6 +592,8 @@ pub fn apply_placement(
     } else {
         config.player_1 as f32
     };
+
+    captured_marbles
 }
 
 /// Apply a capture action
@@ -681,7 +695,7 @@ pub fn check_for_isolation_capture(
     let mut global_out = global.to_owned();
     let mut captured_marbles = Vec::new();
 
-    let regions = get_regions(&spatial.view(), config);
+    let regions = get_regions(spatial, config);
     let cur_player = global[config.cur_player] as usize;
 
     // Only apply isolation capture if there are multiple regions

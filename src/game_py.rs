@@ -499,6 +499,7 @@ pub fn get_valid_actions<'py>(
 }
 
 /// Apply a placement action (mutates arrays in-place)
+/// Returns list of captured marble positions from isolation as (marble_layer, y, x) tuples
 #[pyfunction]
 pub fn apply_placement_action<'py>(
     spatial: &Bound<'py, PyArray3<f32>>,
@@ -509,8 +510,8 @@ pub fn apply_placement_action<'py>(
     remove_y: Option<usize>,
     remove_x: Option<usize>,
     config: &BoardConfig,
-) -> PyResult<()> {
-    unsafe {
+) -> PyResult<Vec<(usize, usize, usize)>> {
+    let captured_marbles = unsafe {
         let mut spatial_arr = spatial.as_array_mut();
         let mut global_arr = global.as_array_mut();
         game::apply_placement(
@@ -522,9 +523,9 @@ pub fn apply_placement_action<'py>(
             remove_y,
             remove_x,
             config,
-        );
-    }
-    Ok(())
+        )
+    };
+    Ok(captured_marbles)
 }
 
 /// Apply a capture action (mutates arrays in-place)

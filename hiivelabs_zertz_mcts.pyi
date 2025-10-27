@@ -1023,7 +1023,7 @@ def apply_placement_action(
     remove_y: Optional[int],
     remove_x: Optional[int],
     config: BoardConfig
-) -> None:
+) -> list[tuple[int, int, int]]:
     """
     Apply placement action to state IN-PLACE.
 
@@ -1036,6 +1036,10 @@ def apply_placement_action(
         remove_y: Ring to remove Y coordinate (or None)
         remove_x: Ring to remove X coordinate (or None)
         config: BoardConfig
+
+    Returns:
+        List of captured marble positions from isolation as (marble_layer, y, x) tuples,
+        or empty list if no isolation captures occurred
     """
     ...
 
