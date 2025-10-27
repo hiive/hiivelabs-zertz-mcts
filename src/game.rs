@@ -279,73 +279,60 @@ pub fn get_jump_destination(start_y: usize, start_x: usize, cap_y: usize, cap_x:
     (sy + dy, sx + dx)
 }
 
-/// Apply isolation captures when a placement removes a ring and disconnects regions.
+/// Capture any regions that are completely full of marbles.
+///
+/// Rule: After any action, check all regions. If a region has ALL rings occupied by marbles,
+/// capture all those marbles and remove all those rings.
+///
+/// Note: Only applies when there are multiple regions (i.e., isolation has occurred).
+/// A single region covering the entire board is not considered "isolated".
 fn apply_isolation_capture(
     spatial: &mut ArrayViewMut3<f32>,
     global: &mut ArrayViewMut1<f32>,
     config: &BoardConfig,
     current_player: usize,
-    anchor: (usize, usize),
 ) {
     let regions = get_regions(&spatial.view(), config);
-    if regions.len() <= 1 {
+
+    // Only apply isolation capture if there are multiple regions
+    if regions.len() < 2 {
         return;
     }
 
-    let mut main_idx = 0usize;
-    let mut main_size = regions[0].len();
-    let mut main_has_anchor = regions[0].contains(&anchor);
-    let mut main_min = regions[0].iter().cloned().min().unwrap_or(anchor);
-
-    for (idx, region) in regions.iter().enumerate().skip(1) {
-        let size = region.len();
-        let has_anchor = region.contains(&anchor);
-        let region_min = region.iter().cloned().min().unwrap_or(anchor);
-
-        let better = size > main_size
-            || (size == main_size && has_anchor && !main_has_anchor)
-            || (size == main_size && has_anchor == main_has_anchor && region_min < main_min);
-
-        if better {
-            main_idx = idx;
-            main_size = size;
-            main_has_anchor = has_anchor;
-            main_min = region_min;
-        }
-    }
-
-    for (idx, region) in regions.into_iter().enumerate() {
-        if idx == main_idx || region.is_empty() {
+    for region in regions {
+        if region.is_empty() {
             continue;
         }
 
+        // Check if ALL rings in this region are occupied by marbles
         let all_occupied = region.iter().all(|&(y, x)| {
             (config.marble_layers.0..config.marble_layers.1)
                 .any(|layer| spatial[[layer, y, x]] > 0.0)
         });
 
-        if !all_occupied {
-            // Leave frozen regions untouched (per official rules)
-            continue;
-        }
+        // If all rings are occupied, capture them
+        if all_occupied {
+            eprintln!("[ISO] Capturing fully-occupied region with {} rings", region.len());
+            for (y, x) in region {
+                if spatial[[config.ring_layer, y, x]] == 0.0 {
+                    continue;
+                }
 
-        for (y, x) in region {
-            if spatial[[config.ring_layer, y, x]] == 0.0 {
-                continue;
-            }
+                // Find and capture the marble
+                if let Some(marble_layer) = (config.marble_layers.0..config.marble_layers.1)
+                    .find(|&layer| spatial[[layer, y, x]] > 0.0)
+                {
+                    let marble_idx = marble_layer - config.marble_layers.0;
+                    let captured_idx = get_captured_index(config, current_player, marble_idx);
+                    global[captured_idx] += 1.0;
+                }
 
-            if let Some(marble_layer) = (config.marble_layers.0..config.marble_layers.1)
-                .find(|&layer| spatial[[layer, y, x]] > 0.0)
-            {
-                let marble_idx = marble_layer - config.marble_layers.0;
-                let captured_idx = get_captured_index(config, current_player, marble_idx);
-                global[captured_idx] += 1.0;
+                // Remove marble and ring
+                for layer in config.marble_layers.0..config.marble_layers.1 {
+                    spatial[[layer, y, x]] = 0.0;
+                }
+                spatial[[config.ring_layer, y, x]] = 0.0;
             }
-
-            for layer in config.marble_layers.0..config.marble_layers.1 {
-                spatial[[layer, y, x]] = 0.0;
-            }
-            spatial[[config.ring_layer, y, x]] = 0.0;
         }
     }
 }
@@ -538,18 +525,19 @@ pub fn apply_placement(
     remove_x: Option<usize>,
     config: &BoardConfig,
 ) {
+    let cur_player = global[config.cur_player] as usize;
+
     // Place marble
     let marble_layer = marble_type + 1; // 1=white, 2=gray, 3=black
     spatial[[marble_layer, dst_y, dst_x]] = 1.0;
 
     // Remove ring if specified
-    let cur_player = global[config.cur_player] as usize;
     if let (Some(ry), Some(rx)) = (remove_y, remove_x) {
         spatial[[config.ring_layer, ry, rx]] = 0.0;
-
-        // Apply isolation captures that may result from this removal
-        apply_isolation_capture(spatial, global, config, cur_player, (dst_y, dst_x));
     }
+
+    // Check for fully-occupied isolated regions and capture them
+    apply_isolation_capture(spatial, global, config, cur_player);
 
     // Decrement marble count from supply or captured pool
     let supply_idx = marble_type; // 0, 1, 2
@@ -694,54 +682,54 @@ pub fn check_for_isolation_capture(
     let mut captured_marbles = Vec::new();
 
     let regions = get_regions(&spatial.view(), config);
+    let cur_player = global[config.cur_player] as usize;
 
-    if regions.len() > 1 {
-        // Find the largest region (main region)
-        let main_region_idx = regions
-            .iter()
-            .enumerate()
-            .max_by_key(|(_, region)| region.len())
-            .map(|(idx, _)| idx)
-            .unwrap();
+    // Only apply isolation capture if there are multiple regions
+    if regions.len() < 2 {
+        return (spatial_out, global_out, captured_marbles);
+    }
 
-        let cur_player = global[config.cur_player] as usize;
+    // Check ALL regions, capture any that are fully occupied
+    for region in regions {
+        if region.is_empty() {
+            continue;
+        }
 
-        // Process each isolated region (not the main region)
-        for (region_idx, region) in regions.iter().enumerate() {
-            if region_idx == main_region_idx {
-                continue; // Skip main region
-            }
+        // Check if ALL rings in this region are occupied by marbles
+        let all_occupied = region.iter().all(|&(y, x)| {
+            (config.marble_layers.0..config.marble_layers.1)
+                .any(|layer| spatial[[layer, y, x]] > 0.0)
+        });
 
-            // Check if ALL rings in this isolated region are fully occupied
-            let all_occupied = region.iter().all(|&(y, x)| {
-                // Check if any marble layer has a marble at this position
-                (1..4).any(|layer| spatial[[layer, y, x]] > 0.0)
-            });
-
-            if all_occupied {
-                // Capture all marbles in this fully-occupied isolated region
-                for &(y, x) in region {
-                    // Find which marble type is at this position
-                    if let Some(marble_layer) = (1..4).find(|&layer| spatial_out[[layer, y, x]] > 0.0) {
-                        // Add to current player's captured count
-                        let marble_idx = marble_layer - 1; // Convert layer to index (0,1,2)
-                        let captured_idx = if cur_player == config.player_1 {
-                            config.p1_cap_w + marble_idx
-                        } else {
-                            config.p2_cap_w + marble_idx
-                        };
-                        global_out[captured_idx] += 1.0;
-
-                        // Remove marble from board
-                        spatial_out[[marble_layer, y, x]] = 0.0;
-
-                        // Remove ring from board
-                        spatial_out[[config.ring_layer, y, x]] = 0.0;
-
-                        // Add to captured list for return value
-                        captured_marbles.push((marble_layer, y, x));
-                    }
+        // If all rings are occupied, capture them
+        if all_occupied {
+            eprintln!("[ISO] Capturing fully-occupied region with {} rings", region.len());
+            for (y, x) in region {
+                if spatial_out[[config.ring_layer, y, x]] == 0.0 {
+                    continue;
                 }
+
+                // Find and capture the marble
+                if let Some(marble_layer) = (config.marble_layers.0..config.marble_layers.1)
+                    .find(|&layer| spatial_out[[layer, y, x]] > 0.0)
+                {
+                    let marble_idx = marble_layer - config.marble_layers.0;
+                    let captured_idx = if cur_player == config.player_1 {
+                        config.p1_cap_w + marble_idx
+                    } else {
+                        config.p2_cap_w + marble_idx
+                    };
+                    global_out[captured_idx] += 1.0;
+
+                    // Add to captured list for return value
+                    captured_marbles.push((marble_layer, y, x));
+                }
+
+                // Remove marble and ring
+                for layer in config.marble_layers.0..config.marble_layers.1 {
+                    spatial_out[[layer, y, x]] = 0.0;
+                }
+                spatial_out[[config.ring_layer, y, x]] = 0.0;
             }
         }
     }
@@ -980,13 +968,16 @@ mod tests {
         let config = create_test_config();
         let (mut spatial, mut global) = create_empty_state(&config);
 
-        // Setup
+        // Setup - add enough rings to avoid isolation capture
         spatial[[config.ring_layer, 3, 3]] = 1.0;
+        spatial[[config.ring_layer, 3, 4]] = 1.0;
+        spatial[[config.ring_layer, 4, 3]] = 1.0;
         spatial[[config.ring_layer, 4, 4]] = 1.0;
         global[config.supply_w] = 5.0;
         global[config.cur_player] = config.player_1 as f32;
 
-        // Apply placement
+        // Apply placement at (3,3), remove ring at (4,4)
+        // This won't trigger isolation since (3,3) is connected to (3,4) and (4,3)
         apply_placement(
             &mut spatial.view_mut(),
             &mut global.view_mut(),
@@ -1237,7 +1228,11 @@ mod tests {
         global[config.supply_w] = 5.0;
         global[config.cur_player] = config.player_1 as f32;
 
-        // Apply placement at D4 removing F2, which isolates G1
+        // Apply placement at D4 removing F2
+        // This creates TWO isolated single-ring regions:
+        // - D4 with the marble we just placed
+        // - G1 with the pre-existing marble
+        // Both regions are fully occupied, so BOTH get captured
         apply_placement(
             &mut spatial.view_mut(),
             &mut global.view_mut(),
@@ -1249,10 +1244,83 @@ mod tests {
             &config,
         );
 
-        // Isolation should capture the marble on G1
-        assert_eq!(global[config.p1_cap_w], 1.0);
+        // Both D4 and G1 should be captured (2 marbles total)
+        assert_eq!(global[config.p1_cap_w], 2.0);
+        assert_eq!(spatial[[1, d4.0, d4.1]], 0.0);
+        assert_eq!(spatial[[config.ring_layer, d4.0, d4.1]], 0.0);
         assert_eq!(spatial[[1, g1.0, g1.1]], 0.0);
         assert_eq!(spatial[[config.ring_layer, g1.0, g1.1]], 0.0);
+    }
+
+    #[test]
+    fn test_isolation_capture_all_fully_occupied_regions() {
+        /// This test verifies that ALL fully-occupied regions are captured,
+        /// regardless of their location on the board.
+
+        let config = create_test_config();
+        let (mut spatial, mut global) = create_empty_state(&config);
+
+        // Create scenario with THREE isolated single-ring regions, all fully occupied:
+        // Region A: D4 (will have the marble we just placed)
+        // Region B: G1 (with pre-existing marble)
+        // Region C: A1 (with pre-existing marble)
+        // All three regions are fully occupied, so all should be captured
+
+        // Coordinates
+        let d4 = (3, 3);   // Main board location (where we place)
+        let f2 = (5, 5);   // Ring to be removed
+        let g1 = (6, 5);   // Region B
+        let a1 = (6, 0);   // Region C
+
+        // Set up rings
+        spatial[[config.ring_layer, d4.0, d4.1]] = 1.0;
+        spatial[[config.ring_layer, f2.0, f2.1]] = 1.0;
+        spatial[[config.ring_layer, g1.0, g1.1]] = 1.0;
+        spatial[[config.ring_layer, a1.0, a1.1]] = 1.0;
+
+        // Place marbles on G1 and A1 (D4 will get a marble during placement)
+        spatial[[1, g1.0, g1.1]] = 1.0;  // white on G1
+        spatial[[1, a1.0, a1.1]] = 1.0;  // white on A1
+
+        // Remove neighbors to prepare isolation
+        spatial[[config.ring_layer, 6, 4]] = 0.0;  // F1 (neighbor of G1)
+        spatial[[config.ring_layer, 5, 6]] = 0.0;  // G2 (neighbor of G1)
+        spatial[[config.ring_layer, 5, 0]] = 0.0;  // A2 (neighbor of A1)
+        spatial[[config.ring_layer, 6, 1]] = 0.0;  // B1 (neighbor of A1)
+
+        // Set up game state
+        global[config.supply_w] = 5.0;
+        global[config.cur_player] = config.player_1 as f32;
+
+        // Place marble at D4, remove F2
+        // This creates THREE isolated single-ring regions:
+        // - D4 (just placed)
+        // - G1 (pre-existing)
+        // - A1 (pre-existing)
+        // ALL are fully occupied, so ALL get captured
+        apply_placement(
+            &mut spatial.view_mut(),
+            &mut global.view_mut(),
+            0,  // white marble
+            d4.0,
+            d4.1,
+            Some(f2.0),
+            Some(f2.1),
+            &config,
+        );
+
+        // Verify ALL three regions were captured
+        assert_eq!(spatial[[1, d4.0, d4.1]], 0.0, "D4 marble should be captured");
+        assert_eq!(spatial[[config.ring_layer, d4.0, d4.1]], 0.0, "D4 ring should be removed");
+
+        assert_eq!(spatial[[1, g1.0, g1.1]], 0.0, "G1 marble should be captured");
+        assert_eq!(spatial[[config.ring_layer, g1.0, g1.1]], 0.0, "G1 ring should be removed");
+
+        assert_eq!(spatial[[1, a1.0, a1.1]], 0.0, "A1 marble should be captured");
+        assert_eq!(spatial[[config.ring_layer, a1.0, a1.1]], 0.0, "A1 ring should be removed");
+
+        // Verify all 3 marbles were captured
+        assert_eq!(global[config.p1_cap_w], 3.0, "Should capture all 3 marbles");
     }
 
     #[test]

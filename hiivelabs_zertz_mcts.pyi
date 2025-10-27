@@ -18,7 +18,7 @@ class BoardState:
     def __init__(
         self,
         spatial: npt.NDArray[np.float32],
-        global_: npt.NDArray[np.float32],
+        global_state: npt.NDArray[np.float32],
         rings: int,
         *,
         t: int = 1,
@@ -29,7 +29,7 @@ class BoardState:
 
         Args:
             spatial: 3D array of shape (L, H, W) containing board layers
-            global_: 1D array containing supply and captured marble counts
+            global_state: 1D array containing supply and captured marble counts
             rings: Number of rings on the board (37, 48, or 61)
             t: Transposition table size parameter (default: 1)
             blitz: Use blitz mode rules (default: False)
@@ -143,6 +143,7 @@ class MCTSSearch:
         exploration_constant: Optional[float] = None,
         widening_constant: Optional[float] = None,
         fpu_reduction: Optional[float] = None,
+        rave_constant: Optional[float] = None,
         use_transposition_table: Optional[bool] = None,
         use_transposition_lookups: Optional[bool] = None
     ) -> None:
@@ -157,6 +158,13 @@ class MCTSSearch:
             fpu_reduction: First Play Urgency reduction parameter. When set, unvisited
                 nodes are estimated as parent_value - fpu_reduction instead of having
                 infinite urgency. Set to None to use standard UCB1 (default: None)
+            rave_constant: RAVE (Rapid Action Value Estimation) constant. When set,
+                enables RAVE-UCB scoring which combines UCB1 with "all-moves-as-first"
+                (AMAF) statistics. The constant k controls how quickly RAVE influence
+                decays: β = sqrt(k / (3N + k)) where N is node visits.
+                Recommended values: 300-3000 (lower = faster decay to UCB1, higher =
+                longer RAVE influence). Typically improves performance by 15-25%.
+                When None (default), standard UCB1 is used.
             use_transposition_table: Enable transposition table (default: True)
             use_transposition_lookups: Enable transposition lookups (default: True)
         """
@@ -195,8 +203,8 @@ class MCTSSearch:
 
     def search(
         self,
-        spatial: npt.NDArray[np.float32],
-        global_: npt.NDArray[np.float32],
+        spatial_state: npt.NDArray[np.float32],
+        global_state: npt.NDArray[np.float32],
         rings: int,
         iterations: int,
         *,
@@ -215,7 +223,7 @@ class MCTSSearch:
 
         Args:
             spatial: 3D array of shape (L, H, W) containing board layers
-            global_: 1D array containing supply and captured marble counts
+            global_state: 1D array containing supply and captured marble counts
             rings: Number of rings on the board (37, 48, or 61)
             iterations: Number of MCTS iterations to run
             t: Transposition table size parameter (default: 1)
@@ -243,8 +251,8 @@ class MCTSSearch:
 
     def search_parallel(
         self,
-        spatial: npt.NDArray[np.float32],
-        global_: npt.NDArray[np.float32],
+        spatial_state: npt.NDArray[np.float32],
+        global_state: npt.NDArray[np.float32],
         rings: int,
         iterations: int,
         *,
@@ -264,7 +272,7 @@ class MCTSSearch:
 
         Args:
             spatial: 3D array of shape (L, H, W) containing board layers
-            global_: 1D array containing supply and captured marble counts
+            global_state: 1D array containing supply and captured marble counts
             rings: Number of rings on the board (37, 48, or 61)
             iterations: Number of MCTS iterations to run
             t: Transposition table size parameter (default: 1)

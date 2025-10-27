@@ -36,7 +36,7 @@ use crate::board::BoardConfig;
 use crate::transposition::TranspositionEntry;
 use ndarray::{Array1, Array3};
 use std::sync::atomic::{AtomicI32, AtomicU32, Ordering};
-use std::sync::{Arc, Mutex, Weak};
+use std::sync::{Arc, RwLock, Weak};
 
 // ============================================================================
 // VIRTUAL LOSS CONSTANTS
@@ -98,12 +98,17 @@ pub struct MCTSNode {
     local_visits: AtomicU32,
     local_total_value: AtomicI32, // Scaled by 1000 for precision
 
+    // RAVE (Rapid Action Value Estimation) statistics
+    // Tracks "all-moves-as-first" (AMAF) - value when this action appears anywhere in playout
+    rave_visits: AtomicU32,
+    rave_total_value: AtomicI32, // Scaled by 1000 for precision
+
     // Debug-only: Track virtual loss count to catch mismatched add/remove
     #[cfg(debug_assertions)]
     pub(crate) virtual_loss_count: AtomicU32,
 
-    // Tree structure (Mutex allows thread-safe modification)
-    pub children: Mutex<Vec<(Action, Arc<MCTSNode>)>>,
+    // Tree structure (RwLock allows concurrent reads, exclusive writes)
+    pub children: RwLock<Vec<(Action, Arc<MCTSNode>)>>,
     pub parent: Option<Weak<MCTSNode>>, // Weak pointer to avoid cycles
 
     // Config
@@ -124,9 +129,11 @@ impl MCTSNode {
             shared_stats,
             local_visits: AtomicU32::new(0),
             local_total_value: AtomicI32::new(0),
+            rave_visits: AtomicU32::new(0),
+            rave_total_value: AtomicI32::new(0),
             #[cfg(debug_assertions)]
             virtual_loss_count: AtomicU32::new(0),
-            children: Mutex::new(Vec::new()),
+            children: RwLock::new(Vec::new()),
             parent: None,
             config,
         }
@@ -146,17 +153,19 @@ impl MCTSNode {
             shared_stats,
             local_visits: AtomicU32::new(0),
             local_total_value: AtomicI32::new(0),
+            rave_visits: AtomicU32::new(0),
+            rave_total_value: AtomicI32::new(0),
             #[cfg(debug_assertions)]
             virtual_loss_count: AtomicU32::new(0),
-            children: Mutex::new(Vec::new()),
+            children: RwLock::new(Vec::new()),
             parent: Some(Arc::downgrade(parent)),
             config,
         }
     }
 
-    /// Add a child to this node (thread-safe)
+    /// Add a child to this node (thread-safe, requires exclusive write lock)
     pub fn add_child(&self, action: Action, child: Arc<MCTSNode>) {
-        self.children.lock().unwrap().push((action, child));
+        self.children.write().unwrap().push((action, child));
     }
 
     /// Get visit count
@@ -216,6 +225,35 @@ impl MCTSNode {
             self.local_total_value
                 .fetch_add(scaled_value, Ordering::Relaxed);
         }
+    }
+
+    /// Get RAVE visit count
+    #[inline]
+    pub fn get_rave_visits(&self) -> u32 {
+        self.rave_visits.load(Ordering::Relaxed)
+    }
+
+    /// Get RAVE average value
+    #[inline]
+    pub fn get_rave_value(&self) -> f32 {
+        let visits = self.rave_visits.load(Ordering::Relaxed);
+        if visits == 0 {
+            0.0
+        } else {
+            let total = self.rave_total_value.load(Ordering::Relaxed);
+            (total as f32) / 1000.0 / (visits as f32)
+        }
+    }
+
+    /// Update RAVE statistics (thread-safe)
+    ///
+    /// Called when this action appears anywhere in the playout, not just as first move.
+    /// This provides "all-moves-as-first" (AMAF) statistics for better value estimates.
+    pub fn update_rave(&self, value: f32) {
+        self.rave_visits.fetch_add(1, Ordering::Relaxed);
+        let scaled_value = (value * 1000.0) as i32;
+        self.rave_total_value
+            .fetch_add(scaled_value, Ordering::Relaxed);
     }
 
     /// Add virtual loss to discourage thread collision
@@ -298,6 +336,73 @@ impl MCTSNode {
         exploitation + exploration
     }
 
+    /// RAVE-UCB scoring function (optional RAVE mixing)
+    ///
+    /// When rave_constant is None, falls back to standard UCB1.
+    /// When rave_constant is Some(k), mixes UCB1 with RAVE statistics using:
+    ///   β = sqrt(k / (3 * parent_visits + k))
+    ///   Q = (1-β) × Q_ucb + β × Q_rave
+    ///
+    /// Args:
+    ///     parent_visits: Parent node's visit count
+    ///     parent_value: Parent node's value (for FPU estimation)
+    ///     exploration_constant: UCB exploration constant (typically sqrt(2))
+    ///     rave_constant: Optional RAVE mixing constant (typically 300-3000)
+    ///     fpu_reduction: Optional FPU reduction factor for unvisited nodes
+    ///
+    /// Returns: Score for node selection (higher = more promising)
+    pub fn rave_ucb_score(
+        &self,
+        parent_visits: u32,
+        parent_value: f32,
+        exploration_constant: f32,
+        rave_constant: Option<f32>,
+        fpu_reduction: Option<f32>,
+    ) -> f32 {
+        // If RAVE is disabled, use standard UCB1
+        let rave_k = match rave_constant {
+            None => return self.ucb1_score(parent_visits, parent_value, exploration_constant, fpu_reduction),
+            Some(k) => k,
+        };
+
+        let visits = self.get_visits();
+
+        // Handle unvisited nodes (same FPU logic as UCB1)
+        if visits == 0 {
+            if let Some(reduction) = fpu_reduction {
+                let estimated_q = -(parent_value - reduction);
+                let exploration = exploration_constant * (parent_visits as f32).sqrt();
+                return estimated_q + exploration;
+            } else {
+                return f32::INFINITY;
+            }
+        }
+
+        // Compute mixing weight β = sqrt(rave_k / (3 * parent_visits + rave_k))
+        let beta = (rave_k / (3.0 * parent_visits as f32 + rave_k)).sqrt();
+
+        // Get UCB1 value (exploitation only, we'll add exploration once)
+        let q_ucb = -self.get_value(); // Negate to convert from child to parent perspective
+
+        // Get RAVE value (also from child's perspective, so negate)
+        let rave_visits = self.get_rave_visits();
+        let q_rave = if rave_visits > 0 {
+            -self.get_rave_value()
+        } else {
+            // No RAVE data yet, fall back to UCB value
+            q_ucb
+        };
+
+        // Mix UCB and RAVE: Q = (1-β) × Q_ucb + β × Q_rave
+        let mixed_q = (1.0 - beta) * q_ucb + beta * q_rave;
+
+        // Add exploration term (same as UCB1)
+        let exploration =
+            exploration_constant * ((parent_visits as f32).ln() / (visits as f32)).sqrt();
+
+        mixed_q + exploration
+    }
+
     pub fn has_shared_stats(&self) -> bool {
         self.shared_stats.is_some()
     }
@@ -308,7 +413,7 @@ impl MCTSNode {
     ///     widening_constant: If None, standard MCTS (expand all children).
     ///                       If Some(k), progressive widening with constant k.
     pub fn is_fully_expanded(&self, widening_constant: Option<f32>) -> bool {
-        let children_count = self.children.lock().unwrap().len();
+        let children_count = self.children.read().unwrap().len();
         let legal_actions = self.count_legal_actions();
 
         match widening_constant {

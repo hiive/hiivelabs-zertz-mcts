@@ -46,6 +46,7 @@ use pyo3::types::PyDict;
 use rand::rngs::StdRng;
 use rand::{Rng, RngCore, SeedableRng};
 use rayon::prelude::*;
+use std::cell::RefCell;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -69,6 +70,7 @@ pub struct MCTSSearch {
     exploration_constant: f32,
     widening_constant: Option<f32>,
     fpu_reduction: Option<f32>,
+    rave_constant: Option<f32>,
     use_transposition_table: bool,
     use_transposition_lookups: bool,
     transposition_table: Option<Arc<TranspositionTable>>,
@@ -78,6 +80,7 @@ pub struct MCTSSearch {
     last_child_stats: Mutex<Vec<(Action, f32)>>, // Store normalized visit scores per action
     last_board_width: usize, // Board width for coordinate conversion
     rng: Mutex<Option<StdRng>>,
+    seed: Mutex<Option<u64>>, // Base seed for deriving per-thread seeds
     #[cfg(feature = "metrics")]
     metrics: Arc<MCTSMetrics>,
 }
@@ -111,6 +114,7 @@ impl MCTSSearch {
         exploration_constant=None,
         widening_constant=None,
         fpu_reduction=None,
+        rave_constant=None,
         use_transposition_table=None,
         use_transposition_lookups=None
     ))]
@@ -118,6 +122,7 @@ impl MCTSSearch {
         exploration_constant: Option<f32>,
         widening_constant: Option<f32>,
         fpu_reduction: Option<f32>,
+        rave_constant: Option<f32>,
         use_transposition_table: Option<bool>,
         use_transposition_lookups: Option<bool>,
     ) -> Self {
@@ -125,6 +130,7 @@ impl MCTSSearch {
             exploration_constant: exploration_constant.unwrap_or(1.41),
             widening_constant,
             fpu_reduction,
+            rave_constant,
             use_transposition_table: use_transposition_table.unwrap_or(true),
             use_transposition_lookups: use_transposition_lookups.unwrap_or(true),
             transposition_table: None,
@@ -134,6 +140,7 @@ impl MCTSSearch {
             last_child_stats: Mutex::new(Vec::new()),
             last_board_width: 7,
             rng: Mutex::new(None),
+            seed: Mutex::new(None),
             #[cfg(feature = "metrics")]
             metrics: Arc::new(MCTSMetrics::new()),
         }
@@ -161,10 +168,13 @@ impl MCTSSearch {
     #[pyo3(signature = (seed=None))]
     pub fn set_seed(&mut self, seed: Option<u64>) {
         let mut guard = self.rng.lock().unwrap();
+        let mut seed_guard = self.seed.lock().unwrap();
         if let Some(value) = seed {
             *guard = Some(StdRng::seed_from_u64(value));
+            *seed_guard = Some(value);
         } else {
             *guard = None;
+            *seed_guard = None;
         }
     }
 
@@ -289,7 +299,7 @@ impl MCTSSearch {
 
         if verbose {
             let value = root.get_value();
-            let children_count = root.children.lock().unwrap().len();
+            let children_count = root.children.read().unwrap().len();
             eprintln!(
                 "MCTS: {} iterations in {:.2}s ({:.0} iter/s), value={:.3}, {} children",
                 iterations,
@@ -358,8 +368,8 @@ impl MCTSSearch {
             self.set_seed(Some(value));
         }
 
-        // Configure thread pool
-        rayon::ThreadPoolBuilder::new()
+        // Configure thread pool and capture it
+        let thread_pool = rayon::ThreadPoolBuilder::new()
             .num_threads(num_threads)
             .build()
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
@@ -410,15 +420,17 @@ impl MCTSSearch {
                 let batch_end = (batch_start + batch_size).min(iterations);
                 let batch_iterations = batch_end - batch_start;
 
-                // Run batch in parallel without GIL
-                (0..batch_iterations).into_par_iter().for_each(|_| {
-                    self.run_iteration(
-                        Arc::clone(&root),
-                        &search_options,
-                        max_depth,
-                        time_limit,
-                        start,
-                    );
+                // Run batch in parallel using the configured thread pool
+                thread_pool.install(|| {
+                    (0..batch_iterations).into_par_iter().for_each(|_| {
+                        self.run_iteration(
+                            Arc::clone(&root),
+                            &search_options,
+                            max_depth,
+                            time_limit,
+                            start,
+                        );
+                    });
                 });
 
                 completed = batch_end;
@@ -448,7 +460,7 @@ impl MCTSSearch {
 
         if verbose {
             let value = root.get_value();
-            let children_count = root.children.lock().unwrap().len();
+            let children_count = root.children.read().unwrap().len();
             eprintln!(
                 "MCTS (parallel): {} iterations in {:.2}s ({:.0} iter/s), value={:.3}, {} children",
                 iterations,
@@ -525,32 +537,54 @@ impl MCTSSearch {
 // INTERNAL IMPLEMENTATION
 // ============================================================================
 
+thread_local! {
+    static THREAD_RNG: RefCell<Option<StdRng>> = RefCell::new(None);
+}
+
 impl MCTSSearch {
-    /// Thread-safe RNG access using either seeded or system RNG
+    /// Thread-safe RNG access using thread-local storage
     ///
-    /// This function uses a closure pattern to abstract over the RNG type:
-    /// - If a seed was set, uses the seeded `StdRng` (deterministic)
+    /// This function uses thread-local storage to eliminate lock contention:
+    /// - Each thread initializes its own RNG once (locks ONCE per thread)
+    /// - If a seed was set, each thread derives a unique seed = base_seed + thread_num
     /// - Otherwise, uses system RNG (non-deterministic)
+    /// - Subsequent calls reuse the thread-local RNG (NO locks!)
     ///
     /// The generic `F` closure allows any operation on `RngCore` trait objects.
     fn with_rng<T, F>(&self, f: F) -> T
     where
         F: FnOnce(&mut dyn RngCore) -> T,
     {
-        let mut guard = self.rng.lock().unwrap();
-        if let Some(ref mut seeded) = guard.as_mut() {
-            // Use seeded RNG (deterministic)
-            f(seeded)
-        } else {
-            // Drop the lock and use system RNG (non-deterministic)
-            drop(guard);
-            let mut rng = rand::rng();
-            f(&mut rng)
-        }
+        THREAD_RNG.with(|cell| {
+            let mut rng_opt = cell.borrow_mut();
+
+            // Initialize RNG once per thread
+            if rng_opt.is_none() {
+                let base_seed = *self.seed.lock().unwrap();  // Lock ONCE per thread
+                let thread_rng = if let Some(seed_value) = base_seed {
+                    let thread_num = rayon::current_thread_index().unwrap_or(0) as u64;
+                    let thread_seed = seed_value.wrapping_add(thread_num);
+                    StdRng::seed_from_u64(thread_seed)
+                } else {
+                    StdRng::from_os_rng()
+                };
+
+                *rng_opt = Some(thread_rng);
+            }
+
+            // Reuse the thread-local RNG (NO LOCK!)
+            if let Some(ref mut rng) = *rng_opt {
+                f(rng)
+            } else {
+                // No seed set - use system RNG
+                let mut system_rng = rand::rng();
+                f(&mut system_rng)
+            }
+        })
     }
 
     fn capture_root_stats(&mut self, root: &MCTSNode) {
-        if let Ok(children) = root.children.lock() {
+        if let Ok(children) = root.children.read() {
             self.last_root_children = children.len();
             self.last_board_width = root.config.width;
 
@@ -599,11 +633,11 @@ impl MCTSSearch {
         let table_ref = options.table_ref();
         let node = self.select(Arc::clone(&root), table_ref, options.use_lookups());
 
-        // Simulation
-        let value = self.simulate(&node, max_depth, time_limit, start_time);
+        // Simulation (returns value and actions taken for RAVE/AMAF)
+        let (value, simulation_actions) = self.simulate(&node, max_depth, time_limit, start_time);
 
-        // Backpropagation (updates table when configured)
-        self.backpropagate(&node, value, table_ref);
+        // Backpropagation (updates node values and RAVE statistics)
+        self.backpropagate(&node, value, &simulation_actions, table_ref);
 
         true
     }
@@ -647,21 +681,23 @@ impl MCTSSearch {
             // Select best child using UCB1 (with optional FPU for unvisited nodes)
             let parent_visits = node.get_visits();
             let parent_value = node.get_value();
-            let children = node.children.lock().unwrap();
+            let children = node.children.read().unwrap();
 
-            // Find child with maximum UCB1 score
+            // Find child with maximum score (RAVE-UCB if enabled, else UCB1)
             // max_by uses partial ordering since f32 can be NaN
             let best_child = children.iter().max_by(|(_, child_a), (_, child_b)| {
-                let score_a = child_a.ucb1_score(
+                let score_a = child_a.rave_ucb_score(
                     parent_visits,
                     parent_value,
                     self.exploration_constant,
+                    self.rave_constant,
                     self.fpu_reduction
                 );
-                let score_b = child_b.ucb1_score(
+                let score_b = child_b.rave_ucb_score(
                     parent_visits,
                     parent_value,
                     self.exploration_constant,
+                    self.rave_constant,
                     self.fpu_reduction
                 );
                 // Handle NaN gracefully (treat equal if either is NaN)
@@ -754,7 +790,7 @@ impl MCTSSearch {
 
         // Filter out already tried actions
         let tried_actions: Vec<_> = {
-            let children = node.children.lock().unwrap();
+            let children = node.children.read().unwrap();
             children.iter().map(|(action, _)| action.clone()).collect()
         };
 
@@ -853,18 +889,22 @@ impl MCTSSearch {
 
     /// Simulation phase: play out random game to terminal state
     ///
-    /// Returns result from node's current player's perspective: +1 (win), -1 (loss), 0 (draw)
+    /// Returns (value, actions) where:
+    /// - value: result from node's current player's perspective: +1 (win), -1 (loss), 0 (draw)
+    /// - actions: sequence of actions taken during simulation (for RAVE/AMAF updates)
     fn simulate(
         &self,
         node: &MCTSNode,
         max_depth: Option<usize>,
         time_limit: Option<f32>,
         start_time: Instant,
-    ) -> f32 {
+    ) -> (f32, Vec<Action>) {
         let leaf_player = node.global[node.config.cur_player] as usize;
+        let mut simulation_actions = Vec::new();
 
         if self.is_terminal(node) {
-            return self.evaluate_terminal(&node.spatial, &node.global, &node.config, leaf_player);
+            let value = self.evaluate_terminal(&node.spatial, &node.global, &node.config, leaf_player);
+            return (value, simulation_actions);
         }
 
         let mut sim_spatial = node.spatial.clone();
@@ -875,26 +915,28 @@ impl MCTSSearch {
         for depth in 0..depth_limit {
             if let Some(limit) = time_limit {
                 if start_time.elapsed().as_secs_f32() >= limit {
-                    return self.evaluate_heuristic(
+                    let value = self.evaluate_heuristic(
                         &sim_spatial,
                         &sim_global,
                         &node.config,
                         leaf_player,
                     );
+                    return (value, simulation_actions);
                 }
             }
 
             if self.is_terminal_state(&sim_spatial, &sim_global, &node.config) {
-                return self.evaluate_terminal(
+                let value = self.evaluate_terminal(
                     &sim_spatial,
                     &sim_global,
                     &node.config,
                     leaf_player,
                 );
+                return (value, simulation_actions);
             }
 
             if consecutive_passes >= 2 {
-                return 0.0;
+                return (0.0, simulation_actions);
             }
 
             let (placement_mask, capture_mask) =
@@ -914,6 +956,10 @@ impl MCTSSearch {
             if !captures.is_empty() {
                 let idx = self.with_rng(|rng| rng.random_range(0..captures.len()));
                 let (direction, start_y, start_x) = captures[idx];
+
+                // Track action for RAVE
+                simulation_actions.push(Action::Capture { start_y, start_x, direction });
+
                 apply_capture(
                     &mut sim_spatial.view_mut(),
                     &mut sim_global.view_mut(),
@@ -948,6 +994,16 @@ impl MCTSSearch {
                 if !placements.is_empty() {
                     let idx = self.with_rng(|rng| rng.random_range(0..placements.len()));
                     let (marble_type, dst_y, dst_x, remove_y, remove_x) = placements[idx];
+
+                    // Track action for RAVE
+                    simulation_actions.push(Action::Placement {
+                        marble_type,
+                        dst_y,
+                        dst_x,
+                        remove_y,
+                        remove_x,
+                    });
+
                     apply_placement(
                         &mut sim_spatial.view_mut(),
                         &mut sim_global.view_mut(),
@@ -971,26 +1027,32 @@ impl MCTSSearch {
             }
 
             if depth + 1 >= depth_limit {
-                return self.evaluate_heuristic(
+                let value = self.evaluate_heuristic(
                     &sim_spatial,
                     &sim_global,
                     &node.config,
                     leaf_player,
                 );
+                return (value, simulation_actions);
             }
         }
 
-        self.evaluate_heuristic(&sim_spatial, &sim_global, &node.config, leaf_player)
+        let value = self.evaluate_heuristic(&sim_spatial, &sim_global, &node.config, leaf_player);
+        (value, simulation_actions)
     }
 
     /// Backpropagation phase: update statistics up the tree
     ///
     /// Values are flipped at each level since players alternate (zero-sum game).
     /// Removes virtual loss before adding real simulation value.
+    ///
+    /// RAVE/AMAF updates: For each node during backprop, we update RAVE stats
+    /// for sibling nodes whose actions appear in the simulation trajectory.
     fn backpropagate(
         &self,
         node: &Arc<MCTSNode>,
         mut value: f32,
+        simulation_actions: &[Action],
         table: Option<&Arc<TranspositionTable>>,
     ) {
         let mut current = Some(Arc::clone(node));
@@ -1001,6 +1063,28 @@ impl MCTSSearch {
 
             // Then add real simulation value
             current_node.update(value);
+
+            // RAVE/AMAF updates: Update RAVE stats for sibling actions that appeared in simulation
+            if self.rave_constant.is_some() {
+                if let Some(parent_ref) = current_node.parent.as_ref().and_then(|weak| weak.upgrade()) {
+                    // Lock parent's children to access siblings
+                    if let Ok(siblings) = parent_ref.children.read() {
+                        // For each sibling, check if its action matches any simulation action
+                        for (sibling_action, sibling_node) in siblings.iter() {
+                            // Check if this sibling's action appears in the simulation
+                            let action_in_simulation = simulation_actions.iter().any(|sim_action| {
+                                actions_equal(sibling_action, sim_action)
+                            });
+
+                            if action_in_simulation {
+                                // Update RAVE stats for this sibling
+                                // Note: value is from current player's perspective, which is correct for AMAF
+                                sibling_node.update_rave(value);
+                            }
+                        }
+                    }
+                }
+            }
 
             if let Some(table_ref) = table {
                 if !current_node.has_shared_stats() {
@@ -1109,7 +1193,7 @@ impl MCTSSearch {
         &self,
         root: &MCTSNode,
     ) -> PyResult<(String, Option<(usize, usize, usize)>)> {
-        let children = root.children.lock().unwrap();
+        let children = root.children.read().unwrap();
 
         if children.is_empty() {
             return Ok(("PASS".to_string(), None));
@@ -1216,7 +1300,7 @@ impl MCTSSearch {
         iteration: usize,
     ) -> PyResult<()> {
         // Capture current statistics
-        let children = root.children.lock().unwrap();
+        let children = root.children.read().unwrap();
 
         // Calculate normalized visit counts
         let max_visits = children.iter()
@@ -1451,7 +1535,7 @@ mod tests {
         global[config.cur_player] = config.player_1 as f32;
 
         // Create MCTS search instance and root node
-        let mcts = MCTSSearch::new(None, None, None, None, None);
+        let mcts = MCTSSearch::new(None, None, None, None, None, None);
         let root = Arc::new(MCTSNode::new(spatial, global, Arc::clone(&config), None));
 
         // Simulate the select→expand→backprop flow:
