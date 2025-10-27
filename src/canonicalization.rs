@@ -185,12 +185,12 @@ fn board_layers_range(config: &BoardConfig) -> Range<usize> {
 }
 
 fn canonical_key(
-    spatial: &ArrayView3<f32>,
+    spatial_state: &ArrayView3<f32>,
     layout: &[Vec<bool>],
     board_layers: Range<usize>,
 ) -> Vec<u8> {
     let start = board_layers.start;
-    let end = board_layers.end.min(spatial.shape()[0]);
+    let end = board_layers.end.min(spatial_state.shape()[0]);
     let layer_count = end.saturating_sub(start);
     let mut key = Vec::with_capacity(layer_count * layout.len() * layout.len());
 
@@ -198,7 +198,7 @@ fn canonical_key(
         for (y, row) in layout.iter().enumerate() {
             for (x, &valid) in row.iter().enumerate() {
                 if valid {
-                    let value = spatial[[layer, y, x]];
+                    let value = spatial_state[[layer, y, x]];
                     // Values are 0.0 or 1.0 for board layers; mirror Python's uint8 mask
                     key.push(if value > 0.5 { 1 } else { 0 });
                 } else {
@@ -211,7 +211,7 @@ fn canonical_key(
 }
 
 pub fn bounding_box(
-    spatial: &ArrayView3<f32>,
+    spatial_state: &ArrayView3<f32>,
     config: &BoardConfig,
 ) -> Option<(usize, usize, usize, usize)> {
     let mut min_y = config.width;
@@ -222,7 +222,7 @@ pub fn bounding_box(
 
     for y in 0..config.width {
         for x in 0..config.width {
-            if spatial[[config.ring_layer, y, x]] > 0.5 {
+            if spatial_state[[config.ring_layer, y, x]] > 0.5 {
                 found = true;
                 min_y = min_y.min(y);
                 max_y = max_y.max(y);
@@ -239,8 +239,8 @@ pub fn bounding_box(
     }
 }
 
-fn get_translations(spatial: &ArrayView3<f32>, config: &BoardConfig) -> Vec<(String, i32, i32)> {
-    if let Some((min_y, max_y, min_x, max_x)) = bounding_box(spatial, config) {
+fn get_translations(spatial_state: &ArrayView3<f32>, config: &BoardConfig) -> Vec<(String, i32, i32)> {
+    if let Some((min_y, max_y, min_x, max_x)) = bounding_box(spatial_state, config) {
         let mut translations = Vec::new();
         let width = config.width as i32;
         let min_y = min_y as i32;
@@ -259,24 +259,24 @@ fn get_translations(spatial: &ArrayView3<f32>, config: &BoardConfig) -> Vec<(Str
 }
 
 pub fn translate_state(
-    spatial: &ArrayView3<f32>,
+    spatial_state: &ArrayView3<f32>,
     config: &BoardConfig,
     layout: &[Vec<bool>],
     dy: i32,
     dx: i32,
 ) -> Option<Array3<f32>> {
     if dy == 0 && dx == 0 {
-        return Some(spatial.to_owned());
+        return Some(spatial_state.to_owned());
     }
 
     let width = config.width as i32;
-    let mut out = Array3::zeros(spatial.raw_dim());
+    let mut out = Array3::zeros(spatial_state.raw_dim());
     let board_range = board_layers_range(config);
     let board_start = board_range.start;
-    let board_end = board_range.end.min(spatial.shape()[0]);
+    let board_end = board_range.end.min(spatial_state.shape()[0]);
 
-    if board_end < spatial.shape()[0] {
-        let src = spatial.slice(s![board_end.., .., ..]);
+    if board_end < spatial_state.shape()[0] {
+        let src = spatial_state.slice(s![board_end.., .., ..]);
         let mut dst = out.slice_mut(s![board_end.., .., ..]);
         dst.assign(&src);
     }
@@ -286,7 +286,7 @@ pub fn translate_state(
             if !layout[y][x] {
                 continue;
             }
-            if spatial[[config.ring_layer, y, x]] <= 0.5 {
+            if spatial_state[[config.ring_layer, y, x]] <= 0.5 {
                 continue;
             }
 
@@ -300,7 +300,7 @@ pub fn translate_state(
             }
 
             for layer in board_start..board_end {
-                out[[layer, ny as usize, nx as usize]] = spatial[[layer, y, x]];
+                out[[layer, ny as usize, nx as usize]] = spatial_state[[layer, y, x]];
             }
         }
     }
@@ -309,7 +309,7 @@ pub fn translate_state(
 }
 
 fn transform_state_cached(
-    spatial: &ArrayView3<f32>,
+    spatial_state: &ArrayView3<f32>,
     config: &BoardConfig,
     rot60_k: i32,
     mirror: bool,
@@ -317,7 +317,7 @@ fn transform_state_cached(
     yx_to_ax: &HashMap<(i32, i32), (i32, i32)>,
     ax_to_yx: &HashMap<(i32, i32), (i32, i32)>,
 ) -> Array3<f32> {
-    let mut out = Array3::zeros(spatial.raw_dim());
+    let mut out = Array3::zeros(spatial_state.raw_dim());
 
     for y in 0..config.width as i32 {
         for x in 0..config.width as i32 {
@@ -327,9 +327,9 @@ fn transform_state_cached(
             if let Some((dest_y, dest_x)) =
                 transform_coordinate(y, x, rot60_k, mirror, mirror_first, yx_to_ax, ax_to_yx)
             {
-                for layer in 0..spatial.shape()[0] {
+                for layer in 0..spatial_state.shape()[0] {
                     out[[layer, dest_y as usize, dest_x as usize]] =
-                        spatial[[layer, y as usize, x as usize]];
+                        spatial_state[[layer, y as usize, x as usize]];
                 }
             }
         }
@@ -339,7 +339,7 @@ fn transform_state_cached(
 }
 
 pub fn canonicalize_internal(
-    spatial: &ArrayView3<f32>,
+    spatial_state: &ArrayView3<f32>,
     config: &BoardConfig,
     flags: TransformFlags,
 ) -> (Array3<f32>, String, String) {
@@ -347,13 +347,13 @@ pub fn canonicalize_internal(
     let (yx_to_ax, ax_to_yx) = build_axial_maps(config, &layout);
     let board_layers = board_layers_range(config);
 
-    let mut best_state = spatial.to_owned();
-    let mut best_key = canonical_key(spatial, &layout, board_layers.clone());
+    let mut best_state = spatial_state.to_owned();
+    let mut best_key = canonical_key(spatial_state, &layout, board_layers.clone());
     let mut best_name = "R0".to_string();
 
     // Get translations based on flags
     let translations = if flags.has_translation() {
-        get_translations(spatial, config)
+        get_translations(spatial_state, config)
     } else {
         vec![("T0,0".to_string(), 0, 0)]
     };
@@ -390,8 +390,8 @@ pub fn canonicalize_internal(
 
     for (trans_name, dy, dx) in translations.iter() {
         let translated_state = if *dy == 0 && *dx == 0 {
-            spatial.to_owned()
-        } else if let Some(state) = translate_state(spatial, config, &layout, *dy, *dx) {
+            spatial_state.to_owned()
+        } else if let Some(state) = translate_state(spatial_state, config, &layout, *dy, *dx) {
             state
         } else {
             continue;
@@ -466,30 +466,30 @@ pub fn inverse_transform_name(name: &str) -> String {
 }
 
 #[allow(dead_code)]
-pub fn canonicalize_spatial(
-    spatial: &ArrayView3<f32>,
+pub fn canonicalize_spatial_state(
+    spatial_state: &ArrayView3<f32>,
     config: &BoardConfig,
 ) -> (Array3<f32>, String, String) {
     // Only rotation and mirror (no translation) - finds canonical orientation
-    canonicalize_internal(spatial, config, TransformFlags::ROTATION_MIRROR)
+    canonicalize_internal(spatial_state, config, TransformFlags::ROTATION_MIRROR)
 }
 
 pub fn canonicalize_state(
-    spatial: &ArrayView3<f32>,
+    spatial_state: &ArrayView3<f32>,
     config: &BoardConfig,
 ) -> (Array3<f32>, String, String) {
     // Full canonicalization with rotation, mirror, and translation
-    canonicalize_internal(spatial, config, TransformFlags::ALL)
+    canonicalize_internal(spatial_state, config, TransformFlags::ALL)
 }
 
 /// Compute canonical key for lexicographic comparison
 ///
 /// Returns a byte vector representing the board state over valid positions only.
 /// This is used for finding the lexicographically minimal state representation.
-pub fn compute_canonical_key(spatial: &ArrayView3<f32>, config: &BoardConfig) -> Vec<u8> {
+pub fn compute_canonical_key(spatial_state: &ArrayView3<f32>, config: &BoardConfig) -> Vec<u8> {
     let layout = build_layout_mask(config);
     let board_layers = board_layers_range(config);
-    canonical_key(spatial, &layout, board_layers)
+    canonical_key(spatial_state, &layout, board_layers)
 }
 
 #[allow(dead_code)]
@@ -1157,7 +1157,7 @@ mod tests {
 }
 #[allow(dead_code)]
 pub fn transform_state(
-    spatial: &ArrayView3<f32>,
+    spatial_state: &ArrayView3<f32>,
     config: &BoardConfig,
     rot60_k: i32,
     mirror: bool,
@@ -1166,7 +1166,7 @@ pub fn transform_state(
     let layout = generate_standard_layout_mask(config.rings, config.width);
     let (yx_to_ax, ax_to_yx) = build_axial_maps(config, &layout);
     transform_state_cached(
-        spatial,
+        spatial_state,
         config,
         rot60_k,
         mirror,

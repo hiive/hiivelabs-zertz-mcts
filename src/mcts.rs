@@ -180,8 +180,8 @@ impl MCTSSearch {
 
     /// Run MCTS search (serial mode)
     #[pyo3(signature = (
-        spatial,
-        global,
+        spatial_state,
+        global_state,
         rings,
         iterations,
         t=1,
@@ -199,8 +199,8 @@ impl MCTSSearch {
     fn search(
         &mut self,
         py: Python<'_>,
-        spatial: PyReadonlyArray3<f32>,
-        global: PyReadonlyArray1<f32>,
+        spatial_state: PyReadonlyArray3<f32>,
+        global_state: PyReadonlyArray1<f32>,
         rings: usize,
         iterations: usize,
         t: Option<usize>,
@@ -238,20 +238,20 @@ impl MCTSSearch {
             .map_err(pyo3::exceptions::PyValueError::new_err)?,
         );
 
-        let spatial_arr = spatial.as_array().to_owned();
-        let global_arr = global.as_array().to_owned();
+        let spatial_state_arr = spatial_state.as_array().to_owned();
+        let global_state_arr = global_state.as_array().to_owned();
 
         let shared_entry = if search_options.use_lookups() {
             search_options.table_ref().map(|table_ref| {
-                table_ref.get_or_insert(&spatial_arr.view(), &global_arr.view(), config.as_ref())
+                table_ref.get_or_insert(&spatial_state_arr.view(), &global_state_arr.view(), config.as_ref())
             })
         } else {
             None
         };
 
         let root = Arc::new(MCTSNode::new(
-            spatial_arr,
-            global_arr,
+            spatial_state_arr,
+            global_state_arr,
             Arc::clone(&config),
             shared_entry,
         ));
@@ -317,8 +317,8 @@ impl MCTSSearch {
 
     /// Run MCTS search (parallel mode using rayon)
     #[pyo3(signature = (
-        spatial,
-        global,
+        spatial_state,
+        global_state,
         rings,
         iterations,
         t=1,
@@ -337,8 +337,8 @@ impl MCTSSearch {
     fn search_parallel(
         &mut self,
         py: Python<'_>,
-        spatial: PyReadonlyArray3<f32>,
-        global: PyReadonlyArray1<f32>,
+        spatial_state: PyReadonlyArray3<f32>,
+        global_state: PyReadonlyArray1<f32>,
         rings: usize,
         iterations: usize,
         t: Option<usize>,
@@ -383,20 +383,20 @@ impl MCTSSearch {
             .map_err(pyo3::exceptions::PyValueError::new_err)?,
         );
 
-        let spatial_arr = spatial.as_array().to_owned();
-        let global_arr = global.as_array().to_owned();
+        let spatial_state_arr = spatial_state.as_array().to_owned();
+        let global_state_arr = global_state.as_array().to_owned();
 
         let shared_entry = if search_options.use_lookups() {
             search_options.table_ref().map(|table_ref| {
-                table_ref.get_or_insert(&spatial_arr.view(), &global_arr.view(), config.as_ref())
+                table_ref.get_or_insert(&spatial_state_arr.view(), &global_state_arr.view(), config.as_ref())
             })
         } else {
             None
         };
 
         let root = Arc::new(MCTSNode::new(
-            spatial_arr,
-            global_arr,
+            spatial_state_arr,
+            global_state_arr,
             Arc::clone(&config),
             shared_entry,
         ));
@@ -727,7 +727,7 @@ impl MCTSSearch {
         use_lookups: bool,
     ) -> Arc<MCTSNode> {
         let (placement_mask, capture_mask) =
-            get_valid_actions(&node.spatial.view(), &node.global.view(), &node.config);
+            get_valid_actions(&node.spatial_state.view(), &node.global_state.view(), &node.config);
 
         // Get untried actions
         let mut untried_actions = Vec::new();
@@ -809,8 +809,8 @@ impl MCTSSearch {
         let action = untried_actions[action_idx].clone();
 
         // Apply action to create child state
-        let mut child_spatial = node.spatial.clone();
-        let mut child_global = node.global.clone();
+        let mut child_spatial_state = node.spatial_state.clone();
+        let mut child_global_state = node.global_state.clone();
 
         match &action {
             Action::Placement {
@@ -821,8 +821,8 @@ impl MCTSSearch {
                 remove_x,
             } => {
                 apply_placement(
-                    &mut child_spatial.view_mut(),
-                    &mut child_global.view_mut(),
+                    &mut child_spatial_state.view_mut(),
+                    &mut child_global_state.view_mut(),
                     *marble_type,
                     *dst_y,
                     *dst_x,
@@ -837,8 +837,8 @@ impl MCTSSearch {
                 direction,
             } => {
                 apply_capture(
-                    &mut child_spatial.view_mut(),
-                    &mut child_global.view_mut(),
+                    &mut child_spatial_state.view_mut(),
+                    &mut child_global_state.view_mut(),
                     *start_y,
                     *start_x,
                     *direction,
@@ -847,8 +847,8 @@ impl MCTSSearch {
             }
             Action::Pass => {
                 // Just switch player
-                let cur_player = child_global[node.config.cur_player] as usize;
-                child_global[node.config.cur_player] = if cur_player == node.config.player_1 {
+                let cur_player = child_global_state[node.config.cur_player] as usize;
+                child_global_state[node.config.cur_player] = if cur_player == node.config.player_1 {
                     node.config.player_2 as f32
                 } else {
                     node.config.player_1 as f32
@@ -860,8 +860,8 @@ impl MCTSSearch {
         let shared_entry = if use_lookups {
             table.map(|t| {
                 t.get_or_insert(
-                    &child_spatial.view(),
-                    &child_global.view(),
+                    &child_spatial_state.view(),
+                    &child_global_state.view(),
                     node.config.as_ref(),
                 )
             })
@@ -870,8 +870,8 @@ impl MCTSSearch {
         };
 
         let child = Arc::new(MCTSNode::new_child(
-            child_spatial,
-            child_global,
+            child_spatial_state,
+            child_global_state,
             Arc::clone(&node.config),
             &node,
             shared_entry,
@@ -899,16 +899,16 @@ impl MCTSSearch {
         time_limit: Option<f32>,
         start_time: Instant,
     ) -> (f32, Vec<Action>) {
-        let leaf_player = node.global[node.config.cur_player] as usize;
+        let leaf_player = node.global_state[node.config.cur_player] as usize;
         let mut simulation_actions = Vec::new();
 
         if self.is_terminal(node) {
-            let value = self.evaluate_terminal(&node.spatial, &node.global, &node.config, leaf_player);
+            let value = self.evaluate_terminal(&node.spatial_state, &node.global_state, &node.config, leaf_player);
             return (value, simulation_actions);
         }
 
-        let mut sim_spatial = node.spatial.clone();
-        let mut sim_global = node.global.clone();
+        let mut sim_spatial_state = node.spatial_state.clone();
+        let mut sim_global_state = node.global_state.clone();
 
         let mut consecutive_passes = 0usize;
         let depth_limit = max_depth.unwrap_or(usize::MAX);
@@ -916,8 +916,8 @@ impl MCTSSearch {
             if let Some(limit) = time_limit {
                 if start_time.elapsed().as_secs_f32() >= limit {
                     let value = self.evaluate_heuristic(
-                        &sim_spatial,
-                        &sim_global,
+                        &sim_spatial_state,
+                        &sim_global_state,
                         &node.config,
                         leaf_player,
                     );
@@ -925,10 +925,10 @@ impl MCTSSearch {
                 }
             }
 
-            if self.is_terminal_state(&sim_spatial, &sim_global, &node.config) {
+            if self.is_terminal_state(&sim_spatial_state, &sim_global_state, &node.config) {
                 let value = self.evaluate_terminal(
-                    &sim_spatial,
-                    &sim_global,
+                    &sim_spatial_state,
+                    &sim_global_state,
                     &node.config,
                     leaf_player,
                 );
@@ -940,7 +940,7 @@ impl MCTSSearch {
             }
 
             let (placement_mask, capture_mask) =
-                get_valid_actions(&sim_spatial.view(), &sim_global.view(), &node.config);
+                get_valid_actions(&sim_spatial_state.view(), &sim_global_state.view(), &node.config);
 
             let mut captures = Vec::new();
             for dir in 0..6 {
@@ -961,8 +961,8 @@ impl MCTSSearch {
                 simulation_actions.push(Action::Capture { start_y, start_x, direction });
 
                 apply_capture(
-                    &mut sim_spatial.view_mut(),
-                    &mut sim_global.view_mut(),
+                    &mut sim_spatial_state.view_mut(),
+                    &mut sim_global_state.view_mut(),
                     start_y,
                     start_x,
                     direction,
@@ -1005,8 +1005,8 @@ impl MCTSSearch {
                     });
 
                     apply_placement(
-                        &mut sim_spatial.view_mut(),
-                        &mut sim_global.view_mut(),
+                        &mut sim_spatial_state.view_mut(),
+                        &mut sim_global_state.view_mut(),
                         marble_type,
                         dst_y,
                         dst_x,
@@ -1017,8 +1017,8 @@ impl MCTSSearch {
                     consecutive_passes = 0;
                 } else {
                     consecutive_passes += 1;
-                    let cur_player = sim_global[node.config.cur_player] as usize;
-                    sim_global[node.config.cur_player] = if cur_player == node.config.player_1 {
+                    let cur_player = sim_global_state[node.config.cur_player] as usize;
+                    sim_global_state[node.config.cur_player] = if cur_player == node.config.player_1 {
                         node.config.player_2 as f32
                     } else {
                         node.config.player_1 as f32
@@ -1028,8 +1028,8 @@ impl MCTSSearch {
 
             if depth + 1 >= depth_limit {
                 let value = self.evaluate_heuristic(
-                    &sim_spatial,
-                    &sim_global,
+                    &sim_spatial_state,
+                    &sim_global_state,
                     &node.config,
                     leaf_player,
                 );
@@ -1037,7 +1037,7 @@ impl MCTSSearch {
             }
         }
 
-        let value = self.evaluate_heuristic(&sim_spatial, &sim_global, &node.config, leaf_player);
+        let value = self.evaluate_heuristic(&sim_spatial_state, &sim_global_state, &node.config, leaf_player);
         (value, simulation_actions)
     }
 
@@ -1089,8 +1089,8 @@ impl MCTSSearch {
             if let Some(table_ref) = table {
                 if !current_node.has_shared_stats() {
                     table_ref.store(
-                        &current_node.spatial.view(),
-                        &current_node.global.view(),
+                        &current_node.spatial_state.view(),
+                        &current_node.global_state.view(),
                         current_node.config.as_ref(),
                         current_node.get_visits(),
                         current_node.get_value(),
@@ -1105,18 +1105,18 @@ impl MCTSSearch {
 
     /// Check if node is terminal
     fn is_terminal(&self, node: &MCTSNode) -> bool {
-        self.is_terminal_state(&node.spatial, &node.global, &node.config)
+        self.is_terminal_state(&node.spatial_state, &node.global_state, &node.config)
     }
 
     /// Check if state is terminal (standalone version)
     fn is_terminal_state(
         &self,
-        spatial: &Array3<f32>,
-        global: &Array1<f32>,
+        spatial_state: &Array3<f32>,
+        global_state: &Array1<f32>,
         config: &BoardConfig,
     ) -> bool {
         // Delegate to game.rs function (single source of truth)
-        is_game_over(&spatial.view(), &global.view(), config)
+        is_game_over(&spatial_state.view(), &global_state.view(), config)
     }
 
     /// Evaluate terminal state from root player's perspective
@@ -1124,14 +1124,14 @@ impl MCTSSearch {
     /// Returns +1 if root_player won, -1 if lost, 0 if draw, -2 if both lose
     fn evaluate_terminal(
         &self,
-        spatial: &Array3<f32>,
-        global: &Array1<f32>,
+        spatial_state: &Array3<f32>,
+        global_state: &Array1<f32>,
         config: &BoardConfig,
         root_player: usize,
     ) -> f32 {
         // Delegate to game.rs function (single source of truth)
         // Returns: 1 (P1 wins), -1 (P2 wins), 0 (tie), -2 (both lose)
-        let outcome = get_game_outcome(&spatial.view(), &global.view(), config);
+        let outcome = get_game_outcome(&spatial_state.view(), &global_state.view(), config);
 
         // Convert from Player 1's perspective to root_player's perspective
         match outcome {
@@ -1162,8 +1162,8 @@ impl MCTSSearch {
     /// Uses weighted marble values: white=1, gray=2, black=3
     fn evaluate_heuristic(
         &self,
-        _spatial: &Array3<f32>,
-        global: &Array1<f32>,
+        _spatial_state: &Array3<f32>,
+        global_state: &Array1<f32>,
         config: &BoardConfig,
         root_player: usize,
     ) -> f32 {
@@ -1171,10 +1171,10 @@ impl MCTSSearch {
         let weights = [1.0, 2.0, 3.0]; // white, gray, black
 
         let p0_score: f32 = (0..3)
-            .map(|i| global[config.p1_cap_w + i] * weights[i])
+            .map(|i| global_state[config.p1_cap_w + i] * weights[i])
             .sum();
         let p1_score: f32 = (0..3)
-            .map(|i| global[config.p2_cap_w + i] * weights[i])
+            .map(|i| global_state[config.p2_cap_w + i] * weights[i])
             .sum();
 
         // Calculate advantage from root player's perspective
@@ -1245,7 +1245,7 @@ impl MCTSSearch {
     ) -> PyResult<()> {
         // Get valid actions for the root state
         let (placement_mask, _capture_mask) =
-            get_valid_actions(&root.spatial.view(), &root.global.view(), &root.config);
+            get_valid_actions(&root.spatial_state.view(), &root.global_state.view(), &root.config);
 
         // Extract unique placement and removal positions
         let width = root.config.width;
@@ -1518,25 +1518,25 @@ mod tests {
         let config = Arc::new(BoardConfig::standard(37, 1).unwrap());
 
         // Create a simple initial state with rings
-        let mut spatial = Array3::zeros((config.layers_per_timestep * config.t + 1, config.width, config.width));
-        let mut global = Array1::zeros(10);
+        let mut spatial_state = Array3::zeros((config.layers_per_timestep * config.t + 1, config.width, config.width));
+        let mut global_state = Array1::zeros(10);
 
         // Add some rings
         for y in 0..config.width {
             for x in 0..config.width {
-                spatial[[config.ring_layer, y, x]] = 1.0;
+                spatial_state[[config.ring_layer, y, x]] = 1.0;
             }
         }
 
         // Set supply
-        global[config.supply_w] = 5.0;
-        global[config.supply_g] = 8.0;
-        global[config.supply_b] = 7.0;
-        global[config.cur_player] = config.player_1 as f32;
+        global_state[config.supply_w] = 5.0;
+        global_state[config.supply_g] = 8.0;
+        global_state[config.supply_b] = 7.0;
+        global_state[config.cur_player] = config.player_1 as f32;
 
         // Create MCTS search instance and root node
         let mcts = MCTSSearch::new(None, None, None, None, None, None);
-        let root = Arc::new(MCTSNode::new(spatial, global, Arc::clone(&config), None));
+        let root = Arc::new(MCTSNode::new(spatial_state, global_state, Arc::clone(&config), None));
 
         // Simulate the select→expand→backprop flow:
         // 1. Add virtual loss to root (what select() does)

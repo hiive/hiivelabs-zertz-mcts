@@ -74,8 +74,8 @@ pub struct TranspositionEntry {
     total_value: AtomicI32, // Scaled by 1000 for precision (f32 → i32 for atomic ops)
 
     // Stored canonical state for collision detection
-    canonical_spatial: Arc<Array3<f32>>, // Canonical spatial state
-    canonical_global: Arc<Array1<f32>>,  // Canonical global state
+    canonical_spatial_state: Arc<Array3<f32>>, // Canonical spatial_state state
+    canonical_global_state: Arc<Array1<f32>>,  // Canonical global_state state
 
     // Debug-only: Track virtual loss count to catch mismatched add/remove
     #[cfg(debug_assertions)]
@@ -83,12 +83,12 @@ pub struct TranspositionEntry {
 }
 
 impl TranspositionEntry {
-    pub fn new(canonical_spatial: Array3<f32>, canonical_global: Array1<f32>) -> Self {
+    pub fn new(canonical_spatial_state: Array3<f32>, canonical_global_state: Array1<f32>) -> Self {
         Self {
             visits: AtomicU32::new(0),
             total_value: AtomicI32::new(0),
-            canonical_spatial: Arc::new(canonical_spatial),
-            canonical_global: Arc::new(canonical_global),
+            canonical_spatial_state: Arc::new(canonical_spatial_state),
+            canonical_global_state: Arc::new(canonical_global_state),
             #[cfg(debug_assertions)]
             virtual_loss_count: AtomicU32::new(0),
         }
@@ -97,11 +97,11 @@ impl TranspositionEntry {
     /// Check if this entry matches the given canonical state
     ///
     /// Used for collision detection in the hash chain.
-    /// Two states match if BOTH spatial and global arrays are identical.
-    pub fn matches(&self, spatial: &Array3<f32>, global: &ArrayView1<f32>) -> bool {
-        // Compare both spatial and global state for exact match
+    /// Two states match if BOTH spatial_state and global_state arrays are identical.
+    pub fn matches(&self, spatial_state: &Array3<f32>, global_state: &ArrayView1<f32>) -> bool {
+        // Compare both spatial_state and global_state state for exact match
         // Note: ndarray implements efficient element-wise equality
-        self.canonical_spatial.as_ref() == spatial && self.canonical_global.as_ref() == global
+        self.canonical_spatial_state.as_ref() == spatial_state && self.canonical_global_state.as_ref() == global_state
     }
 
     /// Get current visit count (thread-safe)
@@ -255,16 +255,16 @@ impl TranspositionTable {
     /// - Newly created entry (added to chain or new hash)
     pub fn get_or_insert(
         &self,
-        spatial: &ArrayView3<f32>,
-        global: &ArrayView1<f32>,
+        spatial_state: &ArrayView3<f32>,
+        global_state: &ArrayView1<f32>,
         config: &BoardConfig,
     ) -> Arc<TranspositionEntry> {
         // Step 1: Canonicalize (normalize to standard orientation)
-        let (canonical_spatial, _, _) = canonicalization::canonicalize_state(spatial, config);
+        let (canonical_spatial_state, _, _) = canonicalization::canonicalize_state(spatial_state, config);
 
         // Step 2: Hash the canonical state
         let hasher = self.hasher_for(config.width);
-        let hash = hasher.hash_state(&canonical_spatial.view(), global, config);
+        let hash = hasher.hash_state(&canonical_spatial_state.view(), global_state, config);
 
         // Step 3-6: DashMap entry API (lock-free for different hash buckets)
         match self.table.entry(hash) {
@@ -274,7 +274,7 @@ impl TranspositionTable {
 
                 // Linear search through chain (typically 1-2 entries)
                 for entry in chain.iter() {
-                    if entry.matches(&canonical_spatial, global) {
+                    if entry.matches(&canonical_spatial_state, global_state) {
                         // Found exact match - return it
                         return Arc::clone(entry);
                     }
@@ -286,8 +286,8 @@ impl TranspositionTable {
 
                 // Create new entry and append to chain
                 let new_entry = Arc::new(TranspositionEntry::new(
-                    canonical_spatial.to_owned(),
-                    global.to_owned(),
+                    canonical_spatial_state.to_owned(),
+                    global_state.to_owned(),
                 ));
                 chain.push(Arc::clone(&new_entry));
                 new_entry
@@ -295,8 +295,8 @@ impl TranspositionTable {
             Entry::Vacant(vacant) => {
                 // First time seeing this hash - create new chain with single entry
                 let entry = Arc::new(TranspositionEntry::new(
-                    canonical_spatial.to_owned(),
-                    global.to_owned(),
+                    canonical_spatial_state.to_owned(),
+                    global_state.to_owned(),
                 ));
                 vacant.insert(vec![Arc::clone(&entry)]);
                 entry
@@ -308,20 +308,20 @@ impl TranspositionTable {
     #[allow(dead_code)]
     pub fn lookup(
         &self,
-        spatial: &ArrayView3<f32>,
-        global: &ArrayView1<f32>,
+        spatial_state: &ArrayView3<f32>,
+        global_state: &ArrayView1<f32>,
         config: &BoardConfig,
     ) -> Option<Arc<TranspositionEntry>> {
-        let (canonical_spatial, _, _) = canonicalization::canonicalize_state(spatial, config);
+        let (canonical_spatial_state, _, _) = canonicalization::canonicalize_state(spatial_state, config);
         let hasher = self.hasher_for(config.width);
-        let hash = hasher.hash_state(&canonical_spatial.view(), global, config);
+        let hash = hasher.hash_state(&canonical_spatial_state.view(), global_state, config);
 
         // Search chain for exact match
         self.table.get(&hash).and_then(|chain_ref| {
             chain_ref
                 .value()
                 .iter()
-                .find(|entry| entry.matches(&canonical_spatial, global))
+                .find(|entry| entry.matches(&canonical_spatial_state, global_state))
                 .map(Arc::clone)
         })
     }
@@ -329,13 +329,13 @@ impl TranspositionTable {
     /// Store (overwrite) statistics for a canonical state.
     pub fn store(
         &self,
-        spatial: &ArrayView3<f32>,
-        global: &ArrayView1<f32>,
+        spatial_state: &ArrayView3<f32>,
+        global_state: &ArrayView1<f32>,
         config: &BoardConfig,
         visits: u32,
         average_value: f32,
     ) {
-        let entry = self.get_or_insert(spatial, global, config);
+        let entry = self.get_or_insert(spatial_state, global_state, config);
         entry.set_counts(visits, average_value);
     }
 
@@ -363,37 +363,37 @@ mod tests {
 
     fn empty_state(config: &BoardConfig) -> (Array3<f32>, Array1<f32>) {
         let layers = config.layers_per_timestep * config.t + 1;
-        let spatial = Array3::zeros((layers, config.width, config.width));
-        let global = Array1::zeros(10);
-        (spatial, global)
+        let spatial_state = Array3::zeros((layers, config.width, config.width));
+        let global_state = Array1::zeros(10);
+        (spatial_state, global_state)
     }
 
     fn board_with_rings(config: &BoardConfig) -> (Array3<f32>, Array1<f32>) {
-        let mut spatial = Array3::zeros((
+        let mut spatial_state = Array3::zeros((
             config.layers_per_timestep * config.t + 1,
             config.width,
             config.width,
         ));
-        let global = Array1::zeros(10);
+        let global_state = Array1::zeros(10);
         // Fill rings
         for y in 0..config.width {
             for x in 0..config.width {
-                spatial[[config.ring_layer, y, x]] = 1.0;
+                spatial_state[[config.ring_layer, y, x]] = 1.0;
             }
         }
-        (spatial, global)
+        (spatial_state, global_state)
     }
 
     #[test]
     fn shared_entry_is_reused() {
         let table = TranspositionTable::new();
         let config = BoardConfig::standard(37, 1).unwrap();
-        let (spatial, global) = empty_state(&config);
+        let (spatial_state, global_state) = empty_state(&config);
 
-        let entry1 = table.get_or_insert(&spatial.view(), &global.view(), &config);
+        let entry1 = table.get_or_insert(&spatial_state.view(), &global_state.view(), &config);
         entry1.add_sample(0.5);
 
-        let entry2 = table.get_or_insert(&spatial.view(), &global.view(), &config);
+        let entry2 = table.get_or_insert(&spatial_state.view(), &global_state.view(), &config);
         assert!(Arc::ptr_eq(&entry1, &entry2));
         assert_eq!(entry2.visits(), 1);
         assert!((entry2.average_value() - 0.5).abs() < 1e-3);
@@ -403,21 +403,21 @@ mod tests {
     fn different_states_get_different_entries() {
         let table = TranspositionTable::new();
         let config = BoardConfig::standard(37, 1).unwrap();
-        let (mut spatial1, mut global1) = board_with_rings(&config);
-        let (mut spatial2, mut global2) = board_with_rings(&config);
+        let (mut spatial_state1, mut global_state1) = board_with_rings(&config);
+        let (mut spatial_state2, mut global_state2) = board_with_rings(&config);
 
         // Create states that break symmetry differently
         // State 1: white marble at (3,2)
-        spatial1[[config.marble_layers.0, 3, 2]] = 1.0;
-        global1[config.cur_player] = 0.0;
+        spatial_state1[[config.marble_layers.0, 3, 2]] = 1.0;
+        global_state1[config.cur_player] = 0.0;
 
         // State 2: white marble at (3,2) AND gray marble at (2,4)
-        spatial2[[config.marble_layers.0, 3, 2]] = 1.0;
-        spatial2[[config.marble_layers.0 + 1, 2, 4]] = 1.0;
-        global2[config.cur_player] = 0.0;
+        spatial_state2[[config.marble_layers.0, 3, 2]] = 1.0;
+        spatial_state2[[config.marble_layers.0 + 1, 2, 4]] = 1.0;
+        global_state2[config.cur_player] = 0.0;
 
-        let entry1 = table.get_or_insert(&spatial1.view(), &global1.view(), &config);
-        let entry2 = table.get_or_insert(&spatial2.view(), &global2.view(), &config);
+        let entry1 = table.get_or_insert(&spatial_state1.view(), &global_state1.view(), &config);
+        let entry2 = table.get_or_insert(&spatial_state2.view(), &global_state2.view(), &config);
 
         // These should be different entries (different number of marbles)
         assert!(!Arc::ptr_eq(&entry1, &entry2));
@@ -431,17 +431,17 @@ mod tests {
         let config = BoardConfig::standard(37, 1).unwrap();
 
         // Create two different states with rings + marbles
-        let (mut spatial1, mut global1) = board_with_rings(&config);
-        let (mut spatial2, mut global2) = board_with_rings(&config);
+        let (mut spatial_state1, mut global_state1) = board_with_rings(&config);
+        let (mut spatial_state2, mut global_state2) = board_with_rings(&config);
 
         // State 1: 1 marble
-        spatial1[[config.marble_layers.0, 3, 2]] = 1.0;
-        global1[config.cur_player] = 0.0;
+        spatial_state1[[config.marble_layers.0, 3, 2]] = 1.0;
+        global_state1[config.cur_player] = 0.0;
 
         // State 2: 2 marbles (different configuration)
-        spatial2[[config.marble_layers.0, 3, 2]] = 1.0;
-        spatial2[[config.marble_layers.0 + 1, 2, 4]] = 1.0;
-        global2[config.cur_player] = 0.0;
+        spatial_state2[[config.marble_layers.0, 3, 2]] = 1.0;
+        spatial_state2[[config.marble_layers.0 + 1, 2, 4]] = 1.0;
+        global_state2[config.cur_player] = 0.0;
 
         // Pre-register a fake hasher that always returns hash=42
         let fake_hasher = Arc::new(ZobristHasher::new(config.width, Some(999)));
@@ -452,8 +452,8 @@ mod tests {
             .insert(config.width, fake_hasher.clone());
 
         // Manually insert states with forced collision (same hash, different states)
-        let (canonical1, _, _) = canonicalization::canonicalize_state(&spatial1.view(), &config);
-        let (canonical2, _, _) = canonicalization::canonicalize_state(&spatial2.view(), &config);
+        let (canonical1, _, _) = canonicalization::canonicalize_state(&spatial_state1.view(), &config);
+        let (canonical2, _, _) = canonicalization::canonicalize_state(&spatial_state2.view(), &config);
 
         // Force both states to use the same hash by directly manipulating the table
         let forced_hash = 42u64;
@@ -461,7 +461,7 @@ mod tests {
         // Insert first entry
         let entry1 = Arc::new(TranspositionEntry::new(
             canonical1.to_owned(),
-            global1.clone(),
+            global_state1.clone(),
         ));
         table.table.insert(forced_hash, vec![Arc::clone(&entry1)]);
         entry1.add_sample(0.5);
@@ -469,7 +469,7 @@ mod tests {
         // Now insert second entry with same hash but different state (this will trigger collision)
         let entry2 = Arc::new(TranspositionEntry::new(
             canonical2.to_owned(),
-            global2.clone(),
+            global_state2.clone(),
         ));
         let mut chain = table.table.get_mut(&forced_hash).unwrap();
         table.collisions.fetch_add(1, Ordering::Relaxed);
@@ -494,9 +494,9 @@ mod tests {
     fn lookup_returns_none_for_missing_state() {
         let table = TranspositionTable::new();
         let config = BoardConfig::standard(37, 1).unwrap();
-        let (spatial, global) = empty_state(&config);
+        let (spatial_state, global_state) = empty_state(&config);
 
-        let result = table.lookup(&spatial.view(), &global.view(), &config);
+        let result = table.lookup(&spatial_state.view(), &global_state.view(), &config);
         assert!(result.is_none());
     }
 
@@ -504,12 +504,12 @@ mod tests {
     fn lookup_returns_existing_entry() {
         let table = TranspositionTable::new();
         let config = BoardConfig::standard(37, 1).unwrap();
-        let (spatial, global) = empty_state(&config);
+        let (spatial_state, global_state) = empty_state(&config);
 
-        let entry1 = table.get_or_insert(&spatial.view(), &global.view(), &config);
+        let entry1 = table.get_or_insert(&spatial_state.view(), &global_state.view(), &config);
         entry1.add_sample(0.75);
 
-        let entry2 = table.lookup(&spatial.view(), &global.view(), &config);
+        let entry2 = table.lookup(&spatial_state.view(), &global_state.view(), &config);
         assert!(entry2.is_some());
         let entry2 = entry2.unwrap();
         assert!(Arc::ptr_eq(&entry1, &entry2));
@@ -524,39 +524,39 @@ mod tests {
         let table = TranspositionTable::new();
         let config = BoardConfig::standard(37, 1).unwrap();
 
-        let (mut spatial1, mut global1) = board_with_rings(&config);
-        let (mut spatial2, mut global2) = board_with_rings(&config);
-        let (mut spatial3, mut global3) = board_with_rings(&config);
+        let (mut spatial_state1, mut global_state1) = board_with_rings(&config);
+        let (mut spatial_state2, mut global_state2) = board_with_rings(&config);
+        let (mut spatial_state3, mut global_state3) = board_with_rings(&config);
 
         // Create three distinct states with different marble placements
         // State 1: 1 white marble
-        spatial1[[config.marble_layers.0, 3, 2]] = 1.0;
-        global1[config.cur_player] = 0.0;
+        spatial_state1[[config.marble_layers.0, 3, 2]] = 1.0;
+        global_state1[config.cur_player] = 0.0;
 
         // State 2: 2 marbles (white + gray)
-        spatial2[[config.marble_layers.0, 3, 2]] = 1.0;
-        spatial2[[config.marble_layers.0 + 1, 2, 4]] = 1.0;
-        global2[config.cur_player] = 0.0;
+        spatial_state2[[config.marble_layers.0, 3, 2]] = 1.0;
+        spatial_state2[[config.marble_layers.0 + 1, 2, 4]] = 1.0;
+        global_state2[config.cur_player] = 0.0;
 
         // State 3: 3 marbles (white + gray + black)
-        spatial3[[config.marble_layers.0, 3, 2]] = 1.0;
-        spatial3[[config.marble_layers.0 + 1, 2, 4]] = 1.0;
-        spatial3[[config.marble_layers.0 + 2, 4, 3]] = 1.0;
-        global3[config.cur_player] = 0.0;
+        spatial_state3[[config.marble_layers.0, 3, 2]] = 1.0;
+        spatial_state3[[config.marble_layers.0 + 1, 2, 4]] = 1.0;
+        spatial_state3[[config.marble_layers.0 + 2, 4, 3]] = 1.0;
+        global_state3[config.cur_player] = 0.0;
 
-        let entry1 = table.get_or_insert(&spatial1.view(), &global1.view(), &config);
+        let entry1 = table.get_or_insert(&spatial_state1.view(), &global_state1.view(), &config);
         entry1.add_sample(0.1);
 
-        let entry2 = table.get_or_insert(&spatial2.view(), &global2.view(), &config);
+        let entry2 = table.get_or_insert(&spatial_state2.view(), &global_state2.view(), &config);
         entry2.add_sample(0.2);
 
-        let entry3 = table.get_or_insert(&spatial3.view(), &global3.view(), &config);
+        let entry3 = table.get_or_insert(&spatial_state3.view(), &global_state3.view(), &config);
         entry3.add_sample(0.3);
 
         // Retrieve them again and verify they're the same entries
-        let retrieved1 = table.get_or_insert(&spatial1.view(), &global1.view(), &config);
-        let retrieved2 = table.get_or_insert(&spatial2.view(), &global2.view(), &config);
-        let retrieved3 = table.get_or_insert(&spatial3.view(), &global3.view(), &config);
+        let retrieved1 = table.get_or_insert(&spatial_state1.view(), &global_state1.view(), &config);
+        let retrieved2 = table.get_or_insert(&spatial_state2.view(), &global_state2.view(), &config);
+        let retrieved3 = table.get_or_insert(&spatial_state3.view(), &global_state3.view(), &config);
 
         assert!(Arc::ptr_eq(&entry1, &retrieved1));
         assert!(Arc::ptr_eq(&entry2, &retrieved2));

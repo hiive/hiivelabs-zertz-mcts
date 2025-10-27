@@ -89,8 +89,8 @@ pub enum Action {
 /// MCTS Node with atomic counters and Mutex for thread-safe tree modification
 pub struct MCTSNode {
     // State representation
-    pub spatial: Array3<f32>,
-    pub global: Array1<f32>,
+    pub spatial_state: Array3<f32>,
+    pub global_state: Array1<f32>,
 
     // Shared statistics (optional)
     shared_stats: Option<Arc<TranspositionEntry>>,
@@ -118,14 +118,14 @@ pub struct MCTSNode {
 impl MCTSNode {
     /// Create a new MCTS node
     pub fn new(
-        spatial: Array3<f32>,
-        global: Array1<f32>,
+        spatial_state: Array3<f32>,
+        global_state: Array1<f32>,
         config: Arc<BoardConfig>,
         shared_stats: Option<Arc<TranspositionEntry>>,
     ) -> Self {
         MCTSNode {
-            spatial,
-            global,
+            spatial_state,
+            global_state,
             shared_stats,
             local_visits: AtomicU32::new(0),
             local_total_value: AtomicI32::new(0),
@@ -141,15 +141,15 @@ impl MCTSNode {
 
     /// Create a child node with parent pointer
     pub fn new_child(
-        spatial: Array3<f32>,
-        global: Array1<f32>,
+        spatial_state: Array3<f32>,
+        global_state: Array1<f32>,
         config: Arc<BoardConfig>,
         parent: &Arc<MCTSNode>,
         shared_stats: Option<Arc<TranspositionEntry>>,
     ) -> Self {
         MCTSNode {
-            spatial,
-            global,
+            spatial_state,
+            global_state,
             shared_stats,
             local_visits: AtomicU32::new(0),
             local_total_value: AtomicI32::new(0),
@@ -436,7 +436,7 @@ impl MCTSNode {
         use crate::game::get_valid_actions;
 
         let (placement_mask, capture_mask) =
-            get_valid_actions(&self.spatial.view(), &self.global.view(), &self.config);
+            get_valid_actions(&self.spatial_state.view(), &self.global_state.view(), &self.config);
 
         let placement_count = placement_mask.iter().filter(|&&x| x > 0.0).count();
         let capture_count = capture_mask.iter().filter(|&&x| x > 0.0).count();
@@ -459,21 +459,21 @@ mod tests {
 
     fn empty_state(config: &BoardConfig) -> (Array3<f32>, Array1<f32>) {
         let layers = config.layers_per_timestep * config.t + 1;
-        let spatial = Array3::zeros((layers, config.width, config.width));
-        let global = Array1::zeros(10);
-        (spatial, global)
+        let spatial_state = Array3::zeros((layers, config.width, config.width));
+        let global_state = Array1::zeros(10);
+        (spatial_state, global_state)
     }
 
     #[test]
     fn node_updates_shared_entry() {
         let config = Arc::new(BoardConfig::standard(37, 1).unwrap());
-        let (spatial, global) = empty_state(&config);
+        let (spatial_state, global_state) = empty_state(&config);
         let table = TranspositionTable::new();
-        let shared = table.get_or_insert(&spatial.view(), &global.view(), config.as_ref());
+        let shared = table.get_or_insert(&spatial_state.view(), &global_state.view(), config.as_ref());
 
         let node = MCTSNode::new(
-            spatial,
-            global,
+            spatial_state,
+            global_state,
             Arc::clone(&config),
             Some(Arc::clone(&shared)),
         );
@@ -487,8 +487,8 @@ mod tests {
     #[test]
     fn node_without_shared_entry_uses_local_stats() {
         let config = Arc::new(BoardConfig::standard(37, 1).unwrap());
-        let (spatial, global) = empty_state(&config);
-        let node = MCTSNode::new(spatial, global, Arc::clone(&config), None);
+        let (spatial_state, global_state) = empty_state(&config);
+        let node = MCTSNode::new(spatial_state, global_state, Arc::clone(&config), None);
 
         node.update(-1.0);
 
@@ -497,49 +497,49 @@ mod tests {
     }
 
     fn canonical_variant_state(config: &BoardConfig) -> (Array3<f32>, Array1<f32>) {
-        let mut spatial = Array3::zeros((
+        let mut spatial_state = Array3::zeros((
             config.layers_per_timestep * config.t + 1,
             config.width,
             config.width,
         ));
-        let mut global = Array1::zeros(10);
+        let mut global_state = Array1::zeros(10);
         // fill rings
         for y in 0..config.width {
             for x in 0..config.width {
-                spatial[[config.ring_layer, y, x]] = 1.0;
+                spatial_state[[config.ring_layer, y, x]] = 1.0;
             }
         }
         // place a couple of marbles to break symmetry
-        spatial[[config.marble_layers.0, 3, 2]] = 1.0;
-        spatial[[config.marble_layers.0 + 1, 2, 4]] = 1.0;
-        global[config.cur_player] = 0.0;
-        (spatial, global)
+        spatial_state[[config.marble_layers.0, 3, 2]] = 1.0;
+        spatial_state[[config.marble_layers.0 + 1, 2, 4]] = 1.0;
+        global_state[config.cur_player] = 0.0;
+        (spatial_state, global_state)
     }
 
     #[test]
     fn canonical_symmetric_nodes_share_stats() {
         let config = Arc::new(BoardConfig::standard(37, 1).unwrap());
-        let (spatial, global) = canonical_variant_state(&config);
+        let (spatial_state, global_state) = canonical_variant_state(&config);
 
         // Prepare table and canonical entry
         let table = TranspositionTable::new();
-        let entry = table.get_or_insert(&spatial.view(), &global.view(), config.as_ref());
+        let entry = table.get_or_insert(&spatial_state.view(), &global_state.view(), config.as_ref());
 
         let node_canonical = Arc::new(MCTSNode::new(
-            spatial.clone(),
-            global.clone(),
+            spatial_state.clone(),
+            global_state.clone(),
             Arc::clone(&config),
             Some(Arc::clone(&entry)),
         ));
         node_canonical.update(0.75);
 
-        // Rotate spatial state by 60 degrees (same canonical class)
+        // Rotate spatial_state state by 60 degrees (same canonical class)
         let rotated =
-            crate::canonicalization::transform_state(&spatial.view(), &config, 1, false, false);
-        let rotated_entry = table.get_or_insert(&rotated.view(), &global.view(), config.as_ref());
+            crate::canonicalization::transform_state(&spatial_state.view(), &config, 1, false, false);
+        let rotated_entry = table.get_or_insert(&rotated.view(), &global_state.view(), config.as_ref());
         let node_rotated = Arc::new(MCTSNode::new(
             rotated.to_owned(),
-            global.clone(),
+            global_state.clone(),
             Arc::clone(&config),
             Some(Arc::clone(&rotated_entry)),
         ));
@@ -560,8 +560,8 @@ mod tests {
     #[test]
     fn virtual_loss_adds_and_removes_correctly() {
         let config = Arc::new(BoardConfig::standard(37, 1).unwrap());
-        let (spatial, global) = empty_state(&config);
-        let node = MCTSNode::new(spatial, global, Arc::clone(&config), None);
+        let (spatial_state, global_state) = empty_state(&config);
+        let node = MCTSNode::new(spatial_state, global_state, Arc::clone(&config), None);
 
         // Initial state: 0 visits, 0 value
         assert_eq!(node.get_visits(), 0);
@@ -581,8 +581,8 @@ mod tests {
     #[test]
     fn virtual_loss_with_real_updates() {
         let config = Arc::new(BoardConfig::standard(37, 1).unwrap());
-        let (spatial, global) = empty_state(&config);
-        let node = MCTSNode::new(spatial, global, Arc::clone(&config), None);
+        let (spatial_state, global_state) = empty_state(&config);
+        let node = MCTSNode::new(spatial_state, global_state, Arc::clone(&config), None);
 
         // Add virtual loss
         node.add_virtual_loss();
@@ -601,13 +601,13 @@ mod tests {
     #[test]
     fn virtual_loss_with_shared_stats() {
         let config = Arc::new(BoardConfig::standard(37, 1).unwrap());
-        let (spatial, global) = empty_state(&config);
+        let (spatial_state, global_state) = empty_state(&config);
         let table = TranspositionTable::new();
-        let shared = table.get_or_insert(&spatial.view(), &global.view(), config.as_ref());
+        let shared = table.get_or_insert(&spatial_state.view(), &global_state.view(), config.as_ref());
 
         let node = MCTSNode::new(
-            spatial,
-            global,
+            spatial_state,
+            global_state,
             Arc::clone(&config),
             Some(Arc::clone(&shared)),
         );
@@ -626,8 +626,8 @@ mod tests {
     #[test]
     fn fpu_unvisited_node_with_reduction() {
         let config = Arc::new(BoardConfig::standard(37, 1).unwrap());
-        let (spatial, global) = empty_state(&config);
-        let node = MCTSNode::new(spatial, global, Arc::clone(&config), None);
+        let (spatial_state, global_state) = empty_state(&config);
+        let node = MCTSNode::new(spatial_state, global_state, Arc::clone(&config), None);
 
         // Unvisited node with FPU reduction = 0.2
         let parent_visits = 10;
@@ -651,8 +651,8 @@ mod tests {
     #[test]
     fn fpu_unvisited_node_without_reduction() {
         let config = Arc::new(BoardConfig::standard(37, 1).unwrap());
-        let (spatial, global) = empty_state(&config);
-        let node = MCTSNode::new(spatial, global, Arc::clone(&config), None);
+        let (spatial_state, global_state) = empty_state(&config);
+        let node = MCTSNode::new(spatial_state, global_state, Arc::clone(&config), None);
 
         // Unvisited node with no FPU (standard UCB1)
         let parent_visits = 10;
@@ -669,8 +669,8 @@ mod tests {
     #[test]
     fn fpu_visited_node_ignores_fpu() {
         let config = Arc::new(BoardConfig::standard(37, 1).unwrap());
-        let (spatial, global) = empty_state(&config);
-        let node = MCTSNode::new(spatial, global, Arc::clone(&config), None);
+        let (spatial_state, global_state) = empty_state(&config);
+        let node = MCTSNode::new(spatial_state, global_state, Arc::clone(&config), None);
 
         // Visit the node
         node.update(0.6);
@@ -699,8 +699,8 @@ mod tests {
     #[test]
     fn fpu_negative_parent_value() {
         let config = Arc::new(BoardConfig::standard(37, 1).unwrap());
-        let (spatial, global) = empty_state(&config);
-        let node = MCTSNode::new(spatial, global, Arc::clone(&config), None);
+        let (spatial_state, global_state) = empty_state(&config);
+        let node = MCTSNode::new(spatial_state, global_state, Arc::clone(&config), None);
 
         // Parent has negative value (losing position from parent's perspective)
         let parent_visits = 10;

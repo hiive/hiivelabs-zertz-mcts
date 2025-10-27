@@ -183,7 +183,7 @@ impl ZobristHasher {
         ]
     }
 
-    /// Hash the spatial state (rings and marbles on board)
+    /// Hash the spatial_state state (rings and marbles on board)
     ///
     /// **Algorithm**:
     /// 1. Start with hash = 0
@@ -192,13 +192,13 @@ impl ZobristHasher {
     ///
     /// **Threshold 0.5**: Arrays use f32 (0.0 or 1.0), we check > 0.5 to handle
     /// floating point imprecision.
-    fn hash_spatial(&self, spatial: &ArrayView3<f32>, config: &BoardConfig) -> u64 {
+    fn hash_spatial_state(&self, spatial_state: &ArrayView3<f32>, config: &BoardConfig) -> u64 {
         let mut h = 0u64;
 
         // Hash rings: XOR random value for each ring position
         for y in 0..self.width {
             for x in 0..self.width {
-                if spatial[[config.ring_layer, y, x]] > 0.5 {
+                if spatial_state[[config.ring_layer, y, x]] > 0.5 {
                     h ^= self.ring[y][x];
                 }
             }
@@ -209,7 +209,7 @@ impl ZobristHasher {
         for (table, layer_idx) in self.marble.iter().zip(marble_layers.iter()) {
             for y in 0..self.width {
                 for x in 0..self.width {
-                    if spatial[[*layer_idx, y, x]] > 0.5 {
+                    if spatial_state[[*layer_idx, y, x]] > 0.5 {
                         h ^= table[y][x];
                     }
                 }
@@ -219,7 +219,7 @@ impl ZobristHasher {
         h
     }
 
-    /// Hash the global state (supply counts, captured counts, current player)
+    /// Hash the global_state state (supply counts, captured counts, current player)
     ///
     /// **Components**:
     /// - **Supply counts**: XOR supply_table[marble_type][count]
@@ -228,13 +228,13 @@ impl ZobristHasher {
     /// - **Current player**: XOR player bit if player 2's turn
     ///
     /// **Bounds checking**: Only hash counts < CAPTURE_LIMIT (defensive programming)
-    fn hash_supply_and_captures(&self, global: &ArrayView1<f32>, config: &BoardConfig) -> u64 {
+    fn hash_supply_and_captures(&self, global_state: &ArrayView1<f32>, config: &BoardConfig) -> u64 {
         let mut h = 0u64;
 
         // Hash supply counts for each marble type
         let supply_indices = [config.supply_w, config.supply_g, config.supply_b];
-        for (idx, &global_idx) in supply_indices.iter().enumerate() {
-            let count = global[global_idx].round() as isize;
+        for (idx, &global_state_idx) in supply_indices.iter().enumerate() {
+            let count = global_state[global_state_idx].round() as isize;
             if count > 0 && (count as usize) < CAPTURE_LIMIT {
                 h ^= self.supply[idx][count as usize];
             }
@@ -242,8 +242,8 @@ impl ZobristHasher {
 
         // Hash player 1's captured marbles
         let p1_indices = [config.p1_cap_w, config.p1_cap_g, config.p1_cap_b];
-        for (idx, &global_idx) in p1_indices.iter().enumerate() {
-            let count = global[global_idx].round() as isize;
+        for (idx, &global_state_idx) in p1_indices.iter().enumerate() {
+            let count = global_state[global_state_idx].round() as isize;
             if count > 0 && (count as usize) < CAPTURE_LIMIT {
                 h ^= self.captured[0][idx][count as usize];
             }
@@ -251,15 +251,15 @@ impl ZobristHasher {
 
         // Hash player 2's captured marbles
         let p2_indices = [config.p2_cap_w, config.p2_cap_g, config.p2_cap_b];
-        for (idx, &global_idx) in p2_indices.iter().enumerate() {
-            let count = global[global_idx].round() as isize;
+        for (idx, &global_state_idx) in p2_indices.iter().enumerate() {
+            let count = global_state[global_state_idx].round() as isize;
             if count > 0 && (count as usize) < CAPTURE_LIMIT {
                 h ^= self.captured[1][idx][count as usize];
             }
         }
 
         // Hash current player (XOR player bit only if player 2)
-        if global[config.cur_player].round() as usize == config.player_2 {
+        if global_state[config.cur_player].round() as usize == config.player_2 {
             h ^= self.player;
         }
 
@@ -269,24 +269,24 @@ impl ZobristHasher {
     /// Compute Zobrist hash for complete game state
     ///
     /// **Combines**:
-    /// - Spatial hash (rings + marbles on board)
-    /// - Global hash (supply + captured + player)
+    /// - spatial_state hash (rings + marbles on board)
+    /// - global_state hash (supply + captured + player)
     ///
     /// **Usage**: Called by transposition table to hash canonical states.
     pub fn hash_state(
         &self,
-        spatial: &ArrayView3<f32>,
-        global: &ArrayView1<f32>,
+        spatial_state: &ArrayView3<f32>,
+        global_state: &ArrayView1<f32>,
         config: &BoardConfig,
     ) -> u64 {
-        let mut h = self.hash_spatial(spatial, config);
-        h ^= self.hash_supply_and_captures(global, config);
+        let mut h = self.hash_spatial_state(spatial_state, config);
+        h ^= self.hash_supply_and_captures(global_state, config);
         h
     }
 
     #[allow(dead_code)]
-    pub fn hash_canonical_spatial(&self, spatial: &ArrayView3<f32>, config: &BoardConfig) -> u64 {
-        self.hash_spatial(spatial, config)
+    pub fn hash_canonical_spatial_state(&self, spatial_state: &ArrayView3<f32>, config: &BoardConfig) -> u64 {
+        self.hash_spatial_state(spatial_state, config)
     }
 
     #[allow(dead_code)]

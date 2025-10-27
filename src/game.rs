@@ -10,11 +10,11 @@
 //!
 //! ## State Representation
 //!
-//! - **Spatial**: `Array3<f32>` shape `(layers, height, width)`
+//! - **spatial_state**: `Array3<f32>` shape `(layers, height, width)`
 //!   - Layer 0: Rings (1.0 = present, 0.0 = removed)
 //!   - Layers 1-3: Marbles (white/gray/black)
 //!
-//! - **Global**: `Array1<f32>` shape `(10,)`
+//! - **global_state**: `Array1<f32>` shape `(10,)`
 //!   - [0-2]: Supply counts (W/G/B)
 //!   - [3-5]: P1 captured (W/G/B)
 //!   - [6-8]: P2 captured (W/G/B)
@@ -128,11 +128,11 @@ pub fn get_neighbors(y: usize, x: usize, config: &BoardConfig) -> NeighborList {
 }
 
 /// Find all connected regions on the board
-pub fn get_regions(spatial: &ArrayView3<f32>, config: &BoardConfig) -> Vec<Vec<(usize, usize)>> {
+pub fn get_regions(spatial_state: &ArrayView3<f32>, config: &BoardConfig) -> Vec<Vec<(usize, usize)>> {
     let mut regions = Vec::new();
     let mut not_visited: HashSet<(usize, usize)> = (0..config.width)
         .flat_map(|y| (0..config.width).map(move |x| (y, x)))
-        .filter(|&(y, x)| spatial[[config.ring_layer, y, x]] == 1.0)
+        .filter(|&(y, x)| spatial_state[[config.ring_layer, y, x]] == 1.0)
         .collect();
 
     while let Some(&start) = not_visited.iter().next() {
@@ -146,7 +146,7 @@ pub fn get_regions(spatial: &ArrayView3<f32>, config: &BoardConfig) -> Vec<Vec<(
 
             for neighbor in get_neighbors(index.0, index.1, config) {
                 if not_visited.contains(&neighbor)
-                    && spatial[[config.ring_layer, neighbor.0, neighbor.1]] == 1.0
+                    && spatial_state[[config.ring_layer, neighbor.0, neighbor.1]] == 1.0
                 {
                     not_visited.remove(&neighbor);
                     queue.push_back(neighbor);
@@ -161,13 +161,13 @@ pub fn get_regions(spatial: &ArrayView3<f32>, config: &BoardConfig) -> Vec<Vec<(
 }
 
 /// Get list of empty ring indices across the board
-pub fn get_open_rings(spatial: &ArrayView3<f32>, config: &BoardConfig) -> Vec<(usize, usize)> {
+pub fn get_open_rings(spatial_state: &ArrayView3<f32>, config: &BoardConfig) -> Vec<(usize, usize)> {
     // Get all vacant rings (ring present, no marble)
     let all_open: Vec<(usize, usize)> = (0..config.width)
         .flat_map(|y| (0..config.width).map(move |x| (y, x)))
         .filter(|&(y, x)| {
-            spatial[[config.ring_layer, y, x]] == 1.0
-                && !(1..4).any(|layer| spatial[[layer, y, x]] > 0.0)
+            spatial_state[[config.ring_layer, y, x]] == 1.0
+                && !(1..4).any(|layer| spatial_state[[layer, y, x]] > 0.0)
         })
         .collect();
     all_open
@@ -178,14 +178,14 @@ pub fn get_open_rings(spatial: &ArrayView3<f32>, config: &BoardConfig) -> Vec<(u
 /// 1. It's empty (no marble)
 /// 2. Two consecutive neighbors are missing (including out-of-bounds)
 pub fn is_ring_removable(
-    spatial: &ArrayView3<f32>,
+    spatial_state: &ArrayView3<f32>,
     y: usize,
     x: usize,
     config: &BoardConfig,
 ) -> bool {
     // Check if empty (only ring, no marble)
-    let has_ring = spatial[[config.ring_layer, y, x]] > 0.0;
-    let has_marble = (1..4).any(|layer| spatial[[layer, y, x]] > 0.0);
+    let has_ring = spatial_state[[config.ring_layer, y, x]] > 0.0;
+    let has_marble = (1..4).any(|layer| spatial_state[[layer, y, x]] > 0.0);
 
     if !has_ring || has_marble {
         return false;
@@ -205,7 +205,7 @@ pub fn is_ring_removable(
     for (ny, nx) in neighbors_wrapped {
         // Check if neighbor is in bounds and has a ring
         let has_neighbor_ring = if is_inbounds(ny, nx, config.width) {
-            spatial[[config.ring_layer, ny as usize, nx as usize]] == 1.0
+            spatial_state[[config.ring_layer, ny as usize, nx as usize]] == 1.0
         } else {
             false // Out of bounds = no ring
         };
@@ -226,10 +226,10 @@ pub fn is_ring_removable(
 }
 
 /// Get removable rings (rings that can be removed without disconnecting board)
-pub fn get_removable_rings(spatial: &ArrayView3<f32>, config: &BoardConfig) -> Vec<(usize, usize)> {
+pub fn get_removable_rings(spatial_state: &ArrayView3<f32>, config: &BoardConfig) -> Vec<(usize, usize)> {
     (0..config.width)
         .flat_map(|y| (0..config.width).map(move |x| (y, x)))
-        .filter(|&(y, x)| is_ring_removable(spatial, y, x, config))
+        .filter(|&(y, x)| is_ring_removable(spatial_state, y, x, config))
         .collect()
 }
 
@@ -255,12 +255,12 @@ pub fn get_supply_index(marble_type: char, config: &BoardConfig) -> usize {
 /// Get marble type at given position
 /// Returns: 'w', 'g', 'b', or '\0' (none)
 /// Used by Python wrapper
-pub fn get_marble_type_at(spatial: &ArrayView3<f32>, y: usize, x: usize, _config: &BoardConfig) -> char {
-    if spatial[[1, y, x]] == 1.0 {
+pub fn get_marble_type_at(spatial_state: &ArrayView3<f32>, y: usize, x: usize, _config: &BoardConfig) -> char {
+    if spatial_state[[1, y, x]] == 1.0 {
         'w'
-    } else if spatial[[2, y, x]] == 1.0 {
+    } else if spatial_state[[2, y, x]] == 1.0 {
         'g'
-    } else if spatial[[3, y, x]] == 1.0 {
+    } else if spatial_state[[3, y, x]] == 1.0 {
         'b'
     } else {
         '\0'
@@ -288,16 +288,16 @@ pub fn get_jump_destination(start_y: usize, start_x: usize, cap_y: usize, cap_x:
 /// A single region covering the entire board is not considered "isolated".
 /// Returns list of captured marble positions as (marble_layer, y, x) tuples.
 fn apply_isolation_capture(
-    spatial: &mut ArrayViewMut3<f32>,
-    global: &mut ArrayViewMut1<f32>,
+    spatial_state: &mut ArrayViewMut3<f32>,
+    global_state: &mut ArrayViewMut1<f32>,
     config: &BoardConfig,
     current_player: usize,
 ) -> Vec<(usize, usize, usize)> {
     let mut captured_marbles = Vec::new();
 
     // Create immutable view from mutable view to pass to get_regions
-    let spatial_view = spatial.view();
-    let regions = get_regions(&spatial_view, config);
+    let spatial_state_view = spatial_state.view();
+    let regions = get_regions(&spatial_state_view, config);
 
     // Only apply isolation capture if there are multiple regions
     let num_regions = regions.len();
@@ -313,24 +313,24 @@ fn apply_isolation_capture(
         // Check if ALL rings in this region are occupied by marbles
         let all_occupied = region.iter().all(|&(y, x)| {
             (config.marble_layers.0..config.marble_layers.1)
-                .any(|layer| spatial[[layer, y, x]] > 0.0)
+                .any(|layer| spatial_state[[layer, y, x]] > 0.0)
         });
 
         // If all rings are occupied, capture them
         if all_occupied {
-            eprintln!("[ISO] Capturing fully-occupied region with {} rings out of {} regions", region.len(), num_regions);
+            // eprintln!("[ISO] Capturing fully-occupied region with {} rings out of {} regions", region.len(), num_regions);
             for (y, x) in region {
-                if spatial[[config.ring_layer, y, x]] == 0.0 {
+                if spatial_state[[config.ring_layer, y, x]] == 0.0 {
                     continue;
                 }
 
                 // Find and capture the marble
                 if let Some(marble_layer) = (config.marble_layers.0..config.marble_layers.1)
-                    .find(|&layer| spatial[[layer, y, x]] > 0.0)
+                    .find(|&layer| spatial_state[[layer, y, x]] > 0.0)
                 {
                     let marble_idx = marble_layer - config.marble_layers.0;
                     let captured_idx = get_captured_index(config, current_player, marble_idx);
-                    global[captured_idx] += 1.0;
+                    global_state[captured_idx] += 1.0;
 
                     // Track captured position for animation
                     captured_marbles.push((marble_layer, y, x));
@@ -338,9 +338,9 @@ fn apply_isolation_capture(
 
                 // Remove marble and ring
                 for layer in config.marble_layers.0..config.marble_layers.1 {
-                    spatial[[layer, y, x]] = 0.0;
+                    spatial_state[[layer, y, x]] = 0.0;
                 }
-                spatial[[config.ring_layer, y, x]] = 0.0;
+                spatial_state[[config.ring_layer, y, x]] = 0.0;
             }
         }
     }
@@ -354,19 +354,19 @@ fn apply_isolation_capture(
 /// where dst_flat and remove_flat are flattened (y * width + x) positions
 /// remove_flat can be width² to indicate "no removal"
 pub fn get_placement_actions(
-    spatial: &ArrayView3<f32>,
-    global: &ArrayView1<f32>,
+    spatial_state: &ArrayView3<f32>,
+    global_state: &ArrayView1<f32>,
     config: &BoardConfig,
 ) -> Array3<f32> {
     let width2 = config.width * config.width;
     let mut placement_mask = Array3::zeros((3, width2, width2 + 1));
 
     // Get current player supply counts
-    let cur_player = global[config.cur_player] as usize;
+    let cur_player = global_state[config.cur_player] as usize;
     let supply_counts = [
-        global[config.supply_w],
-        global[config.supply_g],
-        global[config.supply_b],
+        global_state[config.supply_w],
+        global_state[config.supply_g],
+        global_state[config.supply_b],
     ];
 
     // Get player's captured marble counts
@@ -376,14 +376,14 @@ pub fn get_placement_actions(
         [config.p2_cap_w, config.p2_cap_g, config.p2_cap_b]
     };
     let captured_counts = [
-        global[captured_idx[0]],
-        global[captured_idx[1]],
-        global[captured_idx[2]],
+        global_state[captured_idx[0]],
+        global_state[captured_idx[1]],
+        global_state[captured_idx[2]],
     ];
 
     // Get open rings (in main region) and removable rings
-    let open_rings = get_open_rings(spatial, config);
-    let removable_rings = get_removable_rings(spatial, config);
+    let open_rings = get_open_rings(spatial_state, config);
+    let removable_rings = get_removable_rings(spatial_state, config);
 
     // Determine which marbles can be placed
     let marble_counts = if supply_counts.iter().all(|&x| x == 0.0) {
@@ -431,13 +431,13 @@ pub fn get_placement_actions(
 
 /// Get valid capture actions
 /// Returns Array3<f32> with shape (6, width, width)
-pub fn get_capture_actions(spatial: &ArrayView3<f32>, config: &BoardConfig) -> Array3<f32> {
+pub fn get_capture_actions(spatial_state: &ArrayView3<f32>, config: &BoardConfig) -> Array3<f32> {
     let mut capture_mask = Array3::zeros((6, config.width, config.width));
 
     // Check if this is a chain capture (CAPTURE_LAYER has a marble marked)
     let chain_capture_pos = (0..config.width)
         .flat_map(|y| (0..config.width).map(move |x| (y, x)))
-        .find(|&(y, x)| spatial[[config.capture_layer, y, x]] > 0.0);
+        .find(|&(y, x)| spatial_state[[config.capture_layer, y, x]] > 0.0);
 
     // For each position with a marble
     for y in 0..config.width {
@@ -450,7 +450,7 @@ pub fn get_capture_actions(spatial: &ArrayView3<f32>, config: &BoardConfig) -> A
             }
 
             // Check if position has a marble
-            let marble_layer = (1..4).find(|&layer| spatial[[layer, y, x]] > 0.0);
+            let marble_layer = (1..4).find(|&layer| spatial_state[[layer, y, x]] > 0.0);
             if marble_layer.is_none() {
                 continue;
             }
@@ -469,7 +469,7 @@ pub fn get_capture_actions(spatial: &ArrayView3<f32>, config: &BoardConfig) -> A
                 let cap_x = cap_x as usize;
 
                 // Must have a marble to capture
-                let has_marble_to_cap = (1..4).any(|layer| spatial[[layer, cap_y, cap_x]] > 0.0);
+                let has_marble_to_cap = (1..4).any(|layer| spatial_state[[layer, cap_y, cap_x]] > 0.0);
                 if !has_marble_to_cap {
                     continue;
                 }
@@ -486,11 +486,11 @@ pub fn get_capture_actions(spatial: &ArrayView3<f32>, config: &BoardConfig) -> A
                 let land_x = land_x as usize;
 
                 // Landing position must have ring and no marble
-                if spatial[[config.ring_layer, land_y, land_x]] == 0.0 {
+                if spatial_state[[config.ring_layer, land_y, land_x]] == 0.0 {
                     continue;
                 }
 
-                let has_marble_at_land = (1..4).any(|layer| spatial[[layer, land_y, land_x]] > 0.0);
+                let has_marble_at_land = (1..4).any(|layer| spatial_state[[layer, land_y, land_x]] > 0.0);
                 if has_marble_at_land {
                     continue;
                 }
@@ -506,11 +506,11 @@ pub fn get_capture_actions(spatial: &ArrayView3<f32>, config: &BoardConfig) -> A
 
 /// Get valid actions (both placement and capture)
 pub fn get_valid_actions(
-    spatial: &ArrayView3<f32>,
-    global: &ArrayView1<f32>,
+    spatial_state: &ArrayView3<f32>,
+    global_state: &ArrayView1<f32>,
     config: &BoardConfig,
 ) -> (Array3<f32>, Array3<f32>) {
-    let capture_mask = get_capture_actions(spatial, config);
+    let capture_mask = get_capture_actions(spatial_state, config);
 
     // If any captures available, placement is not allowed
     let has_captures = capture_mask.iter().any(|&x| x > 0.0);
@@ -519,7 +519,7 @@ pub fn get_valid_actions(
     let placement_mask = if has_captures {
         Array3::zeros((3, width2, width2 + 1))
     } else {
-        get_placement_actions(spatial, global, config)
+        get_placement_actions(spatial_state, global_state, config)
     };
 
     (placement_mask, capture_mask)
@@ -528,8 +528,8 @@ pub fn get_valid_actions(
 /// Apply a placement action
 /// Returns list of captured marble positions from isolation as (marble_layer, y, x) tuples
 pub fn apply_placement(
-    spatial: &mut ArrayViewMut3<f32>,
-    global: &mut ArrayViewMut1<f32>,
+    spatial_state: &mut ArrayViewMut3<f32>,
+    global_state: &mut ArrayViewMut1<f32>,
     marble_type: usize, // 0=white, 1=gray, 2=black
     dst_y: usize,
     dst_x: usize,
@@ -537,33 +537,33 @@ pub fn apply_placement(
     remove_x: Option<usize>,
     config: &BoardConfig,
 ) -> Vec<(usize, usize, usize)> {
-    let cur_player = global[config.cur_player] as usize;
+    let cur_player = global_state[config.cur_player] as usize;
 
     // Place marble
     let marble_layer = marble_type + 1; // 1=white, 2=gray, 3=black
-    spatial[[marble_layer, dst_y, dst_x]] = 1.0;
+    spatial_state[[marble_layer, dst_y, dst_x]] = 1.0;
 
     // Remove ring if specified
     if let (Some(ry), Some(rx)) = (remove_y, remove_x) {
-        spatial[[config.ring_layer, ry, rx]] = 0.0;
+        spatial_state[[config.ring_layer, ry, rx]] = 0.0;
     }
 
     // Check for fully-occupied isolated regions and capture them
-    let captured_marbles = apply_isolation_capture(spatial, global, config, cur_player);
+    let captured_marbles = apply_isolation_capture(spatial_state, global_state, config, cur_player);
 
     // Decrement marble count from supply or captured pool
     let supply_idx = marble_type; // 0, 1, 2
     let supply_empty = [
-        global[config.supply_w],
-        global[config.supply_g],
-        global[config.supply_b],
+        global_state[config.supply_w],
+        global_state[config.supply_g],
+        global_state[config.supply_b],
     ]
     .iter()
     .all(|&count| count <= 0.0);
 
-    if global[supply_idx] > 0.0 {
+    if global_state[supply_idx] > 0.0 {
         // Use from supply
-        global[supply_idx] -= 1.0;
+        global_state[supply_idx] -= 1.0;
     } else if supply_empty {
         // Use from captured pool (only allowed when entire supply is empty)
         let captured_idx = if cur_player == config.player_1 {
@@ -572,8 +572,8 @@ pub fn apply_placement(
             config.p2_cap_w + marble_type
         };
 
-        if global[captured_idx] > 0.0 {
-            global[captured_idx] -= 1.0;
+        if global_state[captured_idx] > 0.0 {
+            global_state[captured_idx] -= 1.0;
         } else {
             panic!(
                 "No captured marbles of required type available for player {}",
@@ -587,7 +587,7 @@ pub fn apply_placement(
     }
 
     // Switch player
-    global[config.cur_player] = if cur_player == config.player_1 {
+    global_state[config.cur_player] = if cur_player == config.player_1 {
         config.player_2 as f32
     } else {
         config.player_1 as f32
@@ -598,25 +598,25 @@ pub fn apply_placement(
 
 /// Apply a capture action
 pub fn apply_capture(
-    spatial: &mut ArrayViewMut3<f32>,
-    global: &mut ArrayViewMut1<f32>,
+    spatial_state: &mut ArrayViewMut3<f32>,
+    global_state: &mut ArrayViewMut1<f32>,
     start_y: usize,
     start_x: usize,
     direction: usize,
     config: &BoardConfig,
 ) {
-    let cur_player = global[config.cur_player] as usize;
+    let cur_player = global_state[config.cur_player] as usize;
 
     // Find marble layer at start position
     let marble_layer = (1..4)
-        .find(|&layer| spatial[[layer, start_y, start_x]] > 0.0)
+        .find(|&layer| spatial_state[[layer, start_y, start_x]] > 0.0)
         .unwrap_or_else(|| {
             eprintln!("ERROR: Invalid capture attempted at ({}, {})", start_y, start_x);
             eprintln!("  Direction: {}", direction);
-            eprintln!("  Ring present: {}", spatial[[config.ring_layer, start_y, start_x]] > 0.0);
-            eprintln!("  White marble: {}", spatial[[1, start_y, start_x]]);
-            eprintln!("  Gray marble: {}", spatial[[2, start_y, start_x]]);
-            eprintln!("  Black marble: {}", spatial[[3, start_y, start_x]]);
+            eprintln!("  Ring present: {}", spatial_state[[config.ring_layer, start_y, start_x]] > 0.0);
+            eprintln!("  White marble: {}", spatial_state[[1, start_y, start_x]]);
+            eprintln!("  Gray marble: {}", spatial_state[[2, start_y, start_x]]);
+            eprintln!("  Black marble: {}", spatial_state[[3, start_y, start_x]]);
             panic!("Game logic violation: attempted capture from empty position at ({}, {})", start_y, start_x)
         });
 
@@ -631,24 +631,24 @@ pub fn apply_capture(
 
     // Find captured marble type
     let captured_marble_layer = (1..4)
-        .find(|&layer| spatial[[layer, cap_y, cap_x]] > 0.0)
+        .find(|&layer| spatial_state[[layer, cap_y, cap_x]] > 0.0)
         .unwrap_or_else(|| {
             eprintln!("ERROR: No marble found at capture position ({}, {})", cap_y, cap_x);
             eprintln!("  Start position: ({}, {})", start_y, start_x);
             eprintln!("  Direction: {} (offset: {:?})", direction, config.directions[direction]);
             eprintln!("  Landing position: ({}, {})", land_y, land_x);
-            eprintln!("  Ring at capture pos: {}", spatial[[config.ring_layer, cap_y, cap_x]] > 0.0);
+            eprintln!("  Ring at capture pos: {}", spatial_state[[config.ring_layer, cap_y, cap_x]] > 0.0);
             panic!("Game logic violation: attempted to capture from empty position at ({}, {})", cap_y, cap_x)
         });
 
     // Remove marble from start
-    spatial[[marble_layer, start_y, start_x]] = 0.0;
+    spatial_state[[marble_layer, start_y, start_x]] = 0.0;
 
     // Remove captured marble
-    spatial[[captured_marble_layer, cap_y, cap_x]] = 0.0;
+    spatial_state[[captured_marble_layer, cap_y, cap_x]] = 0.0;
 
     // Place marble at landing
-    spatial[[marble_layer, land_y, land_x]] = 1.0;
+    spatial_state[[marble_layer, land_y, land_x]] = 1.0;
 
     // Update captured marble count
     let marble_idx = captured_marble_layer - 1; // Convert layer to index (0,1,2)
@@ -657,16 +657,16 @@ pub fn apply_capture(
     } else {
         config.p2_cap_w + marble_idx
     };
-    global[captured_idx] += 1.0;
+    global_state[captured_idx] += 1.0;
 
     // Check for chain capture in any direction from landing position
-    let capture_actions = get_capture_actions(&spatial.view(), config);
+    let capture_actions = get_capture_actions(&spatial_state.view(), config);
     let can_chain = (0..config.directions.len())
         .any(|dir_idx| capture_actions[[dir_idx, land_y, land_x]] > 0.0);
 
     // Switch player only if no chain capture
     if !can_chain {
-        global[config.cur_player] = if cur_player == config.player_1 {
+        global_state[config.cur_player] = if cur_player == config.player_1 {
             config.player_2 as f32
         } else {
             config.player_1 as f32
@@ -684,23 +684,23 @@ pub fn apply_capture(
 /// If ALL rings in an isolated region are fully occupied (each has a marble),
 /// then the current player captures all those marbles and removes those rings.
 ///
-/// Returns tuple of (updated_spatial, updated_global, captured_marbles_list)
+/// Returns tuple of (updated_spatial_state, updated_global_state, captured_marbles_list)
 /// where captured_marbles_list contains tuples of (marble_layer_idx, y, x)
 pub fn check_for_isolation_capture(
-    spatial: &ArrayView3<f32>,
-    global: &ArrayView1<f32>,
+    spatial_state: &ArrayView3<f32>,
+    global_state: &ArrayView1<f32>,
     config: &BoardConfig,
 ) -> (Array3<f32>, Array1<f32>, Vec<(usize, usize, usize)>) {
-    let mut spatial_out = spatial.to_owned();
-    let mut global_out = global.to_owned();
+    let mut spatial_state_out = spatial_state.to_owned();
+    let mut global_state_out = global_state.to_owned();
     let mut captured_marbles = Vec::new();
 
-    let regions = get_regions(spatial, config);
-    let cur_player = global[config.cur_player] as usize;
+    let regions = get_regions(spatial_state, config);
+    let cur_player = global_state[config.cur_player] as usize;
 
     // Only apply isolation capture if there are multiple regions
     if regions.len() < 2 {
-        return (spatial_out, global_out, captured_marbles);
+        return (spatial_state_out, global_state_out, captured_marbles);
     }
 
     // Check ALL regions, capture any that are fully occupied
@@ -712,20 +712,20 @@ pub fn check_for_isolation_capture(
         // Check if ALL rings in this region are occupied by marbles
         let all_occupied = region.iter().all(|&(y, x)| {
             (config.marble_layers.0..config.marble_layers.1)
-                .any(|layer| spatial[[layer, y, x]] > 0.0)
+                .any(|layer| spatial_state[[layer, y, x]] > 0.0)
         });
 
         // If all rings are occupied, capture them
         if all_occupied {
-            eprintln!("[ISO] Capturing fully-occupied region with {} rings", region.len());
+            // eprintln!("[ISO] Capturing fully-occupied region with {} rings", region.len());
             for (y, x) in region {
-                if spatial_out[[config.ring_layer, y, x]] == 0.0 {
+                if spatial_state_out[[config.ring_layer, y, x]] == 0.0 {
                     continue;
                 }
 
                 // Find and capture the marble
                 if let Some(marble_layer) = (config.marble_layers.0..config.marble_layers.1)
-                    .find(|&layer| spatial_out[[layer, y, x]] > 0.0)
+                    .find(|&layer| spatial_state_out[[layer, y, x]] > 0.0)
                 {
                     let marble_idx = marble_layer - config.marble_layers.0;
                     let captured_idx = if cur_player == config.player_1 {
@@ -733,7 +733,7 @@ pub fn check_for_isolation_capture(
                     } else {
                         config.p2_cap_w + marble_idx
                     };
-                    global_out[captured_idx] += 1.0;
+                    global_state_out[captured_idx] += 1.0;
 
                     // Add to captured list for return value
                     captured_marbles.push((marble_layer, y, x));
@@ -741,14 +741,14 @@ pub fn check_for_isolation_capture(
 
                 // Remove marble and ring
                 for layer in config.marble_layers.0..config.marble_layers.1 {
-                    spatial_out[[layer, y, x]] = 0.0;
+                    spatial_state_out[[layer, y, x]] = 0.0;
                 }
-                spatial_out[[config.ring_layer, y, x]] = 0.0;
+                spatial_state_out[[config.ring_layer, y, x]] = 0.0;
             }
         }
     }
 
-    (spatial_out, global_out, captured_marbles)
+    (spatial_state_out, global_state_out, captured_marbles)
 }
 
 #[cfg(test)]
@@ -829,25 +829,25 @@ mod tests {
     fn create_empty_state(config: &BoardConfig) -> (Array3<f32>, Array1<f32>) {
         // For t=1: ring layer (1) + marble layers (3) + capture layer (1) = 5 layers
         let num_layers = config.t * config.layers_per_timestep + 1;
-        // Global: 3 supply + 6 captured (3 per player) + 1 cur_player = 10
-        let global_size = 10;
+        // global_state: 3 supply + 6 captured (3 per player) + 1 cur_player = 10
+        let global_state_size = 10;
 
-        let spatial = Array3::zeros((num_layers, config.width, config.width));
-        let global = Array1::zeros(global_size);
-        (spatial, global)
+        let spatial_state = Array3::zeros((num_layers, config.width, config.width));
+        let global_state = Array1::zeros(global_state_size);
+        (spatial_state, global_state)
     }
 
     #[test]
     fn test_placement_actions_basic() {
         let config = create_test_config();
-        let (mut spatial, mut global) = create_empty_state(&config);
+        let (mut spatial_state, mut global_state) = create_empty_state(&config);
 
         // Set up a simple board with one ring and one marble in supply
-        spatial[[config.ring_layer, 3, 3]] = 1.0;
-        global[config.supply_w] = 1.0; // 1 white marble in supply
-        global[config.cur_player] = config.player_1 as f32;
+        spatial_state[[config.ring_layer, 3, 3]] = 1.0;
+        global_state[config.supply_w] = 1.0; // 1 white marble in supply
+        global_state[config.cur_player] = config.player_1 as f32;
 
-        let placement_mask = get_placement_actions(&spatial.view(), &global.view(), &config);
+        let placement_mask = get_placement_actions(&spatial_state.view(), &global_state.view(), &config);
 
         let width = config.width;
         let width2 = width * width;
@@ -864,19 +864,19 @@ mod tests {
     #[test]
     fn test_placement_uses_captured_marbles() {
         let config = create_test_config();
-        let (mut spatial, mut global) = create_empty_state(&config);
+        let (mut spatial_state, mut global_state) = create_empty_state(&config);
 
         // Set up board with ring but no supply marbles
-        spatial[[config.ring_layer, 3, 3]] = 1.0;
-        global[config.supply_w] = 0.0;
-        global[config.supply_g] = 0.0;
-        global[config.supply_b] = 0.0;
+        spatial_state[[config.ring_layer, 3, 3]] = 1.0;
+        global_state[config.supply_w] = 0.0;
+        global_state[config.supply_g] = 0.0;
+        global_state[config.supply_b] = 0.0;
 
         // Player 1 has captured marbles
-        global[config.p1_cap_w] = 2.0;
-        global[config.cur_player] = config.player_1 as f32;
+        global_state[config.p1_cap_w] = 2.0;
+        global_state[config.cur_player] = config.player_1 as f32;
 
-        let placement_mask = get_placement_actions(&spatial.view(), &global.view(), &config);
+        let placement_mask = get_placement_actions(&spatial_state.view(), &global_state.view(), &config);
 
         let width = config.width;
         let width2 = width * width;
@@ -889,15 +889,15 @@ mod tests {
     #[test]
     fn test_placement_blocked_by_existing_marble() {
         let config = create_test_config();
-        let (mut spatial, mut global) = create_empty_state(&config);
+        let (mut spatial_state, mut global_state) = create_empty_state(&config);
 
         // Set up ring with existing marble
-        spatial[[config.ring_layer, 3, 3]] = 1.0;
-        spatial[[1, 3, 3]] = 1.0; // White marble already there
-        global[config.supply_w] = 1.0;
-        global[config.cur_player] = config.player_1 as f32;
+        spatial_state[[config.ring_layer, 3, 3]] = 1.0;
+        spatial_state[[1, 3, 3]] = 1.0; // White marble already there
+        global_state[config.supply_w] = 1.0;
+        global_state[config.cur_player] = config.player_1 as f32;
 
-        let placement_mask = get_placement_actions(&spatial.view(), &global.view(), &config);
+        let placement_mask = get_placement_actions(&spatial_state.view(), &global_state.view(), &config);
 
         // Should not be able to place on occupied ring
         assert_eq!(placement_mask[[0, 3, 3]], 0.0);
@@ -906,16 +906,16 @@ mod tests {
     #[test]
     fn test_capture_actions_basic() {
         let config = create_test_config();
-        let (mut spatial, _) = create_empty_state(&config);
+        let (mut spatial_state, _) = create_empty_state(&config);
 
         // Set up a capture scenario: marble at (3,3), marble at (3,4), empty ring at (3,5)
-        spatial[[config.ring_layer, 3, 3]] = 1.0;
-        spatial[[config.ring_layer, 3, 4]] = 1.0;
-        spatial[[config.ring_layer, 3, 5]] = 1.0;
-        spatial[[1, 3, 3]] = 1.0; // White marble
-        spatial[[2, 3, 4]] = 1.0; // Gray marble to capture
+        spatial_state[[config.ring_layer, 3, 3]] = 1.0;
+        spatial_state[[config.ring_layer, 3, 4]] = 1.0;
+        spatial_state[[config.ring_layer, 3, 5]] = 1.0;
+        spatial_state[[1, 3, 3]] = 1.0; // White marble
+        spatial_state[[2, 3, 4]] = 1.0; // Gray marble to capture
 
-        let capture_mask = get_capture_actions(&spatial.view(), &config);
+        let capture_mask = get_capture_actions(&spatial_state.view(), &config);
 
         // Find direction index for east (0, +1)
         let east_dir = config
@@ -931,16 +931,16 @@ mod tests {
     #[test]
     fn test_capture_requires_landing_ring() {
         let config = create_test_config();
-        let (mut spatial, _) = create_empty_state(&config);
+        let (mut spatial_state, _) = create_empty_state(&config);
 
         // Set up: marble at (3,3), marble at (3,4), NO ring at (3,5)
-        spatial[[config.ring_layer, 3, 3]] = 1.0;
-        spatial[[config.ring_layer, 3, 4]] = 1.0;
+        spatial_state[[config.ring_layer, 3, 3]] = 1.0;
+        spatial_state[[config.ring_layer, 3, 4]] = 1.0;
         // No ring at 3,5
-        spatial[[1, 3, 3]] = 1.0; // White marble
-        spatial[[2, 3, 4]] = 1.0; // Gray marble
+        spatial_state[[1, 3, 3]] = 1.0; // White marble
+        spatial_state[[2, 3, 4]] = 1.0; // Gray marble
 
-        let capture_mask = get_capture_actions(&spatial.view(), &config);
+        let capture_mask = get_capture_actions(&spatial_state.view(), &config);
 
         // Should NOT have valid capture without landing ring
         let east_dir = config
@@ -954,21 +954,21 @@ mod tests {
     #[test]
     fn test_captures_block_placements() {
         let config = create_test_config();
-        let (mut spatial, mut global) = create_empty_state(&config);
+        let (mut spatial_state, mut global_state) = create_empty_state(&config);
 
         // Set up a board with both placement and capture options
-        spatial[[config.ring_layer, 3, 3]] = 1.0;
-        spatial[[config.ring_layer, 3, 4]] = 1.0;
-        spatial[[config.ring_layer, 3, 5]] = 1.0;
-        spatial[[1, 3, 3]] = 1.0; // Marble that can capture
-        spatial[[2, 3, 4]] = 1.0; // Marble to capture
+        spatial_state[[config.ring_layer, 3, 3]] = 1.0;
+        spatial_state[[config.ring_layer, 3, 4]] = 1.0;
+        spatial_state[[config.ring_layer, 3, 5]] = 1.0;
+        spatial_state[[1, 3, 3]] = 1.0; // Marble that can capture
+        spatial_state[[2, 3, 4]] = 1.0; // Marble to capture
                                   // Ring at 3,5 is empty - could place there
 
-        global[config.supply_w] = 1.0;
-        global[config.cur_player] = config.player_1 as f32;
+        global_state[config.supply_w] = 1.0;
+        global_state[config.cur_player] = config.player_1 as f32;
 
         let (placement_mask, capture_mask) =
-            get_valid_actions(&spatial.view(), &global.view(), &config);
+            get_valid_actions(&spatial_state.view(), &global_state.view(), &config);
 
         // Should have captures
         assert!(capture_mask.iter().any(|&x| x > 0.0));
@@ -980,21 +980,21 @@ mod tests {
     #[test]
     fn test_apply_placement_removes_from_supply() {
         let config = create_test_config();
-        let (mut spatial, mut global) = create_empty_state(&config);
+        let (mut spatial_state, mut global_state) = create_empty_state(&config);
 
         // Setup - add enough rings to avoid isolation capture
-        spatial[[config.ring_layer, 3, 3]] = 1.0;
-        spatial[[config.ring_layer, 3, 4]] = 1.0;
-        spatial[[config.ring_layer, 4, 3]] = 1.0;
-        spatial[[config.ring_layer, 4, 4]] = 1.0;
-        global[config.supply_w] = 5.0;
-        global[config.cur_player] = config.player_1 as f32;
+        spatial_state[[config.ring_layer, 3, 3]] = 1.0;
+        spatial_state[[config.ring_layer, 3, 4]] = 1.0;
+        spatial_state[[config.ring_layer, 4, 3]] = 1.0;
+        spatial_state[[config.ring_layer, 4, 4]] = 1.0;
+        global_state[config.supply_w] = 5.0;
+        global_state[config.cur_player] = config.player_1 as f32;
 
         // Apply placement at (3,3), remove ring at (4,4)
         // This won't trigger isolation since (3,3) is connected to (3,4) and (4,3)
         apply_placement(
-            &mut spatial.view_mut(),
-            &mut global.view_mut(),
+            &mut spatial_state.view_mut(),
+            &mut global_state.view_mut(),
             0,
             3,
             3,
@@ -1004,48 +1004,48 @@ mod tests {
         );
 
         // Check marble placed
-        assert_eq!(spatial[[1, 3, 3]], 1.0);
+        assert_eq!(spatial_state[[1, 3, 3]], 1.0);
 
         // Check ring removed
-        assert_eq!(spatial[[config.ring_layer, 4, 4]], 0.0);
+        assert_eq!(spatial_state[[config.ring_layer, 4, 4]], 0.0);
 
         // Check supply decremented
-        assert_eq!(global[config.supply_w], 4.0);
+        assert_eq!(global_state[config.supply_w], 4.0);
 
         // Check player switched
-        assert_eq!(global[config.cur_player] as usize, config.player_2);
+        assert_eq!(global_state[config.cur_player] as usize, config.player_2);
     }
 
     #[test]
     fn test_apply_placement_removes_from_captured() {
         let config = create_test_config();
-        let (mut spatial, mut global) = create_empty_state(&config);
+        let (mut spatial_state, mut global_state) = create_empty_state(&config);
 
         // Setup with no supply but captured marbles
-        spatial[[config.ring_layer, 3, 3]] = 1.0;
-        global[config.supply_w] = 0.0;
-        global[config.p1_cap_w] = 3.0;
-        global[config.cur_player] = config.player_1 as f32;
+        spatial_state[[config.ring_layer, 3, 3]] = 1.0;
+        global_state[config.supply_w] = 0.0;
+        global_state[config.p1_cap_w] = 3.0;
+        global_state[config.cur_player] = config.player_1 as f32;
 
         // Apply placement
-        apply_placement(&mut spatial.view_mut(), &mut global.view_mut(), 0, 3, 3, None, None, &config);
+        apply_placement(&mut spatial_state.view_mut(), &mut global_state.view_mut(), 0, 3, 3, None, None, &config);
 
         // Check captured pool decremented
-        assert_eq!(global[config.p1_cap_w], 2.0);
+        assert_eq!(global_state[config.p1_cap_w], 2.0);
     }
 
     #[test]
     fn test_apply_capture_basic() {
         let config = create_test_config();
-        let (mut spatial, mut global) = create_empty_state(&config);
+        let (mut spatial_state, mut global_state) = create_empty_state(&config);
 
         // Setup capture scenario
-        spatial[[config.ring_layer, 3, 3]] = 1.0;
-        spatial[[config.ring_layer, 3, 4]] = 1.0;
-        spatial[[config.ring_layer, 3, 5]] = 1.0;
-        spatial[[1, 3, 3]] = 1.0; // White marble
-        spatial[[2, 3, 4]] = 1.0; // Gray marble to capture
-        global[config.cur_player] = config.player_1 as f32;
+        spatial_state[[config.ring_layer, 3, 3]] = 1.0;
+        spatial_state[[config.ring_layer, 3, 4]] = 1.0;
+        spatial_state[[config.ring_layer, 3, 5]] = 1.0;
+        spatial_state[[1, 3, 3]] = 1.0; // White marble
+        spatial_state[[2, 3, 4]] = 1.0; // Gray marble to capture
+        global_state[config.cur_player] = config.player_1 as f32;
 
         // Find east direction
         let east_dir = config
@@ -1055,38 +1055,38 @@ mod tests {
             .unwrap();
 
         // Apply capture
-        apply_capture(&mut spatial.view_mut(), &mut global.view_mut(), 3, 3, east_dir, &config);
+        apply_capture(&mut spatial_state.view_mut(), &mut global_state.view_mut(), 3, 3, east_dir, &config);
 
         // Check marble moved
-        assert_eq!(spatial[[1, 3, 3]], 0.0); // Removed from start
-        assert_eq!(spatial[[1, 3, 5]], 1.0); // Placed at landing
+        assert_eq!(spatial_state[[1, 3, 3]], 0.0); // Removed from start
+        assert_eq!(spatial_state[[1, 3, 5]], 1.0); // Placed at landing
 
         // Check captured marble removed
-        assert_eq!(spatial[[2, 3, 4]], 0.0);
+        assert_eq!(spatial_state[[2, 3, 4]], 0.0);
 
         // Check capture count incremented (gray marble)
-        assert_eq!(global[config.p1_cap_g], 1.0);
+        assert_eq!(global_state[config.p1_cap_g], 1.0);
 
         // Check player switched (no chain)
-        assert_eq!(global[config.cur_player] as usize, config.player_2);
+        assert_eq!(global_state[config.cur_player] as usize, config.player_2);
     }
 
     #[test]
     fn test_apply_capture_chain() {
         let config = create_test_config();
-        let (mut spatial, mut global) = create_empty_state(&config);
+        let (mut spatial_state, mut global_state) = create_empty_state(&config);
 
         // Setup chain capture: marble at (2,2), capture marble at (2,3), land at (2,4)
         // Then immediately can capture marble at (2,5) landing at (2,6)
-        spatial[[config.ring_layer, 2, 2]] = 1.0;
-        spatial[[config.ring_layer, 2, 3]] = 1.0;
-        spatial[[config.ring_layer, 2, 4]] = 1.0;
-        spatial[[config.ring_layer, 2, 5]] = 1.0;
-        spatial[[config.ring_layer, 2, 6]] = 1.0;
-        spatial[[1, 2, 2]] = 1.0; // White marble
-        spatial[[2, 2, 3]] = 1.0; // Gray marble to capture
-        spatial[[3, 2, 5]] = 1.0; // Black marble - chain capture target
-        global[config.cur_player] = config.player_1 as f32;
+        spatial_state[[config.ring_layer, 2, 2]] = 1.0;
+        spatial_state[[config.ring_layer, 2, 3]] = 1.0;
+        spatial_state[[config.ring_layer, 2, 4]] = 1.0;
+        spatial_state[[config.ring_layer, 2, 5]] = 1.0;
+        spatial_state[[config.ring_layer, 2, 6]] = 1.0;
+        spatial_state[[1, 2, 2]] = 1.0; // White marble
+        spatial_state[[2, 2, 3]] = 1.0; // Gray marble to capture
+        spatial_state[[3, 2, 5]] = 1.0; // Black marble - chain capture target
+        global_state[config.cur_player] = config.player_1 as f32;
 
         let east_dir = config
             .directions
@@ -1095,32 +1095,32 @@ mod tests {
             .unwrap();
 
         // Apply first capture
-        apply_capture(&mut spatial.view_mut(), &mut global.view_mut(), 2, 2, east_dir, &config);
+        apply_capture(&mut spatial_state.view_mut(), &mut global_state.view_mut(), 2, 2, east_dir, &config);
 
         // Player should NOT switch (chain available)
-        assert_eq!(global[config.cur_player] as usize, config.player_1);
+        assert_eq!(global_state[config.cur_player] as usize, config.player_1);
 
         // Marble should be at landing position
-        assert_eq!(spatial[[1, 2, 4]], 1.0);
+        assert_eq!(spatial_state[[1, 2, 4]], 1.0);
     }
 
     #[test]
     fn test_apply_capture_chain_different_direction() {
         let config = create_test_config();
-        let (mut spatial, mut global) = create_empty_state(&config);
+        let (mut spatial_state, mut global_state) = create_empty_state(&config);
 
         // Setup: initial capture east, then forced capture north from new position
-        spatial[[config.ring_layer, 3, 3]] = 1.0; // Start ring
-        spatial[[config.ring_layer, 3, 4]] = 1.0; // First captured ring
-        spatial[[config.ring_layer, 3, 5]] = 1.0; // First landing ring
-        spatial[[config.ring_layer, 2, 5]] = 1.0; // Second captured ring (different direction)
-        spatial[[config.ring_layer, 1, 5]] = 1.0; // Second landing ring
+        spatial_state[[config.ring_layer, 3, 3]] = 1.0; // Start ring
+        spatial_state[[config.ring_layer, 3, 4]] = 1.0; // First captured ring
+        spatial_state[[config.ring_layer, 3, 5]] = 1.0; // First landing ring
+        spatial_state[[config.ring_layer, 2, 5]] = 1.0; // Second captured ring (different direction)
+        spatial_state[[config.ring_layer, 1, 5]] = 1.0; // Second landing ring
 
-        spatial[[1, 3, 3]] = 1.0; // White marble (current player)
-        spatial[[2, 3, 4]] = 1.0; // Gray marble to capture first
-        spatial[[3, 2, 5]] = 1.0; // Black marble forcing second capture
+        spatial_state[[1, 3, 3]] = 1.0; // White marble (current player)
+        spatial_state[[2, 3, 4]] = 1.0; // Gray marble to capture first
+        spatial_state[[3, 2, 5]] = 1.0; // Black marble forcing second capture
 
-        global[config.cur_player] = config.player_1 as f32;
+        global_state[config.cur_player] = config.player_1 as f32;
 
         let east_dir = config
             .directions
@@ -1129,37 +1129,37 @@ mod tests {
             .unwrap();
 
         // Apply first capture (east)
-        apply_capture(&mut spatial.view_mut(), &mut global.view_mut(), 3, 3, east_dir, &config);
+        apply_capture(&mut spatial_state.view_mut(), &mut global_state.view_mut(), 3, 3, east_dir, &config);
 
         // Player should still be current because follow-up capture (north) is available
-        assert_eq!(global[config.cur_player] as usize, config.player_1);
+        assert_eq!(global_state[config.cur_player] as usize, config.player_1);
 
         // Marble must be at first landing position to continue chain
-        assert_eq!(spatial[[1, 3, 5]], 1.0);
+        assert_eq!(spatial_state[[1, 3, 5]], 1.0);
     }
 
     #[test]
     fn test_capture_layer_restricts_to_chain_marble() {
         let config = create_test_config();
-        let (mut spatial, _) = create_empty_state(&config);
+        let (mut spatial_state, _) = create_empty_state(&config);
 
         // Setup two marbles that can both capture:
         // Marble A at (2,2) can capture marble X at (2,3) landing at (2,4)
         // Marble B at (4,4) can capture marble Y at (4,5) landing at (4,6)
-        spatial[[config.ring_layer, 2, 2]] = 1.0; // A start
-        spatial[[config.ring_layer, 2, 3]] = 1.0; // X (capture target for A)
-        spatial[[config.ring_layer, 2, 4]] = 1.0; // A landing
-        spatial[[config.ring_layer, 4, 4]] = 1.0; // B start
-        spatial[[config.ring_layer, 4, 5]] = 1.0; // Y (capture target for B)
-        spatial[[config.ring_layer, 4, 6]] = 1.0; // B landing
+        spatial_state[[config.ring_layer, 2, 2]] = 1.0; // A start
+        spatial_state[[config.ring_layer, 2, 3]] = 1.0; // X (capture target for A)
+        spatial_state[[config.ring_layer, 2, 4]] = 1.0; // A landing
+        spatial_state[[config.ring_layer, 4, 4]] = 1.0; // B start
+        spatial_state[[config.ring_layer, 4, 5]] = 1.0; // Y (capture target for B)
+        spatial_state[[config.ring_layer, 4, 6]] = 1.0; // B landing
 
-        spatial[[1, 2, 2]] = 1.0; // White marble A
-        spatial[[2, 2, 3]] = 1.0; // Gray marble X
-        spatial[[1, 4, 4]] = 1.0; // White marble B
-        spatial[[2, 4, 5]] = 1.0; // Gray marble Y
+        spatial_state[[1, 2, 2]] = 1.0; // White marble A
+        spatial_state[[2, 2, 3]] = 1.0; // Gray marble X
+        spatial_state[[1, 4, 4]] = 1.0; // White marble B
+        spatial_state[[2, 4, 5]] = 1.0; // Gray marble Y
 
         // Without CAPTURE_LAYER marking, both marbles should be able to capture
-        let capture_mask_before = get_capture_actions(&spatial.view(), &config);
+        let capture_mask_before = get_capture_actions(&spatial_state.view(), &config);
         let east_dir = config
             .directions
             .iter()
@@ -1170,10 +1170,10 @@ mod tests {
         assert_eq!(capture_mask_before[[east_dir, 4, 4]], 1.0, "Marble B should be able to capture");
 
         // Now mark A as the marble in chain capture (e.g., A just captured and can continue)
-        spatial[[config.capture_layer, 2, 2]] = 1.0;
+        spatial_state[[config.capture_layer, 2, 2]] = 1.0;
 
         // With CAPTURE_LAYER marked, only marble A should be able to capture
-        let capture_mask_after = get_capture_actions(&spatial.view(), &config);
+        let capture_mask_after = get_capture_actions(&spatial_state.view(), &config);
 
         assert_eq!(capture_mask_after[[east_dir, 2, 2]], 1.0, "Marble A should still be able to capture (chain)");
         assert_eq!(capture_mask_after[[east_dir, 4, 4]], 0.0, "Marble B should NOT be able to capture (not chain marble)");
@@ -1186,12 +1186,12 @@ mod tests {
     #[test]
     fn test_corner_ring_removable_with_oob_neighbors() {
         let config = create_test_config();
-        let (mut spatial, _) = create_empty_state(&config);
+        let (mut spatial_state, _) = create_empty_state(&config);
 
         // Fill entire 7x7 board with rings
         for y in 0..config.width {
             for x in 0..config.width {
-                spatial[[config.ring_layer, y, x]] = 1.0;
+                spatial_state[[config.ring_layer, y, x]] = 1.0;
             }
         }
 
@@ -1206,18 +1206,18 @@ mod tests {
         // Dir 5: (1,1) in-bounds with ring
         // Has 3 consecutive OOB neighbors (dirs 1,2,3) so should be removable
 
-        let is_removable = is_ring_removable(&spatial.view(), 0, 0, &config);
+        let is_removable = is_ring_removable(&spatial_state.view(), 0, 0, &config);
         assert!(is_removable, "Corner ring (0,0) should be removable with 3 consecutive OOB neighbors");
 
         // Test center position (3,3) - should NOT be removable (all neighbors in-bounds with rings)
-        let is_removable_center = is_ring_removable(&spatial.view(), 3, 3, &config);
+        let is_removable_center = is_ring_removable(&spatial_state.view(), 3, 3, &config);
         assert!(!is_removable_center, "Center ring (3,3) should NOT be removable on full board");
     }
 
     #[test]
     fn test_apply_placement_triggers_isolation_capture() {
         let config = create_test_config();
-        let (mut spatial, mut global) = create_empty_state(&config);
+        let (mut spatial_state, mut global_state) = create_empty_state(&config);
 
         // Coordinate helpers (from Python mapping)
         let d4 = (3, 3);
@@ -1228,19 +1228,19 @@ mod tests {
 
         // Prepare rings involved in scenario
         for &(y, x) in &[d4, f1, f2, g1, g2] {
-            spatial[[config.ring_layer, y, x]] = 1.0;
+            spatial_state[[config.ring_layer, y, x]] = 1.0;
         }
 
         // Place marble on G1 (isolated target)
-        spatial[[1, g1.0, g1.1]] = 1.0;
+        spatial_state[[1, g1.0, g1.1]] = 1.0;
 
         // Remove neighbors to prepare isolation
-        spatial[[config.ring_layer, f1.0, f1.1]] = 0.0;
-        spatial[[config.ring_layer, g2.0, g2.1]] = 0.0;
+        spatial_state[[config.ring_layer, f1.0, f1.1]] = 0.0;
+        spatial_state[[config.ring_layer, g2.0, g2.1]] = 0.0;
 
         // Set supply and current player
-        global[config.supply_w] = 5.0;
-        global[config.cur_player] = config.player_1 as f32;
+        global_state[config.supply_w] = 5.0;
+        global_state[config.cur_player] = config.player_1 as f32;
 
         // Apply placement at D4 removing F2
         // This creates TWO isolated single-ring regions:
@@ -1248,8 +1248,8 @@ mod tests {
         // - G1 with the pre-existing marble
         // Both regions are fully occupied, so BOTH get captured
         apply_placement(
-            &mut spatial.view_mut(),
-            &mut global.view_mut(),
+            &mut spatial_state.view_mut(),
+            &mut global_state.view_mut(),
             0, // white marble
             d4.0,
             d4.1,
@@ -1259,11 +1259,11 @@ mod tests {
         );
 
         // Both D4 and G1 should be captured (2 marbles total)
-        assert_eq!(global[config.p1_cap_w], 2.0);
-        assert_eq!(spatial[[1, d4.0, d4.1]], 0.0);
-        assert_eq!(spatial[[config.ring_layer, d4.0, d4.1]], 0.0);
-        assert_eq!(spatial[[1, g1.0, g1.1]], 0.0);
-        assert_eq!(spatial[[config.ring_layer, g1.0, g1.1]], 0.0);
+        assert_eq!(global_state[config.p1_cap_w], 2.0);
+        assert_eq!(spatial_state[[1, d4.0, d4.1]], 0.0);
+        assert_eq!(spatial_state[[config.ring_layer, d4.0, d4.1]], 0.0);
+        assert_eq!(spatial_state[[1, g1.0, g1.1]], 0.0);
+        assert_eq!(spatial_state[[config.ring_layer, g1.0, g1.1]], 0.0);
     }
 
     #[test]
@@ -1272,7 +1272,7 @@ mod tests {
         /// regardless of their location on the board.
 
         let config = create_test_config();
-        let (mut spatial, mut global) = create_empty_state(&config);
+        let (mut spatial_state, mut global_state) = create_empty_state(&config);
 
         // Create scenario with THREE isolated single-ring regions, all fully occupied:
         // Region A: D4 (will have the marble we just placed)
@@ -1287,24 +1287,24 @@ mod tests {
         let a1 = (6, 0);   // Region C
 
         // Set up rings
-        spatial[[config.ring_layer, d4.0, d4.1]] = 1.0;
-        spatial[[config.ring_layer, f2.0, f2.1]] = 1.0;
-        spatial[[config.ring_layer, g1.0, g1.1]] = 1.0;
-        spatial[[config.ring_layer, a1.0, a1.1]] = 1.0;
+        spatial_state[[config.ring_layer, d4.0, d4.1]] = 1.0;
+        spatial_state[[config.ring_layer, f2.0, f2.1]] = 1.0;
+        spatial_state[[config.ring_layer, g1.0, g1.1]] = 1.0;
+        spatial_state[[config.ring_layer, a1.0, a1.1]] = 1.0;
 
         // Place marbles on G1 and A1 (D4 will get a marble during placement)
-        spatial[[1, g1.0, g1.1]] = 1.0;  // white on G1
-        spatial[[1, a1.0, a1.1]] = 1.0;  // white on A1
+        spatial_state[[1, g1.0, g1.1]] = 1.0;  // white on G1
+        spatial_state[[1, a1.0, a1.1]] = 1.0;  // white on A1
 
         // Remove neighbors to prepare isolation
-        spatial[[config.ring_layer, 6, 4]] = 0.0;  // F1 (neighbor of G1)
-        spatial[[config.ring_layer, 5, 6]] = 0.0;  // G2 (neighbor of G1)
-        spatial[[config.ring_layer, 5, 0]] = 0.0;  // A2 (neighbor of A1)
-        spatial[[config.ring_layer, 6, 1]] = 0.0;  // B1 (neighbor of A1)
+        spatial_state[[config.ring_layer, 6, 4]] = 0.0;  // F1 (neighbor of G1)
+        spatial_state[[config.ring_layer, 5, 6]] = 0.0;  // G2 (neighbor of G1)
+        spatial_state[[config.ring_layer, 5, 0]] = 0.0;  // A2 (neighbor of A1)
+        spatial_state[[config.ring_layer, 6, 1]] = 0.0;  // B1 (neighbor of A1)
 
         // Set up game state
-        global[config.supply_w] = 5.0;
-        global[config.cur_player] = config.player_1 as f32;
+        global_state[config.supply_w] = 5.0;
+        global_state[config.cur_player] = config.player_1 as f32;
 
         // Place marble at D4, remove F2
         // This creates THREE isolated single-ring regions:
@@ -1313,8 +1313,8 @@ mod tests {
         // - A1 (pre-existing)
         // ALL are fully occupied, so ALL get captured
         apply_placement(
-            &mut spatial.view_mut(),
-            &mut global.view_mut(),
+            &mut spatial_state.view_mut(),
+            &mut global_state.view_mut(),
             0,  // white marble
             d4.0,
             d4.1,
@@ -1324,40 +1324,40 @@ mod tests {
         );
 
         // Verify ALL three regions were captured
-        assert_eq!(spatial[[1, d4.0, d4.1]], 0.0, "D4 marble should be captured");
-        assert_eq!(spatial[[config.ring_layer, d4.0, d4.1]], 0.0, "D4 ring should be removed");
+        assert_eq!(spatial_state[[1, d4.0, d4.1]], 0.0, "D4 marble should be captured");
+        assert_eq!(spatial_state[[config.ring_layer, d4.0, d4.1]], 0.0, "D4 ring should be removed");
 
-        assert_eq!(spatial[[1, g1.0, g1.1]], 0.0, "G1 marble should be captured");
-        assert_eq!(spatial[[config.ring_layer, g1.0, g1.1]], 0.0, "G1 ring should be removed");
+        assert_eq!(spatial_state[[1, g1.0, g1.1]], 0.0, "G1 marble should be captured");
+        assert_eq!(spatial_state[[config.ring_layer, g1.0, g1.1]], 0.0, "G1 ring should be removed");
 
-        assert_eq!(spatial[[1, a1.0, a1.1]], 0.0, "A1 marble should be captured");
-        assert_eq!(spatial[[config.ring_layer, a1.0, a1.1]], 0.0, "A1 ring should be removed");
+        assert_eq!(spatial_state[[1, a1.0, a1.1]], 0.0, "A1 marble should be captured");
+        assert_eq!(spatial_state[[config.ring_layer, a1.0, a1.1]], 0.0, "A1 ring should be removed");
 
         // Verify all 3 marbles were captured
-        assert_eq!(global[config.p1_cap_w], 3.0, "Should capture all 3 marbles");
+        assert_eq!(global_state[config.p1_cap_w], 3.0, "Should capture all 3 marbles");
     }
 
     #[test]
     #[should_panic(expected = "Captured marbles may only be used when supply is empty")]
     fn test_apply_placement_disallows_captured_when_supply_available() {
         let config = create_test_config();
-        let (mut spatial, mut global) = create_empty_state(&config);
+        let (mut spatial_state, mut global_state) = create_empty_state(&config);
 
         // Prepare destination ring
         let d4 = (3, 3);
-        spatial[[config.ring_layer, d4.0, d4.1]] = 1.0;
+        spatial_state[[config.ring_layer, d4.0, d4.1]] = 1.0;
 
         // No white marbles in supply, but grey supply still available
-        global[config.supply_w] = 0.0;
-        global[config.supply_g] = 1.0;
-        global[config.supply_b] = 0.0;
-        global[config.p1_cap_w] = 1.0; // captured white available
-        global[config.cur_player] = config.player_1 as f32;
+        global_state[config.supply_w] = 0.0;
+        global_state[config.supply_g] = 1.0;
+        global_state[config.supply_b] = 0.0;
+        global_state[config.p1_cap_w] = 1.0; // captured white available
+        global_state[config.cur_player] = config.player_1 as f32;
 
         // Attempt to place white marble without removing a ring
         apply_placement(
-            &mut spatial.view_mut(),
-            &mut global.view_mut(),
+            &mut spatial_state.view_mut(),
+            &mut global_state.view_mut(),
             0,
             d4.0,
             d4.1,
@@ -1381,20 +1381,20 @@ mod tests {
 ///
 /// Returns true if any terminal condition is met.
 pub fn is_game_over(
-    spatial: &ArrayView3<f32>,
-    global: &ArrayView1<f32>,
+    spatial_state: &ArrayView3<f32>,
+    global_state: &ArrayView1<f32>,
     config: &BoardConfig,
 ) -> bool {
     let p1_caps = [
-        global[config.p1_cap_w],
-        global[config.p1_cap_g],
-        global[config.p1_cap_b],
+        global_state[config.p1_cap_w],
+        global_state[config.p1_cap_g],
+        global_state[config.p1_cap_b],
     ];
 
     let p2_caps = [
-        global[config.p2_cap_w],
-        global[config.p2_cap_g],
-        global[config.p2_cap_b],
+        global_state[config.p2_cap_w],
+        global_state[config.p2_cap_g],
+        global_state[config.p2_cap_b],
     ];
 
     // Check 3-of-each win (uses mode-specific threshold)
@@ -1426,10 +1426,10 @@ pub fn is_game_over(
     let mut all_occupied = true;
     for y in 0..config.width {
         for x in 0..config.width {
-            if spatial[[config.ring_layer, y, x]] == 1.0 {
+            if spatial_state[[config.ring_layer, y, x]] == 1.0 {
                 let mut has_marble = false;
                 for layer in config.marble_layers.0..config.marble_layers.1 {
-                    if spatial[[layer, y, x]] > 0.0 {
+                    if spatial_state[[layer, y, x]] > 0.0 {
                         has_marble = true;
                         break;
                     }
@@ -1449,11 +1449,11 @@ pub fn is_game_over(
     }
 
     // Check if current player has no marbles to play (supply + captured)
-    let cur_player = global[config.cur_player] as usize;
+    let cur_player = global_state[config.cur_player] as usize;
     let supply = [
-        global[config.supply_w],
-        global[config.supply_g],
-        global[config.supply_b],
+        global_state[config.supply_w],
+        global_state[config.supply_g],
+        global_state[config.supply_b],
     ];
 
     let captured_slice = if cur_player == config.player_1 {
@@ -1463,9 +1463,9 @@ pub fn is_game_over(
     };
 
     let captured = [
-        global[captured_slice[0]],
-        global[captured_slice[1]],
-        global[captured_slice[2]],
+        global_state[captured_slice[0]],
+        global_state[captured_slice[1]],
+        global_state[captured_slice[2]],
     ];
 
     if supply
@@ -1490,20 +1490,20 @@ pub fn is_game_over(
 /// Note: This returns the outcome from Player 1's perspective.
 /// The caller must convert to their own perspective if needed.
 pub fn get_game_outcome(
-    spatial: &ArrayView3<f32>,
-    global: &ArrayView1<f32>,
+    spatial_state: &ArrayView3<f32>,
+    global_state: &ArrayView1<f32>,
     config: &BoardConfig,
 ) -> i8 {
     let p1_caps = [
-        global[config.p1_cap_w],
-        global[config.p1_cap_g],
-        global[config.p1_cap_b],
+        global_state[config.p1_cap_w],
+        global_state[config.p1_cap_g],
+        global_state[config.p1_cap_b],
     ];
 
     let p2_caps = [
-        global[config.p2_cap_w],
-        global[config.p2_cap_g],
-        global[config.p2_cap_b],
+        global_state[config.p2_cap_w],
+        global_state[config.p2_cap_g],
+        global_state[config.p2_cap_b],
     ];
 
     // Determine winner by captures (uses mode-specific thresholds)
@@ -1537,10 +1537,10 @@ pub fn get_game_outcome(
     let mut all_occupied = true;
     'outer: for y in 0..config.width {
         for x in 0..config.width {
-            if spatial[[config.ring_layer, y, x]] == 1.0 {
+            if spatial_state[[config.ring_layer, y, x]] == 1.0 {
                 let mut has_marble = false;
                 for layer in config.marble_layers.0..config.marble_layers.1 {
-                    if spatial[[layer, y, x]] > 0.0 {
+                    if spatial_state[[layer, y, x]] > 0.0 {
                         has_marble = true;
                         break;
                     }
@@ -1564,7 +1564,7 @@ pub fn get_game_outcome(
         }
 
         // Normal full board: last player to move wins (current player loses)
-        let cur_player = global[config.cur_player] as usize;
+        let cur_player = global_state[config.cur_player] as usize;
         if cur_player == config.player_1 {
             // Player 1 to move, Player 2 wins
             return PLAYER_2_WIN;
@@ -1575,11 +1575,11 @@ pub fn get_game_outcome(
     }
 
     // Check if current player has no marbles (opponent wins)
-    let cur_player = global[config.cur_player] as usize;
+    let cur_player = global_state[config.cur_player] as usize;
     let supply = [
-        global[config.supply_w],
-        global[config.supply_g],
-        global[config.supply_b],
+        global_state[config.supply_w],
+        global_state[config.supply_g],
+        global_state[config.supply_b],
     ];
 
     let captured_slice = if cur_player == config.player_1 {
@@ -1589,9 +1589,9 @@ pub fn get_game_outcome(
     };
 
     let captured = [
-        global[captured_slice[0]],
-        global[captured_slice[1]],
-        global[captured_slice[2]],
+        global_state[captured_slice[0]],
+        global_state[captured_slice[1]],
+        global_state[captured_slice[2]],
     ];
 
     if supply
@@ -1622,10 +1622,10 @@ mod termination_tests {
 
     fn create_empty_state(config: &BoardConfig) -> (Array3<f32>, Array1<f32>) {
         let num_layers = config.t * config.layers_per_timestep + 1;
-        let global_size = 10;
-        let spatial = Array3::zeros((num_layers, config.width, config.width));
-        let global = Array1::zeros(global_size);
-        (spatial, global)
+        let global_state_size = 10;
+        let spatial_state = Array3::zeros((num_layers, config.width, config.width));
+        let global_state = Array1::zeros(global_state_size);
+        (spatial_state, global_state)
     }
 
     // ========================================================================
@@ -1635,108 +1635,108 @@ mod termination_tests {
     #[test]
     fn test_is_game_over_three_of_each_p1() {
         let config = create_test_config();
-        let (spatial, mut global) = create_empty_state(&config);
+        let (spatial_state, mut global_state) = create_empty_state(&config);
 
         // Player 1 has 3 of each
-        global[config.p1_cap_w] = 3.0;
-        global[config.p1_cap_g] = 3.0;
-        global[config.p1_cap_b] = 3.0;
+        global_state[config.p1_cap_w] = 3.0;
+        global_state[config.p1_cap_g] = 3.0;
+        global_state[config.p1_cap_b] = 3.0;
 
-        assert!(is_game_over(&spatial.view(), &global.view(), &config));
+        assert!(is_game_over(&spatial_state.view(), &global_state.view(), &config));
     }
 
     #[test]
     fn test_is_game_over_three_of_each_p2() {
         let config = create_test_config();
-        let (spatial, mut global) = create_empty_state(&config);
+        let (spatial_state, mut global_state) = create_empty_state(&config);
 
         // Player 2 has 3 of each
-        global[config.p2_cap_w] = 3.0;
-        global[config.p2_cap_g] = 3.0;
-        global[config.p2_cap_b] = 3.0;
+        global_state[config.p2_cap_w] = 3.0;
+        global_state[config.p2_cap_g] = 3.0;
+        global_state[config.p2_cap_b] = 3.0;
 
-        assert!(is_game_over(&spatial.view(), &global.view(), &config));
+        assert!(is_game_over(&spatial_state.view(), &global_state.view(), &config));
     }
 
     #[test]
     fn test_is_game_over_4_white() {
         let config = create_test_config();
-        let (spatial, mut global) = create_empty_state(&config);
+        let (spatial_state, mut global_state) = create_empty_state(&config);
 
         // Player 1 has 4 white
-        global[config.p1_cap_w] = 4.0;
+        global_state[config.p1_cap_w] = 4.0;
 
-        assert!(is_game_over(&spatial.view(), &global.view(), &config));
+        assert!(is_game_over(&spatial_state.view(), &global_state.view(), &config));
     }
 
     #[test]
     fn test_is_game_over_5_gray() {
         let config = create_test_config();
-        let (spatial, mut global) = create_empty_state(&config);
+        let (spatial_state, mut global_state) = create_empty_state(&config);
 
         // Player 2 has 5 gray
-        global[config.p2_cap_g] = 5.0;
+        global_state[config.p2_cap_g] = 5.0;
 
-        assert!(is_game_over(&spatial.view(), &global.view(), &config));
+        assert!(is_game_over(&spatial_state.view(), &global_state.view(), &config));
     }
 
     #[test]
     fn test_is_game_over_6_black() {
         let config = create_test_config();
-        let (spatial, mut global) = create_empty_state(&config);
+        let (spatial_state, mut global_state) = create_empty_state(&config);
 
         // Player 1 has 6 black
-        global[config.p1_cap_b] = 6.0;
+        global_state[config.p1_cap_b] = 6.0;
 
-        assert!(is_game_over(&spatial.view(), &global.view(), &config));
+        assert!(is_game_over(&spatial_state.view(), &global_state.view(), &config));
     }
 
     #[test]
     fn test_is_game_over_board_full() {
         let config = create_test_config();
-        let (mut spatial, global) = create_empty_state(&config);
+        let (mut spatial_state, global_state) = create_empty_state(&config);
 
         // Fill one ring with marble
-        spatial[[config.ring_layer, 3, 3]] = 1.0;
-        spatial[[1, 3, 3]] = 1.0; // White marble
+        spatial_state[[config.ring_layer, 3, 3]] = 1.0;
+        spatial_state[[1, 3, 3]] = 1.0; // White marble
 
-        assert!(is_game_over(&spatial.view(), &global.view(), &config));
+        assert!(is_game_over(&spatial_state.view(), &global_state.view(), &config));
     }
 
     #[test]
     fn test_is_game_over_current_player_no_marbles() {
         let config = create_test_config();
-        let (spatial, mut global) = create_empty_state(&config);
+        let (spatial_state, mut global_state) = create_empty_state(&config);
 
         // Player 1's turn, no marbles in supply or captured
-        global[config.cur_player] = config.player_1 as f32;
-        global[config.supply_w] = 0.0;
-        global[config.supply_g] = 0.0;
-        global[config.supply_b] = 0.0;
-        global[config.p1_cap_w] = 0.0;
-        global[config.p1_cap_g] = 0.0;
-        global[config.p1_cap_b] = 0.0;
+        global_state[config.cur_player] = config.player_1 as f32;
+        global_state[config.supply_w] = 0.0;
+        global_state[config.supply_g] = 0.0;
+        global_state[config.supply_b] = 0.0;
+        global_state[config.p1_cap_w] = 0.0;
+        global_state[config.p1_cap_g] = 0.0;
+        global_state[config.p1_cap_b] = 0.0;
 
-        assert!(is_game_over(&spatial.view(), &global.view(), &config));
+        assert!(is_game_over(&spatial_state.view(), &global_state.view(), &config));
     }
 
     #[test]
     fn test_is_game_over_false_not_enough_captures() {
         let config = create_test_config();
-        let (mut spatial, mut global) = create_empty_state(&config);
+        let (mut spatial_state, mut global_state) = create_empty_state(&config);
 
         // Player 1 has 2 of each (not 3)
-        global[config.p1_cap_w] = 2.0;
-        global[config.p1_cap_g] = 2.0;
-        global[config.p1_cap_b] = 2.0;
+        global_state[config.p1_cap_w] = 2.0;
+        global_state[config.p1_cap_g] = 2.0;
+        global_state[config.p1_cap_b] = 2.0;
 
         // Board not full
-        spatial[[config.ring_layer, 3, 3]] = 1.0; // Empty ring
+        spatial_state[[config.ring_layer, 3, 3]] = 1.0; // Empty ring
 
         // Supply has marbles
-        global[config.supply_w] = 1.0;
+        global_state[config.supply_w] = 1.0;
 
-        assert!(!is_game_over(&spatial.view(), &global.view(), &config));
+        assert!(!is_game_over(&spatial_state.view(), &global_state.view(), &config));
     }
 
     // ========================================================================
@@ -1746,14 +1746,14 @@ mod termination_tests {
     #[test]
     fn test_get_game_outcome_p1_wins_three_of_each() {
         let config = create_test_config();
-        let (spatial, mut global) = create_empty_state(&config);
+        let (spatial_state, mut global_state) = create_empty_state(&config);
 
-        global[config.p1_cap_w] = 3.0;
-        global[config.p1_cap_g] = 3.0;
-        global[config.p1_cap_b] = 3.0;
+        global_state[config.p1_cap_w] = 3.0;
+        global_state[config.p1_cap_g] = 3.0;
+        global_state[config.p1_cap_b] = 3.0;
 
         assert_eq!(
-            get_game_outcome(&spatial.view(), &global.view(), &config),
+            get_game_outcome(&spatial_state.view(), &global_state.view(), &config),
             PLAYER_1_WIN
         );
     }
@@ -1761,14 +1761,14 @@ mod termination_tests {
     #[test]
     fn test_get_game_outcome_p2_wins_three_of_each() {
         let config = create_test_config();
-        let (spatial, mut global) = create_empty_state(&config);
+        let (spatial_state, mut global_state) = create_empty_state(&config);
 
-        global[config.p2_cap_w] = 3.0;
-        global[config.p2_cap_g] = 3.0;
-        global[config.p2_cap_b] = 3.0;
+        global_state[config.p2_cap_w] = 3.0;
+        global_state[config.p2_cap_g] = 3.0;
+        global_state[config.p2_cap_b] = 3.0;
 
         assert_eq!(
-            get_game_outcome(&spatial.view(), &global.view(), &config),
+            get_game_outcome(&spatial_state.view(), &global_state.view(), &config),
             PLAYER_2_WIN
         );
     }
@@ -1776,12 +1776,12 @@ mod termination_tests {
     #[test]
     fn test_get_game_outcome_p1_wins_4_white() {
         let config = create_test_config();
-        let (spatial, mut global) = create_empty_state(&config);
+        let (spatial_state, mut global_state) = create_empty_state(&config);
 
-        global[config.p1_cap_w] = 4.0;
+        global_state[config.p1_cap_w] = 4.0;
 
         assert_eq!(
-            get_game_outcome(&spatial.view(), &global.view(), &config),
+            get_game_outcome(&spatial_state.view(), &global_state.view(), &config),
             PLAYER_1_WIN
         );
     }
@@ -1789,12 +1789,12 @@ mod termination_tests {
     #[test]
     fn test_get_game_outcome_p2_wins_5_gray() {
         let config = create_test_config();
-        let (spatial, mut global) = create_empty_state(&config);
+        let (spatial_state, mut global_state) = create_empty_state(&config);
 
-        global[config.p2_cap_g] = 5.0;
+        global_state[config.p2_cap_g] = 5.0;
 
         assert_eq!(
-            get_game_outcome(&spatial.view(), &global.view(), &config),
+            get_game_outcome(&spatial_state.view(), &global_state.view(), &config),
             PLAYER_2_WIN
         );
     }
@@ -1802,12 +1802,12 @@ mod termination_tests {
     #[test]
     fn test_get_game_outcome_p1_wins_6_black() {
         let config = create_test_config();
-        let (spatial, mut global) = create_empty_state(&config);
+        let (spatial_state, mut global_state) = create_empty_state(&config);
 
-        global[config.p1_cap_b] = 6.0;
+        global_state[config.p1_cap_b] = 6.0;
 
         assert_eq!(
-            get_game_outcome(&spatial.view(), &global.view(), &config),
+            get_game_outcome(&spatial_state.view(), &global_state.view(), &config),
             PLAYER_1_WIN
         );
     }
@@ -1815,22 +1815,22 @@ mod termination_tests {
     #[test]
     fn test_get_game_outcome_both_lose() {
         let config = create_test_config();
-        let (mut spatial, mut global) = create_empty_state(&config);
+        let (mut spatial_state, mut global_state) = create_empty_state(&config);
 
         // Board full (one ring, one marble)
-        spatial[[config.ring_layer, 3, 3]] = 1.0;
-        spatial[[1, 3, 3]] = 1.0; // White marble
+        spatial_state[[config.ring_layer, 3, 3]] = 1.0;
+        spatial_state[[1, 3, 3]] = 1.0; // White marble
 
         // Both players have zero captures
-        global[config.p1_cap_w] = 0.0;
-        global[config.p1_cap_g] = 0.0;
-        global[config.p1_cap_b] = 0.0;
-        global[config.p2_cap_w] = 0.0;
-        global[config.p2_cap_g] = 0.0;
-        global[config.p2_cap_b] = 0.0;
+        global_state[config.p1_cap_w] = 0.0;
+        global_state[config.p1_cap_g] = 0.0;
+        global_state[config.p1_cap_b] = 0.0;
+        global_state[config.p2_cap_w] = 0.0;
+        global_state[config.p2_cap_g] = 0.0;
+        global_state[config.p2_cap_b] = 0.0;
 
         assert_eq!(
-            get_game_outcome(&spatial.view(), &global.view(), &config),
+            get_game_outcome(&spatial_state.view(), &global_state.view(), &config),
             BOTH_LOSE
         );
     }
@@ -1838,21 +1838,21 @@ mod termination_tests {
     #[test]
     fn test_get_game_outcome_board_full_p1_to_move_p2_wins() {
         let config = create_test_config();
-        let (mut spatial, mut global) = create_empty_state(&config);
+        let (mut spatial_state, mut global_state) = create_empty_state(&config);
 
         // Board full
-        spatial[[config.ring_layer, 3, 3]] = 1.0;
-        spatial[[1, 3, 3]] = 1.0; // White marble
+        spatial_state[[config.ring_layer, 3, 3]] = 1.0;
+        spatial_state[[1, 3, 3]] = 1.0; // White marble
 
         // Player 1 to move
-        global[config.cur_player] = config.player_1 as f32;
+        global_state[config.cur_player] = config.player_1 as f32;
 
         // Player 1 has some captures (not zero)
-        global[config.p1_cap_w] = 1.0;
+        global_state[config.p1_cap_w] = 1.0;
 
         // Player 2 wins (last to move)
         assert_eq!(
-            get_game_outcome(&spatial.view(), &global.view(), &config),
+            get_game_outcome(&spatial_state.view(), &global_state.view(), &config),
             PLAYER_2_WIN
         );
     }
@@ -1860,21 +1860,21 @@ mod termination_tests {
     #[test]
     fn test_get_game_outcome_board_full_p2_to_move_p1_wins() {
         let config = create_test_config();
-        let (mut spatial, mut global) = create_empty_state(&config);
+        let (mut spatial_state, mut global_state) = create_empty_state(&config);
 
         // Board full
-        spatial[[config.ring_layer, 3, 3]] = 1.0;
-        spatial[[1, 3, 3]] = 1.0; // White marble
+        spatial_state[[config.ring_layer, 3, 3]] = 1.0;
+        spatial_state[[1, 3, 3]] = 1.0; // White marble
 
         // Player 2 to move
-        global[config.cur_player] = config.player_2 as f32;
+        global_state[config.cur_player] = config.player_2 as f32;
 
         // Player 2 has some captures (not zero)
-        global[config.p2_cap_w] = 1.0;
+        global_state[config.p2_cap_w] = 1.0;
 
         // Player 1 wins (last to move)
         assert_eq!(
-            get_game_outcome(&spatial.view(), &global.view(), &config),
+            get_game_outcome(&spatial_state.view(), &global_state.view(), &config),
             PLAYER_1_WIN
         );
     }
@@ -1882,28 +1882,28 @@ mod termination_tests {
     #[test]
     fn test_get_game_outcome_p1_no_marbles_p2_wins() {
         let config = create_test_config();
-        let (mut spatial, mut global) = create_empty_state(&config);
+        let (mut spatial_state, mut global_state) = create_empty_state(&config);
 
         // Add a ring with a marble so board is not empty (not triggering BOTH_LOSE)
-        spatial[[config.ring_layer, 3, 3]] = 1.0;
-        spatial[[1, 3, 3]] = 1.0; // white marble on ring
+        spatial_state[[config.ring_layer, 3, 3]] = 1.0;
+        spatial_state[[1, 3, 3]] = 1.0; // white marble on ring
 
         // Player 1's turn
-        global[config.cur_player] = config.player_1 as f32;
+        global_state[config.cur_player] = config.player_1 as f32;
 
         // No marbles in supply or captured for P1
-        global[config.supply_w] = 0.0;
-        global[config.supply_g] = 0.0;
-        global[config.supply_b] = 0.0;
-        global[config.p1_cap_w] = 0.0;
-        global[config.p1_cap_g] = 0.0;
-        global[config.p1_cap_b] = 0.0;
+        global_state[config.supply_w] = 0.0;
+        global_state[config.supply_g] = 0.0;
+        global_state[config.supply_b] = 0.0;
+        global_state[config.p1_cap_w] = 0.0;
+        global_state[config.p1_cap_g] = 0.0;
+        global_state[config.p1_cap_b] = 0.0;
 
         // P2 has some marbles (to avoid BOTH_LOSE)
-        global[config.p2_cap_w] = 1.0;
+        global_state[config.p2_cap_w] = 1.0;
 
         assert_eq!(
-            get_game_outcome(&spatial.view(), &global.view(), &config),
+            get_game_outcome(&spatial_state.view(), &global_state.view(), &config),
             PLAYER_2_WIN
         );
     }
@@ -1911,28 +1911,28 @@ mod termination_tests {
     #[test]
     fn test_get_game_outcome_p2_no_marbles_p1_wins() {
         let config = create_test_config();
-        let (mut spatial, mut global) = create_empty_state(&config);
+        let (mut spatial_state, mut global_state) = create_empty_state(&config);
 
         // Add a ring with a marble so board is not empty (not triggering BOTH_LOSE)
-        spatial[[config.ring_layer, 3, 3]] = 1.0;
-        spatial[[1, 3, 3]] = 1.0; // white marble on ring
+        spatial_state[[config.ring_layer, 3, 3]] = 1.0;
+        spatial_state[[1, 3, 3]] = 1.0; // white marble on ring
 
         // Player 2's turn
-        global[config.cur_player] = config.player_2 as f32;
+        global_state[config.cur_player] = config.player_2 as f32;
 
         // No marbles in supply or captured for P2
-        global[config.supply_w] = 0.0;
-        global[config.supply_g] = 0.0;
-        global[config.supply_b] = 0.0;
-        global[config.p2_cap_w] = 0.0;
-        global[config.p2_cap_g] = 0.0;
-        global[config.p2_cap_b] = 0.0;
+        global_state[config.supply_w] = 0.0;
+        global_state[config.supply_g] = 0.0;
+        global_state[config.supply_b] = 0.0;
+        global_state[config.p2_cap_w] = 0.0;
+        global_state[config.p2_cap_g] = 0.0;
+        global_state[config.p2_cap_b] = 0.0;
 
         // P1 has some marbles (to avoid BOTH_LOSE)
-        global[config.p1_cap_w] = 1.0;
+        global_state[config.p1_cap_w] = 1.0;
 
         assert_eq!(
-            get_game_outcome(&spatial.view(), &global.view(), &config),
+            get_game_outcome(&spatial_state.view(), &global_state.view(), &config),
             PLAYER_1_WIN
         );
     }
@@ -1944,16 +1944,16 @@ mod termination_tests {
     #[test]
     fn test_blitz_mode_two_of_each_p1_wins() {
         let config = BoardConfig::blitz(37, 1).unwrap();
-        let (spatial, mut global) = create_empty_state(&config);
+        let (spatial_state, mut global_state) = create_empty_state(&config);
 
         // Player 1 has 2 of each (Blitz win condition)
-        global[config.p1_cap_w] = 2.0;
-        global[config.p1_cap_g] = 2.0;
-        global[config.p1_cap_b] = 2.0;
+        global_state[config.p1_cap_w] = 2.0;
+        global_state[config.p1_cap_g] = 2.0;
+        global_state[config.p1_cap_b] = 2.0;
 
-        assert!(is_game_over(&spatial.view(), &global.view(), &config));
+        assert!(is_game_over(&spatial_state.view(), &global_state.view(), &config));
         assert_eq!(
-            get_game_outcome(&spatial.view(), &global.view(), &config),
+            get_game_outcome(&spatial_state.view(), &global_state.view(), &config),
             PLAYER_1_WIN
         );
     }
@@ -1961,14 +1961,14 @@ mod termination_tests {
     #[test]
     fn test_blitz_mode_three_white_p2_wins() {
         let config = BoardConfig::blitz(37, 1).unwrap();
-        let (spatial, mut global) = create_empty_state(&config);
+        let (spatial_state, mut global_state) = create_empty_state(&config);
 
         // Player 2 has 3 white (Blitz win condition)
-        global[config.p2_cap_w] = 3.0;
+        global_state[config.p2_cap_w] = 3.0;
 
-        assert!(is_game_over(&spatial.view(), &global.view(), &config));
+        assert!(is_game_over(&spatial_state.view(), &global_state.view(), &config));
         assert_eq!(
-            get_game_outcome(&spatial.view(), &global.view(), &config),
+            get_game_outcome(&spatial_state.view(), &global_state.view(), &config),
             PLAYER_2_WIN
         );
     }
@@ -1976,14 +1976,14 @@ mod termination_tests {
     #[test]
     fn test_blitz_mode_four_gray_p1_wins() {
         let config = BoardConfig::blitz(37, 1).unwrap();
-        let (spatial, mut global) = create_empty_state(&config);
+        let (spatial_state, mut global_state) = create_empty_state(&config);
 
         // Player 1 has 4 gray (Blitz win condition)
-        global[config.p1_cap_g] = 4.0;
+        global_state[config.p1_cap_g] = 4.0;
 
-        assert!(is_game_over(&spatial.view(), &global.view(), &config));
+        assert!(is_game_over(&spatial_state.view(), &global_state.view(), &config));
         assert_eq!(
-            get_game_outcome(&spatial.view(), &global.view(), &config),
+            get_game_outcome(&spatial_state.view(), &global_state.view(), &config),
             PLAYER_1_WIN
         );
     }
@@ -1991,14 +1991,14 @@ mod termination_tests {
     #[test]
     fn test_blitz_mode_five_black_p2_wins() {
         let config = BoardConfig::blitz(37, 1).unwrap();
-        let (spatial, mut global) = create_empty_state(&config);
+        let (spatial_state, mut global_state) = create_empty_state(&config);
 
         // Player 2 has 5 black (Blitz win condition)
-        global[config.p2_cap_b] = 5.0;
+        global_state[config.p2_cap_b] = 5.0;
 
-        assert!(is_game_over(&spatial.view(), &global.view(), &config));
+        assert!(is_game_over(&spatial_state.view(), &global_state.view(), &config));
         assert_eq!(
-            get_game_outcome(&spatial.view(), &global.view(), &config),
+            get_game_outcome(&spatial_state.view(), &global_state.view(), &config),
             PLAYER_2_WIN
         );
     }
@@ -2006,64 +2006,64 @@ mod termination_tests {
     #[test]
     fn test_blitz_mode_not_enough_captures() {
         let config = BoardConfig::blitz(37, 1).unwrap();
-        let (mut spatial, mut global) = create_empty_state(&config);
+        let (mut spatial_state, mut global_state) = create_empty_state(&config);
 
         // Player 1 has only 1 black (not enough for Blitz 2-of-each)
-        global[config.p1_cap_w] = 2.0;
-        global[config.p1_cap_g] = 2.0;
-        global[config.p1_cap_b] = 1.0; // Only 1 black (not enough for Blitz)
+        global_state[config.p1_cap_w] = 2.0;
+        global_state[config.p1_cap_g] = 2.0;
+        global_state[config.p1_cap_b] = 1.0; // Only 1 black (not enough for Blitz)
 
         // Add ring so board isn't considered full
-        spatial[[config.ring_layer, 3, 3]] = 1.0;
+        spatial_state[[config.ring_layer, 3, 3]] = 1.0;
 
         // Supply has marbles
-        global[config.supply_w] = 1.0;
+        global_state[config.supply_w] = 1.0;
 
         // Should NOT be game over - needs 2 of EACH (has only 1 black)
-        assert!(!is_game_over(&spatial.view(), &global.view(), &config));
+        assert!(!is_game_over(&spatial_state.view(), &global_state.view(), &config));
     }
 
     #[test]
     fn test_standard_mode_not_enough_blitz_captures() {
         let config = BoardConfig::standard(37, 1).unwrap();
-        let (mut spatial, mut global) = create_empty_state(&config);
+        let (mut spatial_state, mut global_state) = create_empty_state(&config);
 
         // Player 1 has Blitz win conditions (2 of each)
         // but this should NOT trigger win in Standard mode
-        global[config.p1_cap_w] = 2.0;
-        global[config.p1_cap_g] = 2.0;
-        global[config.p1_cap_b] = 2.0;
+        global_state[config.p1_cap_w] = 2.0;
+        global_state[config.p1_cap_g] = 2.0;
+        global_state[config.p1_cap_b] = 2.0;
 
         // Add ring so board isn't considered full
-        spatial[[config.ring_layer, 3, 3]] = 1.0;
+        spatial_state[[config.ring_layer, 3, 3]] = 1.0;
 
         // Supply has marbles
-        global[config.supply_w] = 1.0;
+        global_state[config.supply_w] = 1.0;
 
         // Should NOT be game over - needs 3 of each in Standard mode
-        assert!(!is_game_over(&spatial.view(), &global.view(), &config));
+        assert!(!is_game_over(&spatial_state.view(), &global_state.view(), &config));
     }
 
     #[test]
     fn test_blitz_mode_board_full_both_lose() {
         let config = BoardConfig::blitz(37, 1).unwrap();
-        let (mut spatial, mut global) = create_empty_state(&config);
+        let (mut spatial_state, mut global_state) = create_empty_state(&config);
 
         // Board full (one ring, one marble)
-        spatial[[config.ring_layer, 3, 3]] = 1.0;
-        spatial[[1, 3, 3]] = 1.0; // White marble
+        spatial_state[[config.ring_layer, 3, 3]] = 1.0;
+        spatial_state[[1, 3, 3]] = 1.0; // White marble
 
         // Both players have zero captures
-        global[config.p1_cap_w] = 0.0;
-        global[config.p1_cap_g] = 0.0;
-        global[config.p1_cap_b] = 0.0;
-        global[config.p2_cap_w] = 0.0;
-        global[config.p2_cap_g] = 0.0;
-        global[config.p2_cap_b] = 0.0;
+        global_state[config.p1_cap_w] = 0.0;
+        global_state[config.p1_cap_g] = 0.0;
+        global_state[config.p1_cap_b] = 0.0;
+        global_state[config.p2_cap_w] = 0.0;
+        global_state[config.p2_cap_g] = 0.0;
+        global_state[config.p2_cap_b] = 0.0;
 
         // BOTH_LOSE condition should work in Blitz mode too
         assert_eq!(
-            get_game_outcome(&spatial.view(), &global.view(), &config),
+            get_game_outcome(&spatial_state.view(), &global_state.view(), &config),
             BOTH_LOSE
         );
     }
@@ -2071,35 +2071,35 @@ mod termination_tests {
     #[test]
     fn test_apply_placement_no_ring_removal() {
         let config = create_test_config();
-        let (mut spatial, mut global) = create_empty_state(&config);
+        let (mut spatial_state, mut global_state) = create_empty_state(&config);
 
         // Setup: place marble at center with ring present
-        spatial[[config.ring_layer, 3, 3]] = 1.0;
-        global[config.supply_w] = 5.0;
-        global[config.cur_player] = config.player_1 as f32;
+        spatial_state[[config.ring_layer, 3, 3]] = 1.0;
+        global_state[config.supply_w] = 5.0;
+        global_state[config.cur_player] = config.player_1 as f32;
 
         // Count rings before placement
-        let rings_before = spatial.slice(s![config.ring_layer, .., ..]).sum();
+        let rings_before = spatial_state.slice(s![config.ring_layer, .., ..]).sum();
 
         // Apply placement with no ring removal (None, None)
-        apply_placement(&mut spatial.view_mut(), &mut global.view_mut(), 0, 3, 3, None, None, &config);
+        apply_placement(&mut spatial_state.view_mut(), &mut global_state.view_mut(), 0, 3, 3, None, None, &config);
 
         // Check marble placed
-        assert_eq!(spatial[[1, 3, 3]], 1.0, "Marble should be placed");
+        assert_eq!(spatial_state[[1, 3, 3]], 1.0, "Marble should be placed");
 
         // Check no ring was removed
-        let rings_after = spatial.slice(s![config.ring_layer, .., ..]).sum();
+        let rings_after = spatial_state.slice(s![config.ring_layer, .., ..]).sum();
         assert_eq!(
             rings_after, rings_before,
             "No ring should be removed when None is passed"
         );
 
         // Check supply decremented
-        assert_eq!(global[config.supply_w], 4.0, "Supply should be decremented");
+        assert_eq!(global_state[config.supply_w], 4.0, "Supply should be decremented");
 
         // Check player switched
         assert_eq!(
-            global[config.cur_player] as usize,
+            global_state[config.cur_player] as usize,
             config.player_2,
             "Turn should pass to next player"
         );

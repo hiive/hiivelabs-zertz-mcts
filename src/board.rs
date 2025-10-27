@@ -211,7 +211,7 @@ impl BoardConfig {
 #[pyclass]
 pub struct BoardState {
     #[pyo3(get)]
-    pub spatial: Py<PyArray3<f32>>,
+    pub spatial_state: Py<PyArray3<f32>>,
     #[pyo3(get)]
     pub global: Py<PyArray1<f32>>,
     pub config: BoardConfig,
@@ -221,7 +221,7 @@ pub struct BoardState {
 impl BoardState {
     #[new]
     #[pyo3(signature = (
-        spatial,
+        spatial_state,
         global,
         rings,
         t=1,
@@ -229,7 +229,7 @@ impl BoardState {
     ))]
     fn new(
         py: Python<'_>,
-        spatial: PyReadonlyArray3<f32>,
+        spatial_state: PyReadonlyArray3<f32>,
         global: PyReadonlyArray1<f32>,
         rings: usize,
         t: Option<usize>,
@@ -246,24 +246,24 @@ impl BoardState {
         .map_err(pyo3::exceptions::PyValueError::new_err)?;
 
         // Create owned Python arrays
-        let spatial_arr = spatial.as_array().to_owned();
-        let global_arr = global.as_array().to_owned();
+        let spatial_state_arr = spatial_state.as_array().to_owned();
+        let global_statearr = global.as_array().to_owned();
 
         Ok(BoardState {
-            spatial: PyArray3::from_array(py, &spatial_arr).into(),
-            global: PyArray1::from_array(py, &global_arr).into(),
+            spatial_state: PyArray3::from_array(py, &spatial_state_arr).into(),
+            global: PyArray1::from_array(py, &global_statearr).into(),
             config,
         })
     }
 
     /// Clone the board state for MCTS simulation
     fn clone_state(&self, py: Python<'_>) -> PyResult<Self> {
-        let spatial_arr = self.spatial.bind(py).readonly().as_array().to_owned();
-        let global_arr = self.global.bind(py).readonly().as_array().to_owned();
+        let spatial_state_arr = self.spatial_state.bind(py).readonly().as_array().to_owned();
+        let global_statearr = self.global.bind(py).readonly().as_array().to_owned();
 
         Ok(BoardState {
-            spatial: PyArray3::from_array(py, &spatial_arr).into(),
-            global: PyArray1::from_array(py, &global_arr).into(),
+            spatial_state: PyArray3::from_array(py, &spatial_state_arr).into(),
+            global: PyArray1::from_array(py, &global_statearr).into(),
             config: self.config.clone(),
         })
     }
@@ -273,11 +273,11 @@ impl BoardState {
         &self,
         py: Python<'_>,
     ) -> PyResult<(Py<PyArray3<f32>>, Py<PyArray3<f32>>)> {
-        let spatial = self.spatial.bind(py).readonly().as_array().to_owned();
+        let spatial_state = self.spatial_state.bind(py).readonly().as_array().to_owned();
         let global = self.global.bind(py).readonly().as_array().to_owned();
 
         let (placement_mask, capture_mask) =
-            crate::game::get_valid_actions(&spatial.view(), &global.view(), &self.config);
+            crate::game::get_valid_actions(&spatial_state.view(), &global.view(), &self.config);
 
         Ok((
             PyArray3::from_array(py, &placement_mask).into(),
@@ -285,11 +285,11 @@ impl BoardState {
         ))
     }
 
-    /// Canonicalize the spatial state and return transform metadata
+    /// Canonicalize the spatial_state state and return transform metadata
     fn canonicalize_state(&self, py: Python<'_>) -> PyResult<(Py<PyArray3<f32>>, String, String)> {
-        let spatial = self.spatial.bind(py).readonly();
+        let spatial_state = self.spatial_state.bind(py).readonly();
         let (canonical, transform, inverse) =
-            crate::canonicalization::canonicalize_state(&spatial.as_array(), &self.config);
+            crate::canonicalization::canonicalize_state(&spatial_state.as_array(), &self.config);
         let canonical_py = PyArray3::from_array(py, &canonical).into();
         Ok((canonical_py, transform, inverse))
     }
@@ -306,11 +306,11 @@ impl BoardState {
         remove_y: Option<usize>,
         remove_x: Option<usize>,
     ) -> PyResult<()> {
-        let mut spatial = self.spatial.bind(py).readonly().as_array().to_owned();
+        let mut spatial_state = self.spatial_state.bind(py).readonly().as_array().to_owned();
         let mut global = self.global.bind(py).readonly().as_array().to_owned();
 
         crate::game::apply_placement(
-            &mut spatial.view_mut(),
+            &mut spatial_state.view_mut(),
             &mut global.view_mut(),
             marble_type,
             dst_y,
@@ -321,7 +321,7 @@ impl BoardState {
         );
 
         // Update stored arrays
-        self.spatial = PyArray3::from_array(py, &spatial).into();
+        self.spatial_state = PyArray3::from_array(py, &spatial_state).into();
         self.global = PyArray1::from_array(py, &global).into();
 
         Ok(())
@@ -335,11 +335,11 @@ impl BoardState {
         start_x: usize,
         direction: usize,
     ) -> PyResult<()> {
-        let mut spatial = self.spatial.bind(py).readonly().as_array().to_owned();
+        let mut spatial_state = self.spatial_state.bind(py).readonly().as_array().to_owned();
         let mut global = self.global.bind(py).readonly().as_array().to_owned();
 
         crate::game::apply_capture(
-            &mut spatial.view_mut(),
+            &mut spatial_state.view_mut(),
             &mut global.view_mut(),
             start_y,
             start_x,
@@ -348,15 +348,15 @@ impl BoardState {
         );
 
         // Update stored arrays
-        self.spatial = PyArray3::from_array(py, &spatial).into();
+        self.spatial_state = PyArray3::from_array(py, &spatial_state).into();
         self.global = PyArray1::from_array(py, &global).into();
 
         Ok(())
     }
 
-    /// Get spatial state (for testing)
-    fn get_spatial<'py>(&self, py: Python<'py>) -> Bound<'py, PyArray3<f32>> {
-        self.spatial.bind(py).clone()
+    /// Get spatial_state state (for testing)
+    fn get_spatial_state<'py>(&self, py: Python<'py>) -> Bound<'py, PyArray3<f32>> {
+        self.spatial_state.bind(py).clone()
     }
 
     /// Get global state (for testing)

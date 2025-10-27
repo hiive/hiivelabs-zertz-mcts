@@ -12,12 +12,12 @@ class BoardState:
     """
     Rust-backed board state representation for testing and comparison.
 
-    Wraps spatial and global state arrays with board configuration.
+    Wraps spatial_state and global_state state arrays with board configuration.
     """
 
     def __init__(
         self,
-        spatial: npt.NDArray[np.float32],
+        spatial_state: npt.NDArray[np.float32],
         global_state: npt.NDArray[np.float32],
         rings: int,
         *,
@@ -28,7 +28,7 @@ class BoardState:
         Create a new board state.
 
         Args:
-            spatial: 3D array of shape (L, H, W) containing board layers
+            spatial_state: 3D array of shape (L, H, W) containing board layers
             global_state: 1D array containing supply and captured marble counts
             rings: Number of rings on the board (37, 48, or 61)
             t: Transposition table size parameter (default: 1)
@@ -65,11 +65,11 @@ class BoardState:
         self
     ) -> Tuple[npt.NDArray[np.float32], str, str]:
         """
-        Canonicalize the spatial state and return transform metadata.
+        Canonicalize the spatial_state state and return transform metadata.
 
         Returns:
-            Tuple of (canonical_spatial, transform, inverse):
-            - canonical_spatial: Canonicalized spatial array
+            Tuple of (canonical_spatial_state, transform, inverse):
+            - canonical_spatial_state: Canonicalized spatial_state array
             - transform: String describing the applied transform (e.g., "R60", "MR120")
             - inverse: String describing the inverse transform
         """
@@ -111,18 +111,18 @@ class BoardState:
         """
         ...
 
-    def get_spatial(self) -> npt.NDArray[np.float32]:
+    def get_spatial_state(self) -> npt.NDArray[np.float32]:
         """
-        Get the spatial state array.
+        Get the spatial_state state array.
 
         Returns:
             3D array of shape (L, H, W) containing board layers
         """
         ...
 
-    def get_global(self) -> npt.NDArray[np.float32]:
+    def get_global_state(self) -> npt.NDArray[np.float32]:
         """
-        Get the global state array.
+        Get the global_state state array.
 
         Returns:
             1D array containing supply and captured marble counts
@@ -222,7 +222,7 @@ class MCTSSearch:
         Run MCTS search (serial mode).
 
         Args:
-            spatial: 3D array of shape (L, H, W) containing board layers
+            spatial_state: 3D array of shape (L, H, W) containing board layers
             global_state: 1D array containing supply and captured marble counts
             rings: Number of rings on the board (37, 48, or 61)
             iterations: Number of MCTS iterations to run
@@ -271,7 +271,7 @@ class MCTSSearch:
         Run MCTS search (parallel mode using Rayon).
 
         Args:
-            spatial: 3D array of shape (L, H, W) containing board layers
+            spatial_state: 3D array of shape (L, H, W) containing board layers
             global_state: 1D array containing supply and captured marble counts
             rings: Number of rings on the board (37, 48, or 61)
             iterations: Number of MCTS iterations to run
@@ -421,37 +421,41 @@ def build_axial_maps(
 
 
 def canonicalize_state(
-    spatial: npt.NDArray[np.float32],
-    config: BoardConfig
+    spatial_state: npt.NDArray[np.float32],
+    config: BoardConfig,
+    flags: Optional[TransformFlags] = None
 ) -> Tuple[npt.NDArray[np.float32], str, str]:
     """
     Canonicalize a board state to its standard form.
 
     Finds the lexicographically minimal representation of the board state
-    under all valid symmetry transforms (rotations, reflections, translations).
+    under selected symmetry transforms (rotations, reflections, translations).
     This is the core function for exploiting board symmetries in transposition tables.
 
     Args:
-        spatial: 3D array of shape (L, H, W) containing board layers
+        spatial_state: 3D array of shape (L, H, W) containing board layers
         config: BoardConfig specifying board size and symmetry group
+        flags: TransformFlags specifying which transforms to include (default: ALL)
 
     Returns:
-        Tuple of (canonical_spatial, transform_name, inverse_transform_name):
-            - canonical_spatial: Canonicalized spatial array
+        Tuple of (canonical_spatial_state, transform_name, inverse_transform_name):
+            - canonical_spatial_state: Canonicalized spatial_state array
             - transform_name: String describing the applied transform (e.g., "R60", "MR120", "T1,0_R180")
             - inverse_transform_name: String describing the inverse transform
 
     Example:
         >>> config = BoardConfig.standard_config(37)
-        >>> spatial = np.zeros((5, 7, 7), dtype=np.float32)
-        >>> canonical, transform, inverse = canonicalize_state(spatial, config)
-        >>> # Apply inverse to recover original: recovered = transform_state(canonical, ...)
+        >>> spatial_state = np.zeros((5, 7, 7), dtype=np.float32)
+        >>> # Use all transforms (default)
+        >>> canonical, transform, inverse = canonicalize_state(spatial_state, config)
+        >>> # Only rotation and mirror (no translation)
+        >>> canonical, transform, inverse = canonicalize_state(spatial_state, config, TransformFlags.ROTATION_MIRROR)
     """
     ...
 
 
 def transform_state(
-    spatial: npt.NDArray[np.float32],
+    spatial_state: npt.NDArray[np.float32],
     config: BoardConfig,
     rot60_k: int,
     mirror: bool,
@@ -464,22 +468,22 @@ def transform_state(
     to a board state using hexagonal axial coordinates.
 
     Args:
-        spatial: 3D array of shape (L, H, W) containing board layers
+        spatial_state: 3D array of shape (L, H, W) containing board layers
         config: BoardConfig specifying board size
         rot60_k: Number of 60° rotation steps (0-5)
         mirror: Whether to apply mirror reflection across q-axis
         mirror_first: If True, mirror then rotate; if False, rotate then mirror
 
     Returns:
-        Transformed spatial array
+        Transformed spatial_state array
 
     Example:
         >>> config = BoardConfig.standard_config(37)
-        >>> spatial = np.zeros((5, 7, 7), dtype=np.float32)
+        >>> spatial_state = np.zeros((5, 7, 7), dtype=np.float32)
         >>> # Rotate 60° counterclockwise
-        >>> rotated = transform_state(spatial, config, rot60_k=1, mirror=False, mirror_first=False)
+        >>> rotated = transform_state(spatial_state, config, rot60_k=1, mirror=False, mirror_first=False)
         >>> # Mirror across q-axis
-        >>> mirrored = transform_state(spatial, config, rot60_k=0, mirror=True, mirror_first=False)
+        >>> mirrored = transform_state(spatial_state, config, rot60_k=0, mirror=True, mirror_first=False)
     """
     ...
 
@@ -521,7 +525,7 @@ def inverse_transform_name(transform_name: str) -> str:
 
 
 def translate_state(
-    spatial: npt.NDArray[np.float32],
+    spatial_state: npt.NDArray[np.float32],
     config: BoardConfig
 ) -> Tuple[npt.NDArray[np.float32], str]:
     """
@@ -531,23 +535,23 @@ def translate_state(
     so the bounding box starts at (0, 0).
 
     Args:
-        spatial: 3D array of shape (L, H, W) containing board layers
+        spatial_state: 3D array of shape (L, H, W) containing board layers
         config: BoardConfig specifying board size
 
     Returns:
-        Tuple of (translated_spatial, translation_name):
-        - translated_spatial: State translated to normalized position
+        Tuple of (translated_spatial_state, translation_name):
+        - translated_spatial_state: State translated to normalized position
         - translation_name: Transform string describing the translation (e.g., "T-1,2")
 
     Example:
-        >>> spatial, translation = translate_state(state, config)
+        >>> spatial_state, translation = translate_state(state, config)
         >>> # translation might be "T-2,-1" meaning we shifted by (-2, -1)
     """
     ...
 
 
 def canonical_key(
-    spatial: npt.NDArray[np.float32],
+    spatial_state: npt.NDArray[np.float32],
     config: BoardConfig
 ) -> bytes:
     """
@@ -557,7 +561,7 @@ def canonical_key(
     This is used for finding the lexicographically minimal state representation.
 
     Args:
-        spatial: 3D array of shape (L, H, W) containing board layers
+        spatial_state: 3D array of shape (L, H, W) containing board layers
         config: BoardConfig specifying board size
 
     Returns:
@@ -573,7 +577,7 @@ def canonical_key(
 
 
 def get_bounding_box(
-    spatial: npt.NDArray[np.float32],
+    spatial_state: npt.NDArray[np.float32],
     config: BoardConfig
 ) -> Optional[Tuple[int, int, int, int]]:
     """
@@ -583,7 +587,7 @@ def get_bounding_box(
     Returns None if no rings exist on the board.
 
     Args:
-        spatial: 3D array of shape (L, H, W) containing board layers
+        spatial_state: 3D array of shape (L, H, W) containing board layers
         config: BoardConfig specifying board size
 
     Returns:
@@ -602,8 +606,8 @@ def get_bounding_box(
 # ============================================================================
 
 def check_for_isolation_capture(
-    spatial: npt.NDArray[np.float32],
-    global_: npt.NDArray[np.float32],
+    spatial_state: npt.NDArray[np.float32],
+    global_state: npt.NDArray[np.float32],
     config: BoardConfig
 ) -> Tuple[npt.NDArray[np.float32], npt.NDArray[np.float32], list[tuple[int, int, int]]]:
     """
@@ -614,17 +618,70 @@ def check_for_isolation_capture(
     then the current player captures all those marbles and removes those rings.
 
     Args:
-        spatial: 3D array of shape (L, H, W) containing board layers
-        global_: 1D array containing supply and captured marble counts
+        spatial_state: 3D array of shape (L, H, W) containing board layers
+        global_state: 1D array containing supply and captured marble counts
         config: BoardConfig with game configuration
 
     Returns:
-        Tuple of (updated_spatial, updated_global, captured_marbles_list):
-        - updated_spatial: Updated spatial state after isolation capture
-        - updated_global: Updated global state with incremented capture counts
+        Tuple of (updated_spatial_state, updated_global_state, captured_marbles_list):
+        - updated_spatial_state: Updated spatial_state state after isolation capture
+        - updated_global_state: Updated global_state state with incremented capture counts
         - captured_marbles_list: List of (marble_layer, y, x) tuples for captured marbles
     """
     ...
+
+
+# ============================================================================
+# Transform Flags
+# ============================================================================
+
+class TransformFlags:
+    """Flags for controlling which symmetry transforms to use in canonicalization.
+
+    TransformFlags uses bit flags to specify which types of symmetries to include:
+    - ROTATION: Include rotational symmetries (0°, 60°, 120°, etc.)
+    - MIRROR: Include reflection symmetries
+    - TRANSLATION: Include translational symmetries
+
+    Common combinations:
+    - ALL: All transforms (rotation + mirror + translation)
+    - ROTATION_MIRROR: Only rotation and mirror (no translation)
+    - NONE: Identity only (no transforms)
+    """
+
+    def __init__(self, bits: int) -> None:
+        """Create TransformFlags from bit flags.
+
+        Args:
+            bits: Bit flags (0-7). Use class constants like TransformFlags.ALL,
+                  TransformFlags.ROTATION_MIRROR, etc.
+
+        Raises:
+            ValueError: If bits > 7
+        """
+        ...
+
+    # Class constants
+    ALL: TransformFlags
+    """All transforms enabled (rotation + mirror + translation)"""
+
+    ROTATION: TransformFlags
+    """Only rotational symmetries"""
+
+    MIRROR: TransformFlags
+    """Only mirror symmetries"""
+
+    TRANSLATION: TransformFlags
+    """Only translation symmetries"""
+
+    ROTATION_MIRROR: TransformFlags
+    """Rotation and mirror only (no translation)"""
+
+    NONE: TransformFlags
+    """No transforms (identity only)"""
+
+    def __repr__(self) -> str: ...
+    def __eq__(self, other: object) -> bool: ...
 
 
 class BoardConfig:
@@ -730,7 +787,7 @@ class BoardConfig:
         """Player 2 index (1)."""
         ...
 
-    # Global state indices - Supply
+    # global_state state indices - Supply
     @property
     def supply_w(self) -> int:
         """White marble supply index (0)."""
@@ -746,7 +803,7 @@ class BoardConfig:
         """Black marble supply index (2)."""
         ...
 
-    # Global state indices - Player 1 captures
+    # global_state state indices - Player 1 captures
     @property
     def p1_cap_w(self) -> int:
         """Player 1 white captures index (3)."""
@@ -767,7 +824,7 @@ class BoardConfig:
         """Player 1 capture slice (indices 3-6: w, g, b)."""
         ...
 
-    # Global state indices - Player 2 captures
+    # global_state state indices - Player 2 captures
     @property
     def p2_cap_w(self) -> int:
         """Player 2 white captures index (6)."""
@@ -791,7 +848,7 @@ class BoardConfig:
     # Current player index
     @property
     def cur_player(self) -> int:
-        """Current player index in global state (9)."""
+        """Current player index in global_state state (9)."""
         ...
 
 
@@ -850,12 +907,12 @@ def get_jump_destination(start_y: int, start_x: int, cap_y: int, cap_x: int) -> 
     ...
 
 
-def get_regions(spatial: npt.NDArray[np.float32], config: BoardConfig) -> list[list[tuple[int, int]]]:
+def get_regions(spatial_state: npt.NDArray[np.float32], config: BoardConfig) -> list[list[tuple[int, int]]]:
     """
     Find all connected regions on the board.
 
     Args:
-        spatial: 3D array of shape (L, H, W) containing board layers
+        spatial_state: 3D array of shape (L, H, W) containing board layers
         config: BoardConfig
 
     Returns:
@@ -864,12 +921,12 @@ def get_regions(spatial: npt.NDArray[np.float32], config: BoardConfig) -> list[l
     ...
 
 
-def get_open_rings(spatial: npt.NDArray[np.float32], config: BoardConfig) -> list[tuple[int, int]]:
+def get_open_rings(spatial_state: npt.NDArray[np.float32], config: BoardConfig) -> list[tuple[int, int]]:
     """
     Get list of empty ring indices across the entire board.
 
     Args:
-        spatial: Board state array
+        spatial_state: Board state array
         config: BoardConfig
 
     Returns:
@@ -878,7 +935,7 @@ def get_open_rings(spatial: npt.NDArray[np.float32], config: BoardConfig) -> lis
     ...
 
 
-def is_ring_removable(spatial: npt.NDArray[np.float32], y: int, x: int, config: BoardConfig) -> bool:
+def is_ring_removable(spatial_state: npt.NDArray[np.float32], y: int, x: int, config: BoardConfig) -> bool:
     """
     Check if ring at index can be removed.
 
@@ -887,7 +944,7 @@ def is_ring_removable(spatial: npt.NDArray[np.float32], y: int, x: int, config: 
     2. Two consecutive neighbors are missing
 
     Args:
-        spatial: Board state array
+        spatial_state: Board state array
         y: Y coordinate
         x: X coordinate
         config: BoardConfig
@@ -898,12 +955,12 @@ def is_ring_removable(spatial: npt.NDArray[np.float32], y: int, x: int, config: 
     ...
 
 
-def get_removable_rings(spatial: npt.NDArray[np.float32], config: BoardConfig) -> list[tuple[int, int]]:
+def get_removable_rings(spatial_state: npt.NDArray[np.float32], config: BoardConfig) -> list[tuple[int, int]]:
     """
     Get list of removable ring indices.
 
     Args:
-        spatial: Board state array
+        spatial_state: Board state array
         config: BoardConfig
 
     Returns:
@@ -939,12 +996,12 @@ def get_captured_index(player: int, marble_type: str) -> int:
     ...
 
 
-def get_marble_type_at(spatial: npt.NDArray[np.float32], y: int, x: int) -> str:
+def get_marble_type_at(spatial_state: npt.NDArray[np.float32], y: int, x: int) -> str:
     """
     Get marble type at given position.
 
     Args:
-        spatial: (L, H, W) spatial state array
+        spatial_state: (L, H, W) spatial_state state array
         y: Y coordinate
         x: X coordinate
 
@@ -955,16 +1012,16 @@ def get_marble_type_at(spatial: npt.NDArray[np.float32], y: int, x: int) -> str:
 
 
 def get_placement_moves(
-    spatial: npt.NDArray[np.float32],
-    global_: npt.NDArray[np.float32],
+    spatial_state: npt.NDArray[np.float32],
+    global_state: npt.NDArray[np.float32],
     config: BoardConfig
 ) -> npt.NDArray[np.float32]:
     """
     Get valid placement moves as boolean array.
 
     Args:
-        spatial: (L, H, W) spatial state array
-        global_: (10,) global state array
+        spatial_state: (L, H, W) spatial_state state array
+        global_state: (10,) global_state state array
         config: BoardConfig
 
     Returns:
@@ -974,14 +1031,14 @@ def get_placement_moves(
 
 
 def get_capture_moves(
-    spatial: npt.NDArray[np.float32],
+    spatial_state: npt.NDArray[np.float32],
     config: BoardConfig
 ) -> npt.NDArray[np.float32]:
     """
     Get valid capture moves as boolean array.
 
     Args:
-        spatial: (L, H, W) spatial state array
+        spatial_state: (L, H, W) spatial_state state array
         config: BoardConfig
 
     Returns:
@@ -991,16 +1048,16 @@ def get_capture_moves(
 
 
 def get_valid_actions(
-    spatial: npt.NDArray[np.float32],
-    global_: npt.NDArray[np.float32],
+    spatial_state: npt.NDArray[np.float32],
+    global_state: npt.NDArray[np.float32],
     config: BoardConfig
 ) -> Tuple[npt.NDArray[np.float32], npt.NDArray[np.float32]]:
     """
     Get valid actions for current state.
 
     Args:
-        spatial: (L, H, W) spatial state array
-        global_: (10,) global state array
+        spatial_state: (L, H, W) spatial_state state array
+        global_state: (10,) global_state state array
         config: BoardConfig
 
     Returns:
@@ -1015,8 +1072,8 @@ def get_valid_actions(
 
 
 def apply_placement_action(
-    spatial: npt.NDArray[np.float32],
-    global_: npt.NDArray[np.float32],
+    spatial_state: npt.NDArray[np.float32],
+    global_state: npt.NDArray[np.float32],
     marble_type: int,
     dst_y: int,
     dst_x: int,
@@ -1028,8 +1085,8 @@ def apply_placement_action(
     Apply placement action to state IN-PLACE.
 
     Args:
-        spatial: (L, H, W) spatial state array (MUTATED IN-PLACE)
-        global_: (10,) global state array (MUTATED IN-PLACE)
+        spatial_state: (L, H, W) spatial_state state array (MUTATED IN-PLACE)
+        global_state: (10,) global_state state array (MUTATED IN-PLACE)
         marble_type: Marble type index (0=white, 1=gray, 2=black)
         dst_y: Destination Y coordinate
         dst_x: Destination X coordinate
@@ -1045,8 +1102,8 @@ def apply_placement_action(
 
 
 def apply_capture_action(
-    spatial: npt.NDArray[np.float32],
-    global_: npt.NDArray[np.float32],
+    spatial_state: npt.NDArray[np.float32],
+    global_state: npt.NDArray[np.float32],
     start_y: int,
     start_x: int,
     direction: int,
@@ -1056,8 +1113,8 @@ def apply_capture_action(
     Apply capture action to state IN-PLACE.
 
     Args:
-        spatial: (L, H, W) spatial state array (MUTATED IN-PLACE)
-        global_: (10,) global state array (MUTATED IN-PLACE)
+        spatial_state: (L, H, W) spatial_state state array (MUTATED IN-PLACE)
+        global_state: (10,) global_state state array (MUTATED IN-PLACE)
         start_y: Starting Y coordinate
         start_x: Starting X coordinate
         direction: Direction index (0-5 for 6 hexagonal directions)
@@ -1067,16 +1124,16 @@ def apply_capture_action(
 
 
 def is_game_over(
-    spatial: npt.NDArray[np.float32],
-    global_: npt.NDArray[np.float32],
+    spatial_state: npt.NDArray[np.float32],
+    global_state: npt.NDArray[np.float32],
     config: BoardConfig
 ) -> bool:
     """
     Check if game has ended (stateless version).
 
     Args:
-        spatial: (L, H, W) spatial state array
-        global_: (10,) global state array
+        spatial_state: (L, H, W) spatial_state state array
+        global_state: (10,) global_state state array
         config: BoardConfig
 
     Returns:
@@ -1086,16 +1143,16 @@ def is_game_over(
 
 
 def get_game_outcome(
-    spatial: npt.NDArray[np.float32],
-    global_: npt.NDArray[np.float32],
+    spatial_state: npt.NDArray[np.float32],
+    global_state: npt.NDArray[np.float32],
     config: BoardConfig
 ) -> int:
     """
     Determine game outcome from terminal state (stateless version).
 
     Args:
-        spatial: (L, H, W) spatial state array
-        global_: (10,) global state array
+        spatial_state: (L, H, W) spatial_state state array
+        global_state: (10,) global_state state array
         config: BoardConfig
 
     Returns:
