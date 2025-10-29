@@ -168,6 +168,12 @@ impl MCTSNode {
         self.children.write().unwrap().push((action, child));
     }
 
+    /// Get number of children (thread-safe)
+    #[inline]
+    pub fn children_count(&self) -> usize {
+        self.children.read().unwrap().len()
+    }
+
     /// Get visit count
     #[inline]
     pub fn get_visits(&self) -> u32 {

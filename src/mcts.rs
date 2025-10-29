@@ -681,11 +681,19 @@ impl MCTSSearch {
             // Select best child using UCB1 (with optional FPU for unvisited nodes)
             let parent_visits = node.get_visits();
             let parent_value = node.get_value();
-            let children = node.children.read().unwrap();
+
+            // Snapshot children and immediately release lock
+            // This allows parallel UCB computation across threads
+            let children_snapshot: Vec<(Action, Arc<MCTSNode>)> = {
+                let children = node.children.read().unwrap();
+                children.iter()
+                    .map(|(action, child)| (action.clone(), Arc::clone(child)))
+                    .collect()
+            }; // Lock released here - held for microseconds instead of milliseconds!
 
             // Find child with maximum score (RAVE-UCB if enabled, else UCB1)
-            // max_by uses partial ordering since f32 can be NaN
-            let best_child = children.iter().max_by(|(_, child_a), (_, child_b)| {
+            // This computation happens WITHOUT holding the lock
+            let best_child = children_snapshot.iter().max_by(|(_, child_a), (_, child_b)| {
                 let score_a = child_a.rave_ucb_score(
                     parent_visits,
                     parent_value,
@@ -708,12 +716,9 @@ impl MCTSSearch {
             });
 
             if let Some((_, child)) = best_child {
-                let next_node = Arc::clone(child);
-                drop(children); // Release lock before next iteration (critical for performance)
-                node = next_node;
+                node = Arc::clone(child);
             } else {
                 // No children available (shouldn't happen but handle defensively)
-                drop(children);
                 return node;
             }
         }
@@ -1067,20 +1072,28 @@ impl MCTSSearch {
             // RAVE/AMAF updates: Update RAVE stats for sibling actions that appeared in simulation
             if self.rave_constant.is_some() {
                 if let Some(parent_ref) = current_node.parent.as_ref().and_then(|weak| weak.upgrade()) {
-                    // Lock parent's children to access siblings
-                    if let Ok(siblings) = parent_ref.children.read() {
-                        // For each sibling, check if its action matches any simulation action
-                        for (sibling_action, sibling_node) in siblings.iter() {
-                            // Check if this sibling's action appears in the simulation
-                            let action_in_simulation = simulation_actions.iter().any(|sim_action| {
-                                actions_equal(sibling_action, sim_action)
-                            });
+                    // Snapshot siblings and immediately release lock
+                    let siblings_snapshot: Vec<(Action, Arc<MCTSNode>)> = {
+                        if let Ok(siblings) = parent_ref.children.read() {
+                            siblings.iter()
+                                .map(|(action, child)| (action.clone(), Arc::clone(child)))
+                                .collect()
+                        } else {
+                            Vec::new()
+                        }
+                    }; // Lock released here!
 
-                            if action_in_simulation {
-                                // Update RAVE stats for this sibling
-                                // Note: value is from current player's perspective, which is correct for AMAF
-                                sibling_node.update_rave(value);
-                            }
+                    // Update RAVE stats without holding lock
+                    for (sibling_action, sibling_node) in siblings_snapshot.iter() {
+                        // Check if this sibling's action appears in the simulation
+                        let action_in_simulation = simulation_actions.iter().any(|sim_action| {
+                            actions_equal(sibling_action, sim_action)
+                        });
+
+                        if action_in_simulation {
+                            // Update RAVE stats for this sibling
+                            // Note: value is from current player's perspective, which is correct for AMAF
+                            sibling_node.update_rave(value);
                         }
                     }
                 }
