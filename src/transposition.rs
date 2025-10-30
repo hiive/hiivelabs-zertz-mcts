@@ -566,4 +566,27 @@ mod tests {
         assert!((retrieved2.average_value() - 0.2).abs() < 1e-3);
         assert!((retrieved3.average_value() - 0.3).abs() < 1e-3);
     }
+
+    #[test]
+    fn test_lookup_does_not_pollute_table() {
+        // Verify that lookup() doesn't create entries (prevents table pollution)
+        let table = TranspositionTable::new();
+        let config = BoardConfig::standard(37, 1).unwrap();
+
+        let initial_size = table.len();
+
+        // Lookup 10 nonexistent states (enough to verify no pollution)
+        for i in 0..10 {
+            let mut spatial = Array3::zeros((config.layers_per_timestep * config.t + 1, config.width, config.width));
+            spatial[[0, 0, 0]] = i as f32;  // Make each unique
+            let global = Array1::zeros(10);
+
+            let result = table.lookup(&spatial.view(), &global.view(), &config);
+            assert!(result.is_none(), "Lookup should return None for nonexistent entry");
+        }
+
+        let final_size = table.len();
+        assert_eq!(initial_size, final_size, "Lookup should not insert entries (table size should not change)");
+        assert_eq!(final_size, 0, "Table should still be empty after lookups");
+    }
 }

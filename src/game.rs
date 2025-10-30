@@ -21,7 +21,7 @@
 //!   - [9]: Current player (1 or 2)
 
 use crate::board::BoardConfig;
-use ndarray::{Array1, Array3, ArrayView1, ArrayView3, ArrayViewMut1, ArrayViewMut3};
+use ndarray::{s, Array1, Array3, ArrayView1, ArrayView3, ArrayViewMut1, ArrayViewMut3};
 use smallvec::SmallVec;
 use std::collections::{HashSet, VecDeque};
 
@@ -537,6 +537,10 @@ pub fn apply_placement(
     remove_x: Option<usize>,
     config: &BoardConfig,
 ) -> Vec<(usize, usize, usize)> {
+    // STEP 1: Reset capture layer (matches Python zertz_board.py behavior)
+    // Placements always end any ongoing chain capture sequence
+    spatial_state.slice_mut(s![config.capture_layer, .., ..]).fill(0.0);
+
     let cur_player = global_state[config.cur_player] as usize;
 
     // Place marble
@@ -605,6 +609,10 @@ pub fn apply_capture(
     direction: usize,
     config: &BoardConfig,
 ) {
+    // STEP 1: Reset capture layer (matches Python zertz_board.py:524)
+    // This clears any previous chain capture markers
+    spatial_state.slice_mut(s![config.capture_layer, .., ..]).fill(0.0);
+
     let cur_player = global_state[config.cur_player] as usize;
 
     // Find marble layer at start position
@@ -664,7 +672,13 @@ pub fn apply_capture(
     let can_chain = (0..config.directions.len())
         .any(|dir_idx| capture_actions[[dir_idx, land_y, land_x]] > 0.0);
 
-    // Switch player only if no chain capture
+    // STEP 2: Mark landing position if chain capture available (matches Python zertz_board.py:554-556)
+    if can_chain {
+        // Mark the landing position - this marble MUST continue capturing
+        spatial_state[[config.capture_layer, land_y, land_x]] = 1.0;
+    }
+
+    // STEP 3: Switch player only if no chain capture
     if !can_chain {
         global_state[config.cur_player] = if cur_player == config.player_1 {
             config.player_2 as f32
@@ -754,7 +768,7 @@ pub fn check_for_isolation_capture(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ndarray::Array3;
+    use ndarray::{s, Array3};
 
     fn create_test_config() -> BoardConfig {
         BoardConfig::standard(37, 1).unwrap()
@@ -1181,6 +1195,229 @@ mod tests {
         // Verify only one capture is available (the chain capture)
         let total_captures: f32 = capture_mask_after.iter().sum();
         assert_eq!(total_captures, 1.0, "Only the chain marble should have capture moves");
+    }
+
+    // ========================================================================
+    // Chain Capture Enforcement Tests (Issue #1 from rust_mcts_fix_proposal.md)
+    // ========================================================================
+
+    #[test]
+    fn test_apply_capture_resets_capture_layer() {
+        /// Verify that apply_capture() clears any pre-existing capture layer markers
+        /// at the start of execution (Step 1 of the fix).
+        let config = create_test_config();
+        let (mut spatial_state, mut global_state) = create_empty_state(&config);
+
+        // Setup a simple capture scenario
+        spatial_state[[config.ring_layer, 3, 3]] = 1.0;
+        spatial_state[[config.ring_layer, 3, 4]] = 1.0;
+        spatial_state[[config.ring_layer, 3, 5]] = 1.0;
+        spatial_state[[1, 3, 3]] = 1.0; // White marble
+        spatial_state[[2, 3, 4]] = 1.0; // Gray marble to capture
+        global_state[config.cur_player] = config.player_1 as f32;
+
+        // Manually mark a different position in the capture layer
+        // (simulating stale data from a previous chain capture)
+        spatial_state[[config.capture_layer, 1, 1]] = 1.0;
+
+        let east_dir = config
+            .directions
+            .iter()
+            .position(|&(dy, dx)| dy == 0 && dx == 1)
+            .unwrap();
+
+        // Apply capture
+        apply_capture(&mut spatial_state.view_mut(), &mut global_state.view_mut(), 3, 3, east_dir, &config);
+
+        // Verify the stale marker at (1,1) was cleared
+        assert_eq!(
+            spatial_state[[config.capture_layer, 1, 1]], 0.0,
+            "Capture layer at (1,1) should be cleared by apply_capture()"
+        );
+    }
+
+    #[test]
+    fn test_apply_capture_marks_landing_on_chain() {
+        /// Verify that apply_capture() marks the landing position in the capture layer
+        /// when a chain capture is available (Step 2 of the fix).
+        let config = create_test_config();
+        let (mut spatial_state, mut global_state) = create_empty_state(&config);
+
+        // Setup chain capture: marble at (2,2), capture marble at (2,3), land at (2,4)
+        // Then can immediately capture marble at (2,5) landing at (2,6)
+        spatial_state[[config.ring_layer, 2, 2]] = 1.0;
+        spatial_state[[config.ring_layer, 2, 3]] = 1.0;
+        spatial_state[[config.ring_layer, 2, 4]] = 1.0;
+        spatial_state[[config.ring_layer, 2, 5]] = 1.0;
+        spatial_state[[config.ring_layer, 2, 6]] = 1.0;
+        spatial_state[[1, 2, 2]] = 1.0; // White marble
+        spatial_state[[2, 2, 3]] = 1.0; // Gray marble to capture
+        spatial_state[[3, 2, 5]] = 1.0; // Black marble - chain capture target
+        global_state[config.cur_player] = config.player_1 as f32;
+
+        let east_dir = config
+            .directions
+            .iter()
+            .position(|&(dy, dx)| dy == 0 && dx == 1)
+            .unwrap();
+
+        // Apply first capture
+        apply_capture(&mut spatial_state.view_mut(), &mut global_state.view_mut(), 2, 2, east_dir, &config);
+
+        // Verify landing position (2,4) is marked in capture layer
+        assert_eq!(
+            spatial_state[[config.capture_layer, 2, 4]], 1.0,
+            "Landing position (2,4) should be marked in capture layer for chain capture"
+        );
+
+        // Verify player did NOT switch (chain capture continues)
+        assert_eq!(
+            global_state[config.cur_player] as usize, config.player_1,
+            "Player should not switch when chain capture is available"
+        );
+    }
+
+    #[test]
+    fn test_apply_capture_no_mark_when_no_chain() {
+        /// Verify that apply_capture() does NOT mark the landing position when
+        /// no chain capture is available, and DOES switch players.
+        let config = create_test_config();
+        let (mut spatial_state, mut global_state) = create_empty_state(&config);
+
+        // Setup simple capture with NO chain available
+        spatial_state[[config.ring_layer, 3, 3]] = 1.0;
+        spatial_state[[config.ring_layer, 3, 4]] = 1.0;
+        spatial_state[[config.ring_layer, 3, 5]] = 1.0;
+        spatial_state[[1, 3, 3]] = 1.0; // White marble
+        spatial_state[[2, 3, 4]] = 1.0; // Gray marble to capture
+        // No additional marble to capture from (3,5)
+        global_state[config.cur_player] = config.player_1 as f32;
+
+        let east_dir = config
+            .directions
+            .iter()
+            .position(|&(dy, dx)| dy == 0 && dx == 1)
+            .unwrap();
+
+        // Apply capture
+        apply_capture(&mut spatial_state.view_mut(), &mut global_state.view_mut(), 3, 3, east_dir, &config);
+
+        // Verify landing position (3,5) is NOT marked in capture layer
+        assert_eq!(
+            spatial_state[[config.capture_layer, 3, 5]], 0.0,
+            "Landing position (3,5) should NOT be marked when no chain capture available"
+        );
+
+        // Verify player DID switch (no chain capture)
+        assert_eq!(
+            global_state[config.cur_player] as usize, config.player_2,
+            "Player should switch when no chain capture is available"
+        );
+    }
+
+    #[test]
+    fn test_apply_placement_resets_capture_layer() {
+        /// Verify that apply_placement() clears the capture layer at the start,
+        /// ending any ongoing chain capture sequence.
+        let config = create_test_config();
+        let (mut spatial_state, mut global_state) = create_empty_state(&config);
+
+        // Setup placement scenario
+        spatial_state[[config.ring_layer, 3, 3]] = 1.0;
+        spatial_state[[config.ring_layer, 4, 4]] = 1.0;
+        global_state[config.supply_w] = 5.0;
+        global_state[config.cur_player] = config.player_1 as f32;
+
+        // Manually mark a position in capture layer (simulating active chain capture)
+        spatial_state[[config.capture_layer, 2, 2]] = 1.0;
+
+        // Apply placement
+        apply_placement(
+            &mut spatial_state.view_mut(),
+            &mut global_state.view_mut(),
+            0, // white marble
+            3,
+            3,
+            Some(4),
+            Some(4),
+            &config,
+        );
+
+        // Verify capture layer was cleared
+        assert_eq!(
+            spatial_state[[config.capture_layer, 2, 2]], 0.0,
+            "Capture layer should be cleared by apply_placement()"
+        );
+
+        // Verify entire capture layer is cleared
+        let capture_layer_sum: f32 = spatial_state.slice(s![config.capture_layer, .., ..]).sum();
+        assert_eq!(
+            capture_layer_sum, 0.0,
+            "Entire capture layer should be zeroed by apply_placement()"
+        );
+    }
+
+    #[test]
+    fn test_chain_capture_enforces_single_marble() {
+        /// Verify that once a chain capture begins, ONLY the marble that landed
+        /// can perform the next capture (no other marbles can capture).
+        let config = create_test_config();
+        let (mut spatial_state, mut global_state) = create_empty_state(&config);
+
+        // Setup: Two potential capture scenarios
+        // Scenario A: Marble at (2,2) can capture at (2,3) landing at (2,4)
+        // Scenario B: Marble at (4,4) can capture at (4,5) landing at (4,6)
+        spatial_state[[config.ring_layer, 2, 2]] = 1.0;
+        spatial_state[[config.ring_layer, 2, 3]] = 1.0;
+        spatial_state[[config.ring_layer, 2, 4]] = 1.0;
+        spatial_state[[config.ring_layer, 2, 5]] = 1.0;
+        spatial_state[[config.ring_layer, 2, 6]] = 1.0;
+
+        spatial_state[[1, 2, 2]] = 1.0; // White marble A
+        spatial_state[[2, 2, 3]] = 1.0; // Gray marble to capture
+        spatial_state[[3, 2, 5]] = 1.0; // Black marble - chain target from (2,4)
+
+        spatial_state[[config.ring_layer, 4, 4]] = 1.0;
+        spatial_state[[config.ring_layer, 4, 5]] = 1.0;
+        spatial_state[[config.ring_layer, 4, 6]] = 1.0;
+
+        spatial_state[[1, 4, 4]] = 1.0; // White marble B
+        spatial_state[[2, 4, 5]] = 1.0; // Gray marble - capture target for B
+
+        global_state[config.cur_player] = config.player_1 as f32;
+
+        let east_dir = config
+            .directions
+            .iter()
+            .position(|&(dy, dx)| dy == 0 && dx == 1)
+            .unwrap();
+
+        // Step 1: Apply capture from marble A at (2,2)
+        apply_capture(&mut spatial_state.view_mut(), &mut global_state.view_mut(), 2, 2, east_dir, &config);
+
+        // Now marble A is at (2,4) and a chain capture is available to (2,6)
+        // Verify only marble A can capture (marble B at (4,4) should NOT be able to capture)
+
+        let capture_mask = get_capture_actions(&spatial_state.view(), &config);
+
+        // Marble A at (2,4) should be able to capture
+        assert_eq!(
+            capture_mask[[east_dir, 2, 4]], 1.0,
+            "Chain marble at (2,4) should be able to continue capturing"
+        );
+
+        // Marble B at (4,4) should NOT be able to capture (chain capture in progress)
+        assert_eq!(
+            capture_mask[[east_dir, 4, 4]], 0.0,
+            "Other marbles should NOT be able to capture during chain sequence"
+        );
+
+        // Verify only ONE capture is available
+        let total_captures: f32 = capture_mask.iter().sum();
+        assert_eq!(
+            total_captures, 1.0,
+            "Only the chain marble should have capture moves during chain sequence"
+        );
     }
 
     #[test]

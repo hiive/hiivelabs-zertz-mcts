@@ -1,38 +1,22 @@
 # hiivelabs-zertz-mcts
 
-Rust-accelerated Monte Carlo Tree Search (MCTS) engine for the abstract strategy game Zertz, distributed as a Python extension module for Hiive Labs tooling.
+Rust-accelerated Monte Carlo Tree Search (MCTS) engine for the abstract strategy game Zèrtz. The crate is exported as the `hiivelabs_zertz_mcts` Python module used by the main application.
 
 ## Features
-- Optimised MCTS with UCT, progressive widening, and optional transposition-table bootstrapping.
-- Deterministic reproducibility via per-search RNG seeding and reusable table caches.
-- Thread-safe tree with Rayon-powered parallel rollout mode for high iteration counts.
-- PyO3 bindings that accept/return NumPy arrays without extra copies.
-- Utilities that mirror the Python engine (move generation, placement/capture application) for cross-validation.
-- **Full parity support for both Standard and Blitz game modes** with mode-specific win conditions.
+- UCT-based MCTS with optional RAVE, progressive widening, FPU, and transposition tables.
+- Deterministic runs via per-search RNG seeding plus configurable table clearing.
+- Parallel rollouts with Rayon; thread-safe statistics backed by atomics and `DashMap`.
+- PyO3 bindings expose zero-copy NumPy views for spatial and global state tensors.
+- Shared rule helpers (placement/capture application, canonicalisation) for parity tests between Python and Rust.
+- Supports Standard and Blitz rule sets, including supply pools and win thresholds.
 
-## Architecture
-
-The Rust backend mirrors the Python implementation's architecture:
-
-**Delegation Pattern:**
-- `mcts.rs` → `game.rs` for all game logic (same as Python's `mcts_tree.py` → `zertz_logic.py`)
-- Single source of truth: all game rules live in `game.rs`
-- MCTS focuses on tree search algorithms only
-
-**Key Design Decisions:**
-- Game termination checking: `is_game_over()` and `get_game_outcome()` in game.rs (lines 915-1140)
-- Win condition logic: Centralized in game.rs with mode-specific thresholds (Standard: 3-of-each/4W/5G/6B, Blitz: 2-of-each/3W/4G/5B)
-- MCTS only handles perspective conversion (absolute outcome → player-relative value)
-- Outcome constants: `1` (P1 wins), `-1` (P2 wins), `0` (tie), `-2` (both lose)
-- Game mode support: `BoardConfig::standard()` and `BoardConfig::blitz()` for different rule variants
-
-**Module Responsibilities:**
-- `game.rs`: Pure stateless game logic, single source of truth for rules
-- `mcts.rs`: Tree search (selection, expansion, simulation, backpropagation) - delegates to game.rs
-- `node.rs`: Thread-safe node structure with atomic statistics
-- `transposition.rs`: Lock-free transposition table (DashMap)
-- `zobrist.rs`: Fast state hashing for transposition detection
-- `canonicalization.rs`: Symmetry handling and canonical states
+## Module Layout
+- `src/game.rs` — canonical rule engine (state transitions, move generation, win checks).
+- `src/mcts.rs` — selection/expansion/rollout/backprop logic, delegates rules to `game.rs`.
+- `src/node.rs` — concurrent node representation with atomic visit/value tracking.
+- `src/transposition.rs` — lock-free cache keyed by Zobrist hashes.
+- `src/canonicalization.rs` — symmetry transforms for the 37/48/61 ring boards.
+- `src/lib.rs` — PyO3 glue (argument parsing, NumPy conversion, Python-facing API).
 
 ## Installation
 - Rust toolchain (1.74+ recommended) and Python 3.8+ (ABI3 wheel target).
@@ -46,21 +30,16 @@ The Rust backend mirrors the Python implementation's architecture:
 The compiled module is published as `hiivelabs_zertz_mcts` and can be imported from Python once the build succeeds.
 
 ## State Encoding
-- Spatial tensor shape: `(t * 4 + 1, width, width)` where:
-  - Layer 0 tracks whether a ring is present.
-  - Layers 1–3 track white, gray, and black marbles for each timestep.
-  - The final layer stores capture overlays when multiple timesteps are supplied.
-- Global vector (length 10 for `t = 1`):
-  - Indices 0–2: supply counts for white, gray, black.
-  - Indices 3–5: player 1 captured counts; 6–8: player 2 captured counts.
-  - Index 9: current player flag (`0` for player 1, `1` for player 2).
-- `BoardState` mirrors this layout and exposes helper methods such as `get_valid_actions`, `apply_placement`, and `apply_capture` for parity checks against the Python implementation.
-- Actions returned from MCTS use flattened coordinates: `dst_flat = y * width + x`. A `remove_flat` equal to `width * width` signals that no ring removal is required.
+- Spatial tensor shape: `(t * 4 + 1, width, width)`  
+  Layer 0 stores ring presence, layers 1–3 track colour occupancy across timesteps, the final layer carries capture overlays when history is provided.
+- Global vector length: `10 * t` (for `t = 1`, indices 0–2 = supply counts, 3–5 = player 1 captures, 6–8 = player 2 captures, 9 = active player flag).
+- Actions use flattened coordinates: `dst = y * width + x`; a `remove` equal to `width * width` indicates no ring removal.
+- Helper routines in `game.rs` mirror the Python loaders to keep replay, parity, and symmetry tooling in sync.
 
 ## Development
-- Run the Rust unit tests (mirroring Python fixtures) with `cargo test`.
-- Format and lint as usual with `cargo fmt` / `cargo clippy`.
-- Use `maturin develop --release` to rebuild the extension while iterating on Rust code.
+- `cargo test` covers rule regression tests and fast MCTS smoke checks.
+- `cargo fmt` and `cargo clippy -- -D warnings` keep formatting and lints consistent with CI.
+- use `uv run maturin develop --release` (or `./rust-dev.sh`) whenever the Rust crate changes so Python picks up the updated wheel.
 
 ## License
 

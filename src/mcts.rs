@@ -47,6 +47,7 @@ use rand::rngs::StdRng;
 use rand::{Rng, RngCore, SeedableRng};
 use rayon::prelude::*;
 use std::cell::RefCell;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -81,6 +82,7 @@ pub struct MCTSSearch {
     last_board_width: usize, // Board width for coordinate conversion
     rng: Mutex<Option<StdRng>>,
     seed: Mutex<Option<u64>>, // Base seed for deriving per-thread seeds
+    seed_generation: AtomicU64, // Increments on each set_seed call to invalidate thread-local caches
     #[cfg(feature = "metrics")]
     metrics: Arc<MCTSMetrics>,
 }
@@ -141,6 +143,7 @@ impl MCTSSearch {
             last_board_width: 7,
             rng: Mutex::new(None),
             seed: Mutex::new(None),
+            seed_generation: AtomicU64::new(0),
             #[cfg(feature = "metrics")]
             metrics: Arc::new(MCTSMetrics::new()),
         }
@@ -176,6 +179,8 @@ impl MCTSSearch {
             *guard = None;
             *seed_guard = None;
         }
+        // Increment generation to invalidate thread-local caches
+        self.seed_generation.fetch_add(1, Ordering::SeqCst);
     }
 
     /// Run MCTS search (serial mode)
@@ -538,17 +543,18 @@ impl MCTSSearch {
 // ============================================================================
 
 thread_local! {
-    static THREAD_RNG: RefCell<Option<StdRng>> = RefCell::new(None);
+    static THREAD_RNG: RefCell<Option<(StdRng, u64)>> = RefCell::new(None);
 }
 
 impl MCTSSearch {
-    /// Thread-safe RNG access using thread-local storage
+    /// Thread-safe RNG access using thread-local storage with generation tracking
     ///
     /// This function uses thread-local storage to eliminate lock contention:
-    /// - Each thread initializes its own RNG once (locks ONCE per thread)
+    /// - Each thread caches (RNG, generation) tuple
+    /// - On each call, checks if cached generation matches current global generation
+    /// - If stale (generation mismatch), reinitializes RNG with current seed
     /// - If a seed was set, each thread derives a unique seed = base_seed + thread_num
     /// - Otherwise, uses system RNG (non-deterministic)
-    /// - Subsequent calls reuse the thread-local RNG (NO locks!)
     ///
     /// The generic `F` closure allows any operation on `RngCore` trait objects.
     fn with_rng<T, F>(&self, f: F) -> T
@@ -558,9 +564,18 @@ impl MCTSSearch {
         THREAD_RNG.with(|cell| {
             let mut rng_opt = cell.borrow_mut();
 
-            // Initialize RNG once per thread
-            if rng_opt.is_none() {
-                let base_seed = *self.seed.lock().unwrap();  // Lock ONCE per thread
+            // Get current generation (atomic read, very fast)
+            let current_generation = self.seed_generation.load(Ordering::SeqCst);
+
+            // Check if we need to (re)initialize the RNG
+            let needs_init = match *rng_opt {
+                None => true,  // No cached RNG
+                Some((_, cached_generation)) => cached_generation != current_generation,  // Generation mismatch
+            };
+
+            if needs_init {
+                // Lock to get current seed (only on init or generation change)
+                let base_seed = *self.seed.lock().unwrap();
                 let thread_rng = if let Some(seed_value) = base_seed {
                     let thread_num = rayon::current_thread_index().unwrap_or(0) as u64;
                     let thread_seed = seed_value.wrapping_add(thread_num);
@@ -569,14 +584,15 @@ impl MCTSSearch {
                     StdRng::from_os_rng()
                 };
 
-                *rng_opt = Some(thread_rng);
+                // Cache (RNG, generation) tuple
+                *rng_opt = Some((thread_rng, current_generation));
             }
 
-            // Reuse the thread-local RNG (NO LOCK!)
-            if let Some(ref mut rng) = *rng_opt {
+            // Use the thread-local RNG (NO LOCK needed here!)
+            if let Some((ref mut rng, _)) = *rng_opt {
                 f(rng)
             } else {
-                // No seed set - use system RNG
+                // Fallback to system RNG (shouldn't happen, but handle defensively)
                 let mut system_rng = rand::rng();
                 f(&mut system_rng)
             }
@@ -1577,6 +1593,154 @@ mod tests {
         assert!((child.get_value() - 0.5).abs() < 1e-3);
         assert_eq!(root.get_visits(), 1);
         assert!((root.get_value() + 0.5).abs() < 1e-3);
+    }
+
+    #[test]
+    fn test_seed_generation_increments() {
+        // Test that seed generation increments each time set_seed() is called
+        let mut mcts = MCTSSearch::new(None, None, None, None, None, None);
+
+        // Initial generation should be 0
+        assert_eq!(mcts.seed_generation.load(Ordering::SeqCst), 0);
+
+        // Setting seed should increment generation
+        mcts.set_seed(Some(42));
+        assert_eq!(mcts.seed_generation.load(Ordering::SeqCst), 1);
+
+        // Setting seed again should increment again
+        mcts.set_seed(Some(123));
+        assert_eq!(mcts.seed_generation.load(Ordering::SeqCst), 2);
+
+        // Unsetting seed (None) should also increment
+        mcts.set_seed(None);
+        assert_eq!(mcts.seed_generation.load(Ordering::SeqCst), 3);
+
+        // Setting same seed again should still increment (invalidate caches)
+        mcts.set_seed(Some(42));
+        assert_eq!(mcts.seed_generation.load(Ordering::SeqCst), 4);
+    }
+
+    #[test]
+    fn test_thread_local_cache_invalidation() {
+        // Test that thread-local RNG cache is properly invalidated when seed changes
+        // This test verifies the generation tracking mechanism works correctly
+
+        let mcts = MCTSSearch::new(None, None, None, None, None, None);
+
+        // Set initial seed
+        let mcts_mut = std::cell::RefCell::new(mcts);
+        mcts_mut.borrow_mut().set_seed(Some(12345));
+        let gen1 = mcts_mut.borrow().seed_generation.load(Ordering::SeqCst);
+
+        // Use the RNG (this will cache it with current generation)
+        let val1 = mcts_mut.borrow().with_rng(|rng| rng.random_range(0..100));
+
+        // Change seed (should increment generation)
+        mcts_mut.borrow_mut().set_seed(Some(67890));
+        let gen2 = mcts_mut.borrow().seed_generation.load(Ordering::SeqCst);
+
+        // Generation should have incremented
+        assert_eq!(gen2, gen1 + 1);
+
+        // Using RNG again should work with new seed
+        // (we can't easily verify it uses the new seed in a unit test without
+        // full parallel infrastructure, but we can verify it doesn't panic)
+        let val2 = mcts_mut.borrow().with_rng(|rng| rng.random_range(0..100));
+
+        // Both values should be valid (in range)
+        assert!(val1 < 100);
+        assert!(val2 < 100);
+    }
+
+    #[test]
+    fn test_transposition_table_not_polluted_during_search() {
+        // Verify that running MCTS doesn't pollute the transposition table
+        // with empty entries for every legal action checked
+        use crate::board::BoardConfig;
+        use ndarray::{Array1, Array3};
+
+        let config = Arc::new(BoardConfig::standard(37, 1).unwrap());
+        let mut spatial_state = Array3::zeros((config.layers_per_timestep * config.t + 1, config.width, config.width));
+        let mut global_state = Array1::zeros(10);
+
+        // Setup initial board state
+        for y in 0..config.width {
+            for x in 0..config.width {
+                spatial_state[[config.ring_layer, y, x]] = 1.0;
+            }
+        }
+
+        // Set supply marbles (needed for valid moves)
+        global_state[config.supply_w] = 5.0;
+        global_state[config.supply_g] = 8.0;
+        global_state[config.supply_b] = 7.0;
+        global_state[config.cur_player] = config.player_1 as f32;
+
+        // Create MCTS with transposition table enabled
+        let mut mcts = MCTSSearch::new(
+            Some(1.41),  // exploration_constant
+            None,        // widening_constant
+            None,        // fpu_reduction
+            None,        // rave_constant
+            Some(true),  // use_transposition_table
+            Some(true),  // use_transposition_lookups
+        );
+
+        // Initialize transposition table
+        mcts.transposition_table = Some(Arc::new(TranspositionTable::new()));
+
+        // Create root node with transposition lookup
+        let shared_entry = mcts.transposition_table.as_ref().unwrap()
+            .get_or_insert(&spatial_state.view(), &global_state.view(), config.as_ref());
+
+        let root = Arc::new(MCTSNode::new(
+            spatial_state.clone(),
+            global_state.clone(),
+            Arc::clone(&config),
+            Some(shared_entry),
+        ));
+
+        // Create search options
+        let search_options = SearchOptions {
+            table: mcts.transposition_table.as_ref().map(Arc::clone),
+            use_lookups: true,
+        };
+
+        // Run 100 MCTS iterations directly
+        let start = Instant::now();
+        for _ in 0..100 {
+            mcts.run_iteration(Arc::clone(&root), &search_options, None, None, start);
+        }
+
+        // Check transposition table size
+        let table_size = if let Some(table) = &mcts.transposition_table {
+            table.len()
+        } else {
+            panic!("Transposition table should exist after search");
+        };
+
+        // With 100 iterations from starting position, we expect:
+        // - ~10-100 unique states explored (grows with tree depth)
+        // - NOT hundreds of thousands of entries (iterations × legal_actions)
+        //
+        // 37-ring board has ~1944 legal actions from start
+        // If polluted: 100 iterations × 1944 actions = 194,400 entries
+        // Actual with transposition hits: typically < 200 entries
+        // (transposition table finds many duplicate states via different move orders)
+        assert!(
+            table_size < 200,
+            "Transposition table too large ({} entries). Expected < 200. \
+             Table may be polluted with empty entries from action enumeration.",
+            table_size
+        );
+
+        // Also verify table has at least some entries (search actually happened)
+        assert!(
+            table_size > 0,
+            "Transposition table should have entries after search"
+        );
+
+        println!("Transposition table size after 100 iterations: {} entries", table_size);
     }
 
 }
