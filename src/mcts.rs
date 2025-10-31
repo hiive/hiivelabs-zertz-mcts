@@ -128,13 +128,35 @@ impl MCTSSearch {
         use_transposition_table: Option<bool>,
         use_transposition_lookups: Option<bool>,
     ) -> Self {
+        let resolved_exploration = exploration_constant.unwrap_or(1.41);
+        let resolved_use_table = use_transposition_table.unwrap_or(true);
+        let resolved_use_lookups = use_transposition_lookups.unwrap_or(true);
+
+        #[cfg(debug_assertions)]
+        {
+            let mut features:Vec<&str> = Vec::new();
+            #[cfg(feature = "metrics")]
+            features.push("metrics");
+            #[cfg(feature = "skip_forced_moves")]
+            features.push("skip_forced_moves");
+
+            let features_str = if features.is_empty() {
+                String::from("none")
+            } else {
+                features.join(",")
+            };
+
+            eprintln!("MCTSSearch::new(exploration={}, widening={:?}, fpu={:?}, rave={:?}, use_table={}, use_lookups={}, features=[{}])",
+                resolved_exploration, widening_constant, fpu_reduction, rave_constant, resolved_use_table, resolved_use_lookups, features_str);
+        }
+
         Self {
-            exploration_constant: exploration_constant.unwrap_or(1.41),
+            exploration_constant: resolved_exploration,
             widening_constant,
             fpu_reduction,
             rave_constant,
-            use_transposition_table: use_transposition_table.unwrap_or(true),
-            use_transposition_lookups: use_transposition_lookups.unwrap_or(true),
+            use_transposition_table: resolved_use_table,
+            use_transposition_lookups: resolved_use_lookups,
             transposition_table: None,
             last_root_children: 0,
             last_root_visits: 0,
@@ -220,6 +242,16 @@ impl MCTSSearch {
         progress_callback: Option<Py<PyAny>>,
         progress_interval_ms: Option<u64>,
     ) -> PyResult<(String, Option<(usize, usize, usize)>)> {
+        let t = t.unwrap_or(1);
+        let verbose = verbose.unwrap_or(false);
+        let blitz = blitz.unwrap_or(false);
+
+        #[cfg(debug_assertions)]
+        {
+            eprintln!("MCTSSearch::search(rings={}, iterations={}, t={}, max_depth={:?}, time_limit={:?}, verbose={}, seed={:?}, blitz={})",
+                rings, iterations, t, max_depth, time_limit, verbose, seed, blitz);
+        }
+
         let search_options = SearchOptions::new(
             self,
             use_transposition_table,
@@ -227,9 +259,6 @@ impl MCTSSearch {
             clear_table,
         );
 
-        let t = t.unwrap_or(1);
-        let verbose = verbose.unwrap_or(false);
-        let blitz = blitz.unwrap_or(false);
         if let Some(value) = seed {
             self.set_seed(Some(value));
         }
@@ -359,16 +388,24 @@ impl MCTSSearch {
         progress_callback: Option<Py<PyAny>>,
         progress_interval_ms: Option<u64>,
     ) -> PyResult<(String, Option<(usize, usize, usize)>)> {
+        let t = t.unwrap_or(1);
+        let num_threads = num_threads.unwrap_or(16);
+        let verbose = verbose.unwrap_or(false);
+        let blitz = blitz.unwrap_or(false);
+
+        #[cfg(debug_assertions)]
+        {
+            eprintln!("MCTSSearch::search_parallel(rings={}, iterations={}, t={}, max_depth={:?}, time_limit={:?}, num_threads={}, verbose={}, seed={:?}, blitz={})",
+                rings, iterations, t, max_depth, time_limit, num_threads, verbose, seed, blitz);
+        }
+
         let search_options = SearchOptions::new(
             self,
             use_transposition_table,
             use_transposition_lookups,
             clear_table,
         );
-        let t = t.unwrap_or(1);
-        let num_threads = num_threads.unwrap_or(16);
-        let verbose = verbose.unwrap_or(false);
-        let blitz = blitz.unwrap_or(false);
+
         if let Some(value) = seed {
             self.set_seed(Some(value));
         }
