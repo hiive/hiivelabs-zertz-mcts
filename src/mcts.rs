@@ -217,7 +217,7 @@ impl MCTSSearch {
         verbose: Option<bool>,
         seed: Option<u64>,
         blitz: Option<bool>,
-        progress_callback: Option<PyObject>,
+        progress_callback: Option<Py<PyAny>>,
         progress_interval_ms: Option<u64>,
     ) -> PyResult<(String, Option<(usize, usize, usize)>)> {
         let search_options = SearchOptions::new(
@@ -356,7 +356,7 @@ impl MCTSSearch {
         verbose: Option<bool>,
         seed: Option<u64>,
         blitz: Option<bool>,
-        progress_callback: Option<PyObject>,
+        progress_callback: Option<Py<PyAny>>,
         progress_interval_ms: Option<u64>,
     ) -> PyResult<(String, Option<(usize, usize, usize)>)> {
         let search_options = SearchOptions::new(
@@ -414,7 +414,7 @@ impl MCTSSearch {
         }
 
         // Release GIL for parallel work
-        py.allow_threads(|| {
+        py.detach(|| {
             let progress_interval = Duration::from_millis(progress_interval_ms.unwrap_or(100));
             let mut last_progress_time = start;
             let mut completed = 0;
@@ -445,7 +445,7 @@ impl MCTSSearch {
                     let elapsed_since_last = start.elapsed() - (last_progress_time - start);
                     if elapsed_since_last >= progress_interval {
                         // Reacquire GIL for callback
-                        Python::with_gil(|py| {
+                        Python::attach(|py| {
                             if let Err(e) = self.fire_search_progress(py, callback, &root, completed) {
                                 eprintln!("SearchProgress error: {}", e);
                             }
@@ -543,7 +543,7 @@ impl MCTSSearch {
 // ============================================================================
 
 thread_local! {
-    static THREAD_RNG: RefCell<Option<(StdRng, u64)>> = RefCell::new(None);
+    static THREAD_RNG: RefCell<Option<(StdRng, u64)>> = const { RefCell::new(None) };
 }
 
 impl MCTSSearch {
@@ -1452,7 +1452,7 @@ impl MCTSSearch {
     fn fire_search_started(
         &self,
         py: Python,
-        callback: &PyObject,
+        callback: &Py<PyAny>,
         root: &MCTSNode,
         total_iterations: usize,
     ) -> PyResult<()> {
@@ -1508,7 +1508,7 @@ impl MCTSSearch {
     fn fire_search_progress(
         &self,
         py: Python,
-        callback: &PyObject,
+        callback: &Py<PyAny>,
         root: &MCTSNode,
         iteration: usize,
     ) -> PyResult<()> {
@@ -1578,7 +1578,7 @@ impl MCTSSearch {
     fn fire_search_ended(
         &self,
         py: Python,
-        callback: &PyObject,
+        callback: &Py<PyAny>,
         _root: &MCTSNode,
         total_iterations: usize,
         elapsed: Duration,

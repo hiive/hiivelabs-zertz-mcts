@@ -362,7 +362,7 @@ pub fn canonicalize_internal(
     let sym_ops = if flags.has_rotation() || flags.has_mirror() {
         symmetry_transforms(config)
             .into_iter()
-            .filter(|(name, _, mirror, _)| {
+            .filter(|(name, _, _mirror, _)| {
                 // Filter based on flags
                 if name == "R0" {
                     true // Always include identity
@@ -629,7 +629,7 @@ pub fn build_axial_maps(
 /// Applied k times for rotation by k × 60°.
 #[allow(dead_code)]
 fn ax_rot60(mut q: i32, mut r: i32, k: i32) -> (i32, i32) {
-    let mut k = (k % 6 + 6) % 6; // Normalize to 0-5
+    let mut k = k.rem_euclid(6); // Normalize to 0-5
     while k > 0 {
         // Single 60° rotation
         let new_q = -r;

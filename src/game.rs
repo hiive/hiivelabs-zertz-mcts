@@ -64,7 +64,7 @@ pub fn ax_rot60(mut q: i32, mut r: i32, k: i32) -> (i32, i32) {
     for _ in 0..k_norm {
         let temp = q;
         q = -r;
-        r = temp + r;
+        r += temp;
     }
     (q, r)
 }

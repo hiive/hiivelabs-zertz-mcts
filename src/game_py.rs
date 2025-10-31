@@ -6,7 +6,7 @@
 use crate::board::BoardConfig;
 use crate::canonicalization::{self, TransformFlags as RustTransformFlags};
 use crate::game;
-use numpy::{PyArray1, PyArray3, PyArrayMethods, PyReadonlyArray1, PyReadonlyArray3, ToPyArray};
+use numpy::{PyArray1, PyArray3, PyArrayMethods, PyReadonlyArray1, PyReadonlyArray3};
 use pyo3::prelude::*;
 use std::collections::HashMap;
 

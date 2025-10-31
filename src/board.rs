@@ -194,14 +194,14 @@ impl BoardConfig {
 
     /// Get Player 1 capture slice (indices 3-6: w, g, b)
     #[getter]
-    fn p1_cap_slice(&self, py: Python<'_>) -> PyResult<PyObject> {
+    fn p1_cap_slice(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
         let slice = pyo3::types::PySlice::new(py, 3, 6, 1);
         Ok(slice.into())
     }
 
     /// Get Player 2 capture slice (indices 6-9: w, g, b)
     #[getter]
-    fn p2_cap_slice(&self, py: Python<'_>) -> PyResult<PyObject> {
+    fn p2_cap_slice(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
         let slice = pyo3::types::PySlice::new(py, 6, 9, 1);
         Ok(slice.into())
     }
