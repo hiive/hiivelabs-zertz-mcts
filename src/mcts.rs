@@ -684,6 +684,13 @@ impl MCTSSearch {
             // This prevents multiple threads from selecting the same path simultaneously
             node.add_virtual_loss();
 
+            // Skip through any forced move sequences (only 1 legal action)
+            // This prevents wasted iterations and visit count inflation from chain captures
+            #[cfg(feature = "skip_forced_moves")]
+            {
+                node = self.skip_forced_moves(Arc::clone(&node));
+            }
+
             // Check if node is fully expanded (respects progressive widening if enabled)
             if !node.is_fully_expanded(self.widening_constant) {
                 return self.expand(Arc::clone(&node), table, use_lookups);
@@ -697,19 +704,11 @@ impl MCTSSearch {
             // Select best child using UCB1 (with optional FPU for unvisited nodes)
             let parent_visits = node.get_visits();
             let parent_value = node.get_value();
-
-            // Snapshot children and immediately release lock
-            // This allows parallel UCB computation across threads
-            let children_snapshot: Vec<(Action, Arc<MCTSNode>)> = {
-                let children = node.children.read().unwrap();
-                children.iter()
-                    .map(|(action, child)| (action.clone(), Arc::clone(child)))
-                    .collect()
-            }; // Lock released here - held for microseconds instead of milliseconds!
+            let children = node.children.read().unwrap();
 
             // Find child with maximum score (RAVE-UCB if enabled, else UCB1)
-            // This computation happens WITHOUT holding the lock
-            let best_child = children_snapshot.iter().max_by(|(_, child_a), (_, child_b)| {
+            // max_by uses partial ordering since f32 can be NaN
+            let best_child = children.iter().max_by(|(_, child_a), (_, child_b)| {
                 let score_a = child_a.rave_ucb_score(
                     parent_visits,
                     parent_value,
@@ -732,10 +731,202 @@ impl MCTSSearch {
             });
 
             if let Some((_, child)) = best_child {
-                node = Arc::clone(child);
+                let next_node = Arc::clone(child);
+                drop(children); // Release lock before next iteration (critical for performance)
+                node = next_node;
             } else {
                 // No children available (shouldn't happen but handle defensively)
+                drop(children);
                 return node;
+            }
+        }
+    }
+
+    /// Count the number of valid actions in the masks
+    #[cfg(feature = "skip_forced_moves")]
+    fn count_valid_actions(
+        placement_mask: &ndarray::ArrayView3<f32>,
+        capture_mask: &ndarray::ArrayView3<f32>,
+    ) -> usize {
+        let mut count = 0;
+
+        // Count placements
+        for &val in placement_mask.iter() {
+            if val > 0.0 {
+                count += 1;
+            }
+        }
+
+        // Count captures
+        for &val in capture_mask.iter() {
+            if val > 0.0 {
+                count += 1;
+            }
+        }
+
+        count
+    }
+
+    /// Skip through forced move sequences (where only 1 legal action exists)
+    ///
+    /// When a state has only 1 legal action, there's no decision to make.
+    /// Auto-playing through these sequences:
+    /// 1. Saves MCTS iterations (don't expand forced nodes)
+    /// 2. Prevents visit count inflation
+    /// 3. Keeps UCB statistics meaningful
+    /// 4. Fixes cross-player confusion from chain captures
+    #[cfg(feature = "skip_forced_moves")]
+    fn skip_forced_moves(
+        &self,
+        mut node: Arc<MCTSNode>,
+    ) -> Arc<MCTSNode> {
+        loop {
+            // Check if terminal
+            if self.is_terminal(&node) {
+                return node;
+            }
+
+            // Get valid actions
+            let (placement_mask, capture_mask) =
+                get_valid_actions(&node.spatial_state.view(), &node.global_state.view(), &node.config);
+
+            let action_count = Self::count_valid_actions(&placement_mask.view(), &capture_mask.view());
+
+            // If more than 1 action, stop here - this is a real decision point
+            if action_count != 1 {
+                return node;
+            }
+
+            // Exactly 1 action - this is forced, auto-play it
+            // First, find the single action
+            let forced_action = {
+                // Check captures first (they're mandatory if present)
+                let mut found = None;
+                for dir in 0..6 {
+                    for y in 0..node.config.width {
+                        for x in 0..node.config.width {
+                            if capture_mask[[dir, y, x]] > 0.0 {
+                                found = Some(Action::Capture {
+                                    start_y: y,
+                                    start_x: x,
+                                    direction: dir,
+                                });
+                                break;
+                            }
+                        }
+                        if found.is_some() {
+                            break;
+                        }
+                    }
+                    if found.is_some() {
+                        break;
+                    }
+                }
+
+                // If no captures, check placements
+                if found.is_none() {
+                    'outer: for marble_type in 0..3 {
+                        let width = node.config.width;
+                        let width2 = width * width;
+                        for dst_flat in 0..width2 {
+                            for remove_flat in 0..=width2 {
+                                if placement_mask[[marble_type, dst_flat, remove_flat]] > 0.0 {
+                                    let dst_y = dst_flat / width;
+                                    let dst_x = dst_flat % width;
+                                    let (remove_y, remove_x) = if remove_flat < width2 {
+                                        (Some(remove_flat / width), Some(remove_flat % width))
+                                    } else {
+                                        (None, None)
+                                    };
+
+                                    found = Some(Action::Placement {
+                                        marble_type,
+                                        dst_y,
+                                        dst_x,
+                                        remove_y,
+                                        remove_x,
+                                    });
+                                    break 'outer;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                found
+            };
+
+            // If we couldn't find the action, something is wrong - return current node
+            let forced_action = match forced_action {
+                Some(action) => action,
+                None => return node,
+            };
+
+            // Check if child already exists
+            let existing_child = {
+                let children = node.children.read().unwrap();
+                children.iter()
+                    .find(|(action, _)| actions_equal(action, &forced_action))
+                    .map(|(_, child)| Arc::clone(child))
+            };
+
+            if let Some(child) = existing_child {
+                // Child exists, continue traversing
+                node = child;
+            } else {
+                // Child doesn't exist - need to create it
+                // Apply the action to create new state
+                let mut new_spatial = node.spatial_state.clone();
+                let mut new_global = node.global_state.clone();
+
+                match forced_action {
+                    Action::Placement { marble_type, dst_y, dst_x, remove_y, remove_x } => {
+                        apply_placement(
+                            &mut new_spatial.view_mut(),
+                            &mut new_global.view_mut(),
+                            marble_type,
+                            dst_y,
+                            dst_x,
+                            remove_y,
+                            remove_x,
+                            &node.config,
+                        );
+                    }
+                    Action::Capture { start_y, start_x, direction } => {
+                        apply_capture(
+                            &mut new_spatial.view_mut(),
+                            &mut new_global.view_mut(),
+                            start_y,
+                            start_x,
+                            direction,
+                            &node.config,
+                        );
+                    }
+                    Action::Pass => {
+                        // Switch player for PASS action
+                        let cur_player = new_global[node.config.cur_player] as usize;
+                        new_global[node.config.cur_player] = if cur_player == node.config.player_1 {
+                            node.config.player_2 as f32
+                        } else {
+                            node.config.player_1 as f32
+                        };
+                    }
+                }
+
+                // Create new child node (no transposition table lookup in forced sequences)
+                let child = Arc::new(MCTSNode::new_child(
+                    new_spatial,
+                    new_global,
+                    Arc::clone(&node.config),
+                    &node,
+                    None,  // No transposition table entry
+                ));
+
+                // Add child to parent (thread-safe)
+                node.add_child(forced_action.clone(), Arc::clone(&child));
+
+                // Continue with this child
+                node = child;
             }
         }
     }
@@ -924,6 +1115,7 @@ impl MCTSSearch {
         let mut simulation_actions = Vec::new();
 
         if self.is_terminal(node) {
+            // Evaluate from the perspective of the leaf player (player at this node)
             let value = self.evaluate_terminal(&node.spatial_state, &node.global_state, &node.config, leaf_player);
             return (value, simulation_actions);
         }
@@ -1088,28 +1280,20 @@ impl MCTSSearch {
             // RAVE/AMAF updates: Update RAVE stats for sibling actions that appeared in simulation
             if self.rave_constant.is_some() {
                 if let Some(parent_ref) = current_node.parent.as_ref().and_then(|weak| weak.upgrade()) {
-                    // Snapshot siblings and immediately release lock
-                    let siblings_snapshot: Vec<(Action, Arc<MCTSNode>)> = {
-                        if let Ok(siblings) = parent_ref.children.read() {
-                            siblings.iter()
-                                .map(|(action, child)| (action.clone(), Arc::clone(child)))
-                                .collect()
-                        } else {
-                            Vec::new()
-                        }
-                    }; // Lock released here!
+                    // Lock parent's children to access siblings
+                    if let Ok(siblings) = parent_ref.children.read() {
+                        // For each sibling, check if its action matches any simulation action
+                        for (sibling_action, sibling_node) in siblings.iter() {
+                            // Check if this sibling's action appears in the simulation
+                            let action_in_simulation = simulation_actions.iter().any(|sim_action| {
+                                actions_equal(sibling_action, sim_action)
+                            });
 
-                    // Update RAVE stats without holding lock
-                    for (sibling_action, sibling_node) in siblings_snapshot.iter() {
-                        // Check if this sibling's action appears in the simulation
-                        let action_in_simulation = simulation_actions.iter().any(|sim_action| {
-                            actions_equal(sibling_action, sim_action)
-                        });
-
-                        if action_in_simulation {
-                            // Update RAVE stats for this sibling
-                            // Note: value is from current player's perspective, which is correct for AMAF
-                            sibling_node.update_rave(value);
+                            if action_in_simulation {
+                                // Update RAVE stats for this sibling
+                                // Note: value is from current player's perspective, which is correct for AMAF
+                                sibling_node.update_rave(value);
+                            }
                         }
                     }
                 }

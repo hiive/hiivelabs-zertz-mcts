@@ -1,6 +1,6 @@
 [package]
 name = "hiivelabs-zertz-mcts"
-version = "0.5.1"
+version = "0.5.2"
 edition = "2021"
 
 [lib]
@@ -21,6 +21,7 @@ smallvec = "1.13"
 [features]
 default = []
 metrics = []
+skip_forced_moves = []  # Enable auto-play through forced sequences (experimental)
 
 [profile.release]
 lto = true
