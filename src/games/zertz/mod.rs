@@ -12,6 +12,7 @@
 //! - `logic`: Core game rules (placement, capture, win conditions)
 //! - `action_transform`: Action transformation for testing symmetry operations
 //! - `zobrist`: Zobrist hashing for fast state hashing
+//! - `notation`: Algebraic notation conversion (e.g., (3,3) ↔ "D4")
 //! - `py_logic`: Python bindings for game logic functions
 //! - `py_mcts`: Python bindings for MCTS wrapper
 
@@ -19,6 +20,7 @@ pub mod board;
 pub mod canonicalization;
 pub mod logic;
 pub mod action_transform;
+pub mod notation;
 pub mod py_logic;
 pub mod py_mcts;
 mod zobrist;
@@ -27,6 +29,8 @@ mod zobrist;
 mod canonicalization_tests;
 #[cfg(test)]
 mod action_transform_tests;
+#[cfg(test)]
+mod notation_tests;
 #[cfg(test)]
 mod zobrist_tests;
 
@@ -53,11 +57,12 @@ pub enum ZertzAction {
         remove_y: Option<usize>,
         remove_x: Option<usize>,
     },
-    /// Capture by jumping
+    /// Capture by jumping from start to dest
     Capture {
         start_y: usize,
         start_x: usize,
-        direction: usize,  // 0-5 for hexagonal directions
+        dest_y: usize,
+        dest_x: usize,
     },
     /// Pass (no legal moves)
     Pass,
@@ -148,13 +153,19 @@ impl MCTSGame for ZertzGame {
 
         // Extract captures from mask
         for dir in 0..6 {
+            let (dy, dx) = self.config.directions[dir];
             for y in 0..width {
                 for x in 0..width {
                     if capture_mask[[dir, y, x]] > 0.0 {
+                        // Compute destination (landing position after jump)
+                        let dest_y = ((y as i32) + 2 * dy) as usize;
+                        let dest_x = ((x as i32) + 2 * dx) as usize;
+
                         actions.push(ZertzAction::Capture {
                             start_y: y,
                             start_x: x,
-                            direction: dir,
+                            dest_y,
+                            dest_x,
                         });
                     }
                 }
@@ -197,14 +208,16 @@ impl MCTSGame for ZertzGame {
             ZertzAction::Capture {
                 start_y,
                 start_x,
-                direction,
+                dest_y,
+                dest_x,
             } => {
                 apply_capture(
                     spatial_state,
                     global_state,
                     *start_y,
                     *start_x,
-                    *direction,
+                    *dest_y,
+                    *dest_x,
                     &self.config,
                 );
             }

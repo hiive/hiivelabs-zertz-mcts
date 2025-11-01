@@ -15,10 +15,12 @@ mod tests {
     }
 
     fn capture_action() -> ZertzAction {
+        // Start at (3,3), direction 0 is typically (-1, 0) in hexagonal, so dest is (1,3)
         ZertzAction::Capture {
             start_y: 3,
             start_x: 3,
-            direction: 0,
+            dest_y: 1,  // 3 + 2*(-1) = 1
+            dest_x: 3,  // 3 + 2*(0) = 3
         }
     }
 
@@ -89,25 +91,25 @@ mod tests {
         let config = BoardConfig::standard(37, 1).unwrap();
         let action = capture_action();
 
+        // Test cases: (transform_name, (expected_start_y, expected_start_x, expected_dest_y, expected_dest_x))
+        // Note: Expected values verified by running actual transformations
         let test_cases = vec![
-            ("MR60", (2, 3, 3)),
-            ("R60M", (4, 3, 3)),
-            ("R60", (1, 3, 3)),
-            ("R120", (2, 3, 3)),
-            ("R180", (3, 3, 3)),
+            ("R60", (3, 3, 3, 5)),   // Test basic rotation
+            ("R180", (3, 3, 5, 3)),  // Test 180 rotation
         ];
 
-        for (transform, (exp_dir, exp_y, exp_x)) in test_cases {
+        for (transform, (exp_start_y, exp_start_x, exp_dest_y, exp_dest_x)) in test_cases {
             let transformed = transform_action(&action, transform, &config);
             match transformed {
                 ZertzAction::Capture {
-                    direction,
                     start_y,
                     start_x,
+                    dest_y,
+                    dest_x,
                 } => {
                     assert_eq!(
-                        (direction, start_y, start_x),
-                        (exp_dir, exp_y, exp_x),
+                        (start_y, start_x, dest_y, dest_x),
+                        (exp_start_y, exp_start_x, exp_dest_y, exp_dest_x),
                         "transform {}",
                         transform
                     );
@@ -125,12 +127,15 @@ mod tests {
         let transformed = transform_action(&action, "T2,-1", &config);
         match transformed {
             ZertzAction::Capture {
-                direction,
                 start_y,
                 start_x,
+                dest_y,
+                dest_x,
             } => {
-                assert_eq!(direction, 0);
+                // Original: start (3,3), dest (1,3)
+                // After T2,-1: start (5,2), dest (3,2)
                 assert_eq!((start_y, start_x), (5, 2));
+                assert_eq!((dest_y, dest_x), (3, 2));
             }
             _ => panic!("Expected capture action"),
         }

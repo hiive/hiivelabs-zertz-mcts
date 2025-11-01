@@ -3,7 +3,7 @@
 //! This module exposes stateless Zertz game logic functions to Python,
 //! allowing Python code to call Rust game logic directly.
 
-use super::{board::BoardConfig, canonicalization, logic};
+use super::{board::BoardConfig, canonicalization, logic, notation};
 use canonicalization::TransformFlags as RustTransformFlags;
 use numpy::{PyArray1, PyArray3, PyArrayMethods, PyReadonlyArray1, PyReadonlyArray3};
 use pyo3::prelude::*;
@@ -544,7 +544,8 @@ pub fn apply_capture_action<'py>(
     global_state: &Bound<'py, PyArray1<f32>>,
     start_y: usize,
     start_x: usize,
-    direction: usize,
+    dest_y: usize,
+    dest_x: usize,
     config: &BoardConfig,
 ) -> PyResult<()> {
     unsafe {
@@ -555,7 +556,8 @@ pub fn apply_capture_action<'py>(
             &mut global_state_arr,
             start_y,
             start_x,
-            direction,
+            dest_y,
+            dest_x,
             config,
         );
     }
@@ -608,6 +610,58 @@ pub fn check_for_isolation_capture<'py>(
     )
 }
 
+// ============================================================================
+// Algebraic Notation
+// ============================================================================
+
+/// Convert array coordinates (y, x) to algebraic notation (e.g., "D4")
+///
+/// Args:
+///     y: Row index (0 = top, increases downward)
+///     x: Column index (0 = leftmost column)
+///     config: BoardConfig specifying board size
+///
+/// Returns:
+///     Algebraic notation string (e.g., "A1", "D4", "G7")
+///
+/// Raises:
+///     ValueError: If coordinates are out of bounds
+///
+/// Examples:
+///     >>> coordinate_to_algebraic(6, 0, config)  # 7x7 board
+///     'A1'
+///     >>> coordinate_to_algebraic(3, 3, config)
+///     'D4'
+#[pyfunction]
+pub fn coordinate_to_algebraic(y: usize, x: usize, config: &BoardConfig) -> PyResult<String> {
+    notation::coordinate_to_algebraic_with_config(y, x, config)
+        .map_err(pyo3::exceptions::PyValueError::new_err)
+}
+
+/// Parse algebraic notation (e.g., "A1") to array coordinates (y, x)
+///
+/// Args:
+///     notation: Algebraic notation string (e.g., "D4", "A1")
+///               Case-insensitive
+///     config: BoardConfig specifying board size
+///
+/// Returns:
+///     Tuple of (y, x) array coordinates
+///
+/// Raises:
+///     ValueError: If notation is invalid or out of bounds
+///
+/// Examples:
+///     >>> algebraic_to_coordinate("A1", config)  # 7x7 board
+///     (6, 0)
+///     >>> algebraic_to_coordinate("d4", config)  # Case-insensitive
+///     (3, 3)
+#[pyfunction]
+pub fn algebraic_to_coordinate(notation: &str, config: &BoardConfig) -> PyResult<(usize, usize)> {
+    notation::algebraic_to_coordinate_with_config(notation, config)
+        .map_err(pyo3::exceptions::PyValueError::new_err)
+}
+
 /// Register all game logic functions with the Python module
 pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     // Axial coordinate transformations
@@ -651,6 +705,10 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
 
     // Isolation capture
     m.add_function(wrap_pyfunction!(check_for_isolation_capture, m)?)?;
+
+    // Algebraic notation
+    m.add_function(wrap_pyfunction!(coordinate_to_algebraic, m)?)?;
+    m.add_function(wrap_pyfunction!(algebraic_to_coordinate, m)?)?;
 
     Ok(())
 }

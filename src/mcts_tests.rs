@@ -36,15 +36,20 @@ mod tests {
         };
         assert_eq!(placement1, placement2);
 
+        let config = BoardConfig::standard(37, 1).unwrap();
+        let (dest_y, dest_x) = config.dest_from_direction(2, 3, 1);
+
         let capture1 = ZertzAction::Capture {
             start_y: 2,
             start_x: 3,
-            direction: 1,
+            dest_y,
+            dest_x,
         };
         let capture2 = ZertzAction::Capture {
             start_y: 2,
             start_x: 3,
-            direction: 1,
+            dest_y,
+            dest_x,
         };
         assert_eq!(capture1, capture2);
 

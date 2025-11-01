@@ -654,6 +654,73 @@ def check_for_isolation_capture(
 
 
 # ============================================================================
+# Algebraic Notation
+# ============================================================================
+
+def coordinate_to_algebraic(y: int, x: int, config: BoardConfig) -> str:
+    """
+    Convert array coordinates (y, x) to algebraic notation (e.g., "D4").
+
+    The Zertz board is hexagonal, so row numbers depend on BOTH x and y coordinates.
+    The middle row is the longest, and rows get shorter above and below.
+
+    Algebraic notation:
+    - Columns: A, B, C, ... (left to right, x-axis)
+    - Rows: Row numbers increase as you move up-right in the hexagon
+    - Formula: row = min(width, width/2 + x + 1) - y
+
+    Args:
+        y: Row index (0 = top, increases downward)
+        x: Column index (0 = leftmost column)
+        config: BoardConfig specifying board size
+
+    Returns:
+        Algebraic notation string (e.g., "A1", "D4", "A4")
+
+    Raises:
+        ValueError: If coordinates are out of bounds or outside hexagonal shape
+
+    Examples:
+        >>> config = BoardConfig.standard_config(37)  # 37-ring board
+        >>> coordinate_to_algebraic(3, 0, config)  # left side of middle row
+        'A1'
+        >>> coordinate_to_algebraic(3, 3, config)  # center
+        'D4'
+        >>> coordinate_to_algebraic(0, 0, config)  # top-left corner
+        'A4'
+    """
+    ...
+
+def algebraic_to_coordinate(notation: str, config: BoardConfig) -> Tuple[int, int]:
+    """
+    Parse algebraic notation (e.g., "A1") to array coordinates (y, x).
+
+    Validates that the notation refers to a valid position within the hexagonal board.
+
+    Args:
+        notation: Algebraic notation string (e.g., "D4", "A1")
+                  Case-insensitive
+        config: BoardConfig specifying board size
+
+    Returns:
+        Tuple of (y, x) array coordinates
+
+    Raises:
+        ValueError: If notation is invalid or out of bounds
+
+    Examples:
+        >>> config = BoardConfig.standard_config(37)  # 37-ring board
+        >>> algebraic_to_coordinate("A1", config)  # left side of middle row
+        (3, 0)
+        >>> algebraic_to_coordinate("d4", config)  # case-insensitive, center
+        (3, 3)
+        >>> algebraic_to_coordinate("A4", config)  # top-left corner
+        (0, 0)
+    """
+    ...
+
+
+# ============================================================================
 # Transform Flags
 # ============================================================================
 

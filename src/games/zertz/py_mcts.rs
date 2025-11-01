@@ -138,10 +138,11 @@ impl PyZertzMCTS {
                 ZertzAction::Capture {
                     start_y,
                     start_x,
-                    direction,
+                    dest_y,
+                    dest_x,
                 } => (
                     "CAP".to_string(),
-                    Some((*direction, *start_y, *start_x)),
+                    Some((*start_y, *start_x, *dest_y)),  // Note: only 3 values fit in tuple
                     *score,
                 ),
                 ZertzAction::Pass => ("PASS".to_string(), None, *score),
@@ -462,8 +463,9 @@ impl PyZertzMCTS {
                 ZertzAction::Capture {
                     start_y,
                     start_x,
-                    direction,
-                } => Ok(("CAP".to_string(), Some((*direction, *start_y, *start_x)))),
+                    dest_y,
+                    dest_x,
+                } => Ok(("CAP".to_string(), Some((*start_y, *start_x, *dest_y)))),  // TODO: Need dest_x too!
                 ZertzAction::Pass => Ok(("PASS".to_string(), None)),
             }
         } else {

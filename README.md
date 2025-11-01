@@ -70,6 +70,7 @@ This design enables:
   - `logic.rs` — Core game rules (placement, capture, termination)
   - `canonicalization.rs` — Symmetry transforms for hexagonal boards
   - `action_transform.rs` — Action transformation for symmetry operations
+  - `notation.rs` — Algebraic notation conversion (e.g., (3,3) ↔ "D4")
   - `zobrist.rs` — Zobrist hashing for fast state hashing
   - `py_logic.rs` — Python bindings for stateless game functions
   - `py_mcts.rs` — `ZertzMCTS` Python wrapper
@@ -137,6 +138,33 @@ The trait requires implementing:
 - Global vector length: `10 * t` (for `t = 1`, indices 0–2 = supply counts, 3–5 = player 1 captures, 6–8 = player 2 captures, 9 = active player flag).
 - Actions use flattened coordinates: `dst = y * width + x`; a `remove` equal to `width * width` indicates no ring removal.
 - Helper routines in `game.rs` mirror the Python loaders to keep replay, parity, and symmetry tooling in sync.
+
+### Algebraic Notation
+
+For human-readable position notation, Zertz includes coordinate conversion functions:
+
+```python
+from hiivelabs_mcts import BoardConfig, coordinate_to_algebraic, algebraic_to_coordinate
+
+config = BoardConfig.standard_config(37)  # 37-ring board
+
+# Convert array coordinates to algebraic notation
+coordinate_to_algebraic(3, 0, config)  # Returns "A1" (left side of middle row)
+coordinate_to_algebraic(3, 3, config)  # Returns "D4" (center)
+coordinate_to_algebraic(0, 0, config)  # Returns "A4" (top-left corner)
+
+# Parse algebraic notation to coordinates (case-insensitive)
+algebraic_to_coordinate("A1", config)  # Returns (3, 0)
+algebraic_to_coordinate("d4", config)  # Returns (3, 3)
+algebraic_to_coordinate("A4", config)  # Returns (0, 0)
+```
+
+**Hexagonal Coordinate System:**
+- **Columns**: A, B, C, ... (left to right, x-axis)
+- **Rows**: Row numbers increase as you move up-right in the hexagon
+- The middle row is the longest, containing all columns
+- Row number depends on BOTH x and y: `row = min(width, width/2 + x + 1) - y`
+- Supports all board sizes: 37 rings (A-G), 49 rings (A-H), 61 rings (A-J, note 'I' is skipped)
 
 ## Tic-Tac-Toe State Encoding
 - Spatial tensor shape: `(2, 3, 3)`

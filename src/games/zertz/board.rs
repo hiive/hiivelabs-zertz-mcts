@@ -207,6 +207,24 @@ impl BoardConfig {
     }
 }
 
+impl BoardConfig {
+    /// Helper: compute destination coordinates from start position and direction
+    ///
+    /// Useful for tests and for converting direction-based capture notation
+    /// to coordinate-based notation.
+    pub fn dest_from_direction(
+        &self,
+        start_y: usize,
+        start_x: usize,
+        direction: usize,
+    ) -> (usize, usize) {
+        let (dy, dx) = self.directions[direction];
+        let dest_y = ((start_y as i32) + 2 * dy) as usize;
+        let dest_x = ((start_x as i32) + 2 * dx) as usize;
+        (dest_y, dest_x)
+    }
+}
+
 /// Board state wrapper for PyO3 (zero-copy numpy array access)
 #[pyclass]
 pub struct BoardState {
@@ -333,7 +351,8 @@ impl BoardState {
         py: Python<'_>,
         start_y: usize,
         start_x: usize,
-        direction: usize,
+        dest_y: usize,
+        dest_x: usize,
     ) -> PyResult<()> {
         let mut spatial_state = self.spatial_state.bind(py).readonly().as_array().to_owned();
         let mut global = self.global.bind(py).readonly().as_array().to_owned();
@@ -343,7 +362,8 @@ impl BoardState {
             &mut global.view_mut(),
             start_y,
             start_x,
-            direction,
+            dest_y,
+            dest_x,
             &self.config,
         );
 

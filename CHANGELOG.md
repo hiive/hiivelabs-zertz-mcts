@@ -8,6 +8,20 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **Algebraic notation support for Zertz** - Convert between array coordinates and human-readable notation
+  - `coordinate_to_algebraic(y, x, config)` - Convert (y, x) to notation like "D4"
+  - `algebraic_to_coordinate(notation, config)` - Parse "D4" to (y, x) coordinates
+  - Correctly handles hexagonal board layout where row numbers depend on both x and y
+  - Case-insensitive parsing
+  - Supports all board sizes: 37 rings (A-G), 49 rings (A-H), 61 rings (A-J, note 'I' is skipped)
+  - Validates positions are within hexagonal bounds
+  - Rust module: `src/games/zertz/notation.rs` (266 lines)
+  - Tests: `src/games/zertz/notation_tests.rs` (13 comprehensive tests including roundtrip validation)
+  - Python bindings: Available via `hiivelabs_mcts` module
+  - Type stubs: Full documentation in `hiivelabs_mcts.pyi`
+
 ### Deprecated
 
 - **`translate_state` Python function** - Use `transform_state` with `rot60_k=0, mirror=False, mirror_first=False` instead
@@ -24,6 +38,7 @@ All notable changes to this project will be documented in this file.
     - `logic.rs` - Core game rules and move generation
     - `canonicalization.rs` - State canonicalization and symmetry detection
     - `action_transform.rs` - Action transformation for testing
+    - `notation.rs` - Algebraic notation conversion
     - `zobrist.rs` - Zobrist hashing (Zertz-specific, moved from generic)
     - `py_logic.rs` - Python bindings for stateless functions
     - `py_mcts.rs` - Python MCTS wrapper
@@ -49,7 +64,8 @@ All notable changes to this project will be documented in this file.
 
 ### Technical Details
 
-- All 101 tests passing (up from 92)
+- All 114 tests passing (up from 92 in v0.5.0)
+  - 13 new tests for algebraic notation (including roundtrip validation for all board sizes)
 - No breaking changes to Python API
 - Improved code organization and maintainability
 - Clear separation between generic MCTS infrastructure and game-specific logic

@@ -312,7 +312,8 @@ mod tests {
             .unwrap();
 
         // Apply capture
-        apply_capture(&mut spatial_state.view_mut(), &mut global_state.view_mut(), 3, 3, east_dir, &config);
+        let (dest_y, dest_x) = config.dest_from_direction(3, 3, east_dir);
+        apply_capture(&mut spatial_state.view_mut(), &mut global_state.view_mut(), 3, 3, dest_y, dest_x, &config);
 
         // Check marble moved
         assert_eq!(spatial_state[[1, 3, 3]], 0.0); // Removed from start
@@ -352,7 +353,8 @@ mod tests {
             .unwrap();
 
         // Apply first capture
-        apply_capture(&mut spatial_state.view_mut(), &mut global_state.view_mut(), 2, 2, east_dir, &config);
+        let (dest_y, dest_x) = config.dest_from_direction(2, 2, east_dir);
+        apply_capture(&mut spatial_state.view_mut(), &mut global_state.view_mut(), 2, 2, dest_y, dest_x, &config);
 
         // Player should NOT switch (chain available)
         assert_eq!(global_state[config.cur_player] as usize, config.player_1);
@@ -386,7 +388,8 @@ mod tests {
             .unwrap();
 
         // Apply first capture (east)
-        apply_capture(&mut spatial_state.view_mut(), &mut global_state.view_mut(), 3, 3, east_dir, &config);
+        let (dest_y, dest_x) = config.dest_from_direction(3, 3, east_dir);
+        apply_capture(&mut spatial_state.view_mut(), &mut global_state.view_mut(), 3, 3, dest_y, dest_x, &config);
 
         // Player should still be current because follow-up capture (north) is available
         assert_eq!(global_state[config.cur_player] as usize, config.player_1);
@@ -470,7 +473,8 @@ mod tests {
             .unwrap();
 
         // Apply capture
-        apply_capture(&mut spatial_state.view_mut(), &mut global_state.view_mut(), 3, 3, east_dir, &config);
+        let (dest_y, dest_x) = config.dest_from_direction(3, 3, east_dir);
+        apply_capture(&mut spatial_state.view_mut(), &mut global_state.view_mut(), 3, 3, dest_y, dest_x, &config);
 
         // Verify the stale marker at (1,1) was cleared
         assert_eq!(
@@ -481,8 +485,8 @@ mod tests {
 
     #[test]
     fn test_apply_capture_marks_landing_on_chain() {
-        /// Verify that apply_capture() marks the landing position in the capture layer
-        /// when a chain capture is available (Step 2 of the fix).
+        // Verify that apply_capture() marks the landing position in the capture layer
+        // when a chain capture is available (Step 2 of the fix).
         let config = create_test_config();
         let (mut spatial_state, mut global_state) = create_empty_state(&config);
 
@@ -505,7 +509,8 @@ mod tests {
             .unwrap();
 
         // Apply first capture
-        apply_capture(&mut spatial_state.view_mut(), &mut global_state.view_mut(), 2, 2, east_dir, &config);
+        let (dest_y, dest_x) = config.dest_from_direction(2, 2, east_dir);
+        apply_capture(&mut spatial_state.view_mut(), &mut global_state.view_mut(), 2, 2, dest_y, dest_x, &config);
 
         // Verify landing position (2,4) is marked in capture layer
         assert_eq!(
@@ -522,8 +527,8 @@ mod tests {
 
     #[test]
     fn test_apply_capture_no_mark_when_no_chain() {
-        /// Verify that apply_capture() does NOT mark the landing position when
-        /// no chain capture is available, and DOES switch players.
+        // Verify that apply_capture() does NOT mark the landing position when
+        // no chain capture is available, and DOES switch players.
         let config = create_test_config();
         let (mut spatial_state, mut global_state) = create_empty_state(&config);
 
@@ -543,7 +548,8 @@ mod tests {
             .unwrap();
 
         // Apply capture
-        apply_capture(&mut spatial_state.view_mut(), &mut global_state.view_mut(), 3, 3, east_dir, &config);
+        let (dest_y, dest_x) = config.dest_from_direction(3, 3, east_dir);
+        apply_capture(&mut spatial_state.view_mut(), &mut global_state.view_mut(), 3, 3, dest_y, dest_x, &config);
 
         // Verify landing position (3,5) is NOT marked in capture layer
         assert_eq!(
@@ -560,8 +566,8 @@ mod tests {
 
     #[test]
     fn test_apply_placement_resets_capture_layer() {
-        /// Verify that apply_placement() clears the capture layer at the start,
-        /// ending any ongoing chain capture sequence.
+        // Verify that apply_placement() clears the capture layer at the start,
+        // ending any ongoing chain capture sequence.
         let config = create_test_config();
         let (mut spatial_state, mut global_state) = create_empty_state(&config);
 
@@ -602,8 +608,8 @@ mod tests {
 
     #[test]
     fn test_chain_capture_enforces_single_marble() {
-        /// Verify that once a chain capture begins, ONLY the marble that landed
-        /// can perform the next capture (no other marbles can capture).
+        // Verify that once a chain capture begins, ONLY the marble that landed
+        // can perform the next capture (no other marbles can capture).
         let config = create_test_config();
         let (mut spatial_state, mut global_state) = create_empty_state(&config);
 
@@ -636,7 +642,8 @@ mod tests {
             .unwrap();
 
         // Step 1: Apply capture from marble A at (2,2)
-        apply_capture(&mut spatial_state.view_mut(), &mut global_state.view_mut(), 2, 2, east_dir, &config);
+        let (dest_y, dest_x) = config.dest_from_direction(2, 2, east_dir);
+        apply_capture(&mut spatial_state.view_mut(), &mut global_state.view_mut(), 2, 2, dest_y, dest_x, &config);
 
         // Now marble A is at (2,4) and a chain capture is available to (2,6)
         // Verify only marble A can capture (marble B at (4,4) should NOT be able to capture)
@@ -748,8 +755,8 @@ mod tests {
 
     #[test]
     fn test_isolation_capture_all_fully_occupied_regions() {
-        /// This test verifies that ALL fully-occupied regions are captured,
-        /// regardless of their location on the board.
+        // This test verifies that ALL fully-occupied regions are captured,
+        // regardless of their location on the board.
 
         let config = create_test_config();
         let (mut spatial_state, mut global_state) = create_empty_state(&config);

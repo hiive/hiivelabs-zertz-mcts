@@ -117,17 +117,21 @@ fn translate_action(
         ZertzAction::Capture {
             start_y,
             start_x,
-            direction,
+            dest_y,
+            dest_x,
         } => {
-            let new_y = (*start_y as i32 + dy) as usize;
-            let new_x = (*start_x as i32 + dx) as usize;
-            assert!(new_y < config.width && new_x < config.width);
-            assert!(layout[new_y][new_x]);
+            let new_start_y = (*start_y as i32 + dy) as usize;
+            let new_start_x = (*start_x as i32 + dx) as usize;
+            let new_dest_y = (*dest_y as i32 + dy) as usize;
+            let new_dest_x = (*dest_x as i32 + dx) as usize;
+            assert!(new_start_y < config.width && new_start_x < config.width);
+            assert!(layout[new_start_y][new_start_x]);
 
             ZertzAction::Capture {
-                start_y: new_y,
-                start_x: new_x,
-                direction: *direction,
+                start_y: new_start_y,
+                start_x: new_start_x,
+                dest_y: new_dest_y,
+                dest_x: new_dest_x,
             }
         }
         ZertzAction::Pass => ZertzAction::Pass,
@@ -192,10 +196,11 @@ fn apply_orientation(
         ZertzAction::Capture {
             start_y,
             start_x,
-            direction,
+            dest_y,
+            dest_x,
         } => {
             // Captures use transform_coordinate (respects mirror_first)
-            let (new_y, new_x) = transform_coordinate(
+            let (new_start_y, new_start_x) = transform_coordinate(
                 *start_y as i32,
                 *start_x as i32,
                 rot60_k,
@@ -206,13 +211,22 @@ fn apply_orientation(
             )
             .expect("capture start outside board under transform");
 
-            let dir_map = dir_index_map(rot60_k, mirror, mirror_first, config);
-            let new_direction = *dir_map.get(direction).expect("direction not in map");
+            let (new_dest_y, new_dest_x) = transform_coordinate(
+                *dest_y as i32,
+                *dest_x as i32,
+                rot60_k,
+                mirror,
+                mirror_first,
+                yx_to_ax,
+                ax_to_yx,
+            )
+            .expect("capture dest outside board under transform");
 
             ZertzAction::Capture {
-                start_y: new_y as usize,
-                start_x: new_x as usize,
-                direction: new_direction,
+                start_y: new_start_y as usize,
+                start_x: new_start_x as usize,
+                dest_y: new_dest_y as usize,
+                dest_x: new_dest_x as usize,
             }
         }
         ZertzAction::Pass => ZertzAction::Pass,

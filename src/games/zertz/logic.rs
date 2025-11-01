@@ -584,7 +584,8 @@ pub fn apply_capture(
     global_state: &mut ArrayViewMut1<f32>,
     start_y: usize,
     start_x: usize,
-    direction: usize,
+    dest_y: usize,
+    dest_x: usize,
     config: &BoardConfig,
 ) {
     // STEP 1: Reset capture layer (matches Python zertz_board.py:524)
@@ -598,7 +599,7 @@ pub fn apply_capture(
         .find(|&layer| spatial_state[[layer, start_y, start_x]] > 0.0)
         .unwrap_or_else(|| {
             eprintln!("ERROR: Invalid capture attempted at ({}, {})", start_y, start_x);
-            eprintln!("  Direction: {}", direction);
+            eprintln!("  Destination: ({}, {})", dest_y, dest_x);
             eprintln!("  Ring present: {}", spatial_state[[config.ring_layer, start_y, start_x]] > 0.0);
             eprintln!("  White marble: {}", spatial_state[[1, start_y, start_x]]);
             eprintln!("  Gray marble: {}", spatial_state[[2, start_y, start_x]]);
@@ -606,8 +607,10 @@ pub fn apply_capture(
             panic!("Game logic violation: attempted capture from empty position at ({}, {})", start_y, start_x)
         });
 
-    // Get direction offset
-    let (dy, dx) = config.directions[direction];
+    // Compute direction from start and dest
+    // dest = start + 2 * direction_offset, so direction_offset = (dest - start) / 2
+    let dy = ((dest_y as i32 - start_y as i32) / 2) as i32;
+    let dx = ((dest_x as i32 - start_x as i32) / 2) as i32;
 
     // Calculate capture and landing positions
     let cap_y = (start_y as i32 + dy) as usize;
@@ -621,7 +624,8 @@ pub fn apply_capture(
         .unwrap_or_else(|| {
             eprintln!("ERROR: No marble found at capture position ({}, {})", cap_y, cap_x);
             eprintln!("  Start position: ({}, {})", start_y, start_x);
-            eprintln!("  Direction: {} (offset: {:?})", direction, config.directions[direction]);
+            eprintln!("  Dest position: ({}, {})", dest_y, dest_x);
+            eprintln!("  Computed offset: ({}, {})", dy, dx);
             eprintln!("  Landing position: ({}, {})", land_y, land_x);
             eprintln!("  Ring at capture pos: {}", spatial_state[[config.ring_layer, cap_y, cap_x]] > 0.0);
             panic!("Game logic violation: attempted to capture from empty position at ({}, {})", cap_y, cap_x)
