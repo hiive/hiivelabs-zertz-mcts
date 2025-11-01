@@ -31,7 +31,7 @@ use std::hash::Hash;
 ///
 /// pub struct MyGame {
 ///     config: MyConfig,
-///     hasher: GenericZobristHasher,
+///     // Include any game-specific state like a hash table
 /// }
 ///
 /// impl MCTSGame for MyGame {
@@ -179,6 +179,7 @@ pub trait MCTSGame: Send + Sync + 'static {
     ///
     /// # Returns
     /// Tuple of (layers, height, width)
+    #[allow(dead_code)]
     fn spatial_shape(&self) -> (usize, usize, usize);
 
     /// Get the size of the global state array.
@@ -187,6 +188,7 @@ pub trait MCTSGame: Send + Sync + 'static {
     ///
     /// # Returns
     /// Number of elements in global state vector
+    #[allow(dead_code)]
     fn global_size(&self) -> usize;
 
     // ========================================================================

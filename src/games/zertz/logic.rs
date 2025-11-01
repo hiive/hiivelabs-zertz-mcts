@@ -20,7 +20,7 @@
 //!   - [6-8]: P2 captured (W/G/B)
 //!   - [9]: Current player (1 or 2)
 
-use crate::board::BoardConfig;
+use super::board::BoardConfig;
 use ndarray::{s, Array1, Array3, ArrayView1, ArrayView3, ArrayViewMut1, ArrayViewMut3};
 use smallvec::SmallVec;
 use std::collections::{HashSet, VecDeque};
@@ -60,7 +60,7 @@ pub const BOTH_LOSE: i8 = -2; // Tournament rule: both lose (collaboration detec
 /// # Returns
 /// Rotated (q, r) coordinates
 // Re-export from canonicalization module (single source of truth)
-pub use crate::canonicalization::{ax_rot60, ax_mirror_q_axis};
+pub use super::canonicalization::{ax_rot60, ax_mirror_q_axis};
 
 // ============================================================================
 

@@ -1,6 +1,7 @@
-//! # Zobrist Hashing Implementation
+//! # Zobrist Hashing for Zertz
 //!
-//! Zobrist hashing provides fast, incremental hash computation for game states.
+//! Zobrist hashing implementation specific to the Zertz game.
+//! Provides fast, incremental hash computation for Zertz game states.
 //!
 //! ## Algorithm
 //!
@@ -41,7 +42,7 @@
 //!      ^ player_1_hash
 //! ```
 
-use crate::board::BoardConfig;
+use crate::games::zertz::BoardConfig;
 use ndarray::{ArrayView1, ArrayView3};
 use rand::SeedableRng;
 use rand_pcg::Pcg64;
@@ -66,7 +67,7 @@ const CAPTURE_LIMIT: usize = 20;
 /// - Avoids issues with signed/unsigned conversions
 /// - Still provides ~9 × 10^18 possible values (extremely low collision rate)
 /// - Matches common practice in Zobrist hashing implementations
-fn rand63(rng: &mut Pcg64) -> u64 {
+pub(crate) fn rand63(rng: &mut Pcg64) -> u64 {
     use rand::RngCore;
     rng.next_u64() & ((1u64 << 63) - 1)
 }
@@ -97,7 +98,7 @@ fn make_matrix(rng: &mut Pcg64, width: usize) -> Vec<Vec<u64>> {
 #[derive(Clone)]
 pub struct ZobristHasher {
     width: usize,
-    ring: Vec<Vec<u64>>,            // [y][x]
+    pub(crate) ring: Vec<Vec<u64>>,            // [y][x]
     marble: [Vec<Vec<u64>>; 3],     // [marble_type][y][x]
     captured: [[[u64; CAPTURE_LIMIT]; 3]; 2], // [player][marble_type][count]
     supply: [[u64; CAPTURE_LIMIT]; 3], // [marble_type][count]
@@ -295,44 +296,3 @@ impl ZobristHasher {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn zobrist_pcg64_matches_python() {
-        // These values come from Python: np.random.Generator(np.random.PCG64(42)).integers(0, 2**63, 5)
-        // We'll verify these after testing
-        let mut rng = Pcg64::seed_from_u64(42);
-
-        // Just verify it produces consistent values
-        let first = rand63(&mut rng);
-
-        // Reset and verify determinism
-        let mut rng2 = Pcg64::seed_from_u64(42);
-        let first2 = rand63(&mut rng2);
-
-        assert_eq!(
-            first, first2,
-            "PCG64 should be deterministic with same seed"
-        );
-    }
-
-    #[test]
-    fn zobrist_hasher_generates_consistent_tables() {
-        // Create two hashers with same seed
-        let hasher1 = ZobristHasher::new(7, Some(42));
-        let hasher2 = ZobristHasher::new(7, Some(42));
-
-        // Check that ring tables match (determinism)
-        assert_eq!(hasher1.ring[0][0], hasher2.ring[0][0]);
-        assert_eq!(hasher1.ring[0][1], hasher2.ring[0][1]);
-
-        // Verify all tables are identical
-        for y in 0..7 {
-            for x in 0..7 {
-                assert_eq!(hasher1.ring[y][x], hasher2.ring[y][x]);
-            }
-        }
-    }
-}

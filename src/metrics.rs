@@ -1,4 +1,6 @@
+#[cfg(feature = "metrics")]
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
+#[cfg(feature = "metrics")]
 use std::time::Instant;
 
 /// Performance metrics for MCTS search

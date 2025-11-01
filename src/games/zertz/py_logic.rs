@@ -3,9 +3,8 @@
 //! This module exposes stateless Zertz game logic functions to Python,
 //! allowing Python code to call Rust game logic directly.
 
-use crate::board::BoardConfig;
-use crate::canonicalization::{self, TransformFlags as RustTransformFlags};
-use crate::games::zertz::logic;
+use super::{board::BoardConfig, canonicalization, logic};
+use canonicalization::TransformFlags as RustTransformFlags;
 use numpy::{PyArray1, PyArray3, PyArrayMethods, PyReadonlyArray1, PyReadonlyArray3};
 use pyo3::prelude::*;
 use std::collections::HashMap;
@@ -89,6 +88,7 @@ pub struct TransformFlags {
 impl TransformFlags {
     /// All transforms enabled (rotation + mirror + translation)
     #[classattr]
+    #[allow(non_snake_case)]
     fn ALL() -> Self {
         TransformFlags { inner: RustTransformFlags::ALL }
     }
@@ -245,11 +245,12 @@ pub fn transform_state<'py>(
     rot60_k: i32,
     mirror: bool,
     mirror_first: bool,
-) -> Py<PyArray3<f32>> {
+) -> PyResult<Py<PyArray3<f32>>> {
     let spatial_state = spatial_state.as_array();
     let transformed =
-        canonicalization::transform_state(&spatial_state, config, rot60_k, mirror, mirror_first);
-    PyArray3::from_array(py, &transformed).into()
+        canonicalization::transform_state(&spatial_state, config, rot60_k, mirror, mirror_first, 0, 0)
+            .ok_or_else(|| PyErr::new::<pyo3::exceptions::PyValueError, _>("Transformation failed"))?;
+    Ok(PyArray3::from_array(py, &transformed).into())
 }
 
 /// Translate a board state by (dy, dx) offset
@@ -274,9 +275,8 @@ pub fn translate_state<'py>(
     dx: i32,
 ) -> Option<Py<PyArray3<f32>>> {
     let spatial_state = spatial_state.as_array();
-    let layout = canonicalization::build_layout_mask(config);
-    canonicalization::translate_state(&spatial_state, config, &layout, dy, dx)
-        .map(|translated| PyArray3::from_array(py, &translated).into())
+    canonicalization::transform_state(&spatial_state, config, 0, false, false, dy, dx)
+        .map(|result| PyArray3::from_array(py, &result).into())
 }
 
 /// Get bounding box of all remaining rings

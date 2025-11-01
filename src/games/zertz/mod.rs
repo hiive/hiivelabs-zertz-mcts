@@ -6,20 +6,39 @@
 //! - Capture mechanics (jump captures and isolation captures)
 //! - Win condition: collect required marbles or eliminate opponent
 //!
-//! This module implements the `MCTSGame` trait for Zertz, organizing game logic into submodules:
+//! This module contains all Zertz-specific code organized into submodules:
+//! - `board`: Board configuration, game modes, win conditions
+//! - `canonicalization`: State canonicalization and symmetry detection
 //! - `logic`: Core game rules (placement, capture, win conditions)
 //! - `action_transform`: Action transformation for testing symmetry operations
+//! - `zobrist`: Zobrist hashing for fast state hashing
+//! - `py_logic`: Python bindings for game logic functions
+//! - `py_mcts`: Python bindings for MCTS wrapper
 
+pub mod board;
+pub mod canonicalization;
 pub mod logic;
 pub mod action_transform;
+pub mod py_logic;
+pub mod py_mcts;
+mod zobrist;
 
-use crate::board::BoardConfig;
-use crate::canonicalization;
+#[cfg(test)]
+mod canonicalization_tests;
+#[cfg(test)]
+mod action_transform_tests;
+#[cfg(test)]
+mod zobrist_tests;
+
+// Re-export key types for convenience
+pub use board::{BoardConfig, BoardState, GameMode, WinConditions};
+pub use py_mcts::PyZertzMCTS;
+
 use crate::game_trait::MCTSGame;
-use crate::zobrist::ZobristHasher;
 use logic::{
     apply_capture, apply_placement, get_game_outcome, get_valid_actions, is_game_over,
 };
+use zobrist::ZobristHasher;
 use ndarray::{Array1, Array3, ArrayView1, ArrayView3, ArrayViewMut1, ArrayViewMut3};
 use std::sync::Arc;
 
@@ -214,7 +233,7 @@ impl MCTSGame for ZertzGame {
         spatial_state: &ArrayView3<f32>,
         global_state: &ArrayView1<f32>,
     ) -> i8 {
-        get_game_outcome(spatial_state, global_state, &self.config) as i8
+        get_game_outcome(spatial_state, global_state, &self.config)
     }
 
     fn get_current_player(&self, global_state: &ArrayView1<f32>) -> usize {

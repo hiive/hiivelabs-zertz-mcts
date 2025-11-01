@@ -3,8 +3,7 @@
 //! This module provides PyO3 bindings for the generic MCTS with ZertzGame.
 //! It wraps `MCTSSearch<ZertzGame>` and provides Python-compatible interfaces.
 
-use crate::board::BoardConfig;
-use crate::games::zertz::{ZertzAction, ZertzGame};
+use super::{ZertzAction, ZertzGame};
 use crate::mcts::MCTSSearch;
 use crate::node::MCTSNode;
 use ndarray::{Array1, Array3};
@@ -52,7 +51,7 @@ impl PyZertzMCTS {
         // Create ZertzGame instance
         let game = Arc::new(
             ZertzGame::new(rings, t, blitz)
-                .map_err(|e| pyo3::exceptions::PyValueError::new_err(e))?,
+                .map_err(pyo3::exceptions::PyValueError::new_err)?,
         );
 
         // Create generic MCTS search

@@ -7,7 +7,7 @@ Currently supports: Zertz
 This file provides type hints for IDE autocomplete and static type checking.
 """
 
-from typing import Callable, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Tuple, Union
 import numpy as np
 import numpy.typing as npt
 
@@ -340,7 +340,7 @@ class ZertzMCTS:
         """
         ...
 
-    def last_child_statistics(self) -> list[tuple[str, tuple[int, int, int] | None, float]]:
+    def last_child_statistics(self) -> List[Tuple[str, Optional[Tuple[int, int, int]], float]]:
         """
         Get per-child statistics from last search as (action_type, action_data, normalized_score) tuples.
 
@@ -405,8 +405,8 @@ def ax_mirror_q_axis(q: int, r: int) -> Tuple[int, int]:
 
 def build_axial_maps(
     config: BoardConfig,
-    layout: list[list[bool]]
-) -> Tuple[dict[Tuple[int, int], Tuple[int, int]], dict[Tuple[int, int], Tuple[int, int]]]:
+    layout: List[List[bool]]
+) -> Tuple[Dict[Tuple[int, int], Tuple[int, int]], Dict[Tuple[int, int], Tuple[int, int]]]:
     """
     Build bidirectional maps between (y,x) and axial (q,r) coordinates.
 
@@ -539,26 +539,30 @@ def inverse_transform_name(transform_name: str) -> str:
 
 def translate_state(
     spatial_state: npt.NDArray[np.float32],
-    config: BoardConfig
-) -> Tuple[npt.NDArray[np.float32], str]:
+    config: BoardConfig,
+    dy: int,
+    dx: int
+) -> Optional[npt.NDArray[np.float32]]:
     """
-    Translate board state to normalize bounding box position.
+    Translate a board state by (dy, dx) offset.
 
-    Finds the bounding box of all remaining rings and translates the state
-    so the bounding box starts at (0, 0).
+    Translates ring and marble data, preserving layout validity.
+    Returns None if translation would move rings off the board.
 
     Args:
         spatial_state: 3D array of shape (L, H, W) containing board layers
         config: BoardConfig specifying board size
+        dy: Translation offset in y direction
+        dx: Translation offset in x direction
 
     Returns:
-        Tuple of (translated_spatial_state, translation_name):
-        - translated_spatial_state: State translated to normalized position
-        - translation_name: Transform string describing the translation (e.g., "T-1,2")
+        Translated spatial_state array, or None if translation is invalid
 
     Example:
-        >>> spatial_state, translation = translate_state(state, config)
-        >>> # translation might be "T-2,-1" meaning we shifted by (-2, -1)
+        >>> translated = translate_state(state, config, 1, 0)
+        >>> if translated is not None:
+        ...     # Successfully translated down by 1
+        ...     pass
     """
     ...
 
@@ -622,7 +626,7 @@ def check_for_isolation_capture(
     spatial_state: npt.NDArray[np.float32],
     global_state: npt.NDArray[np.float32],
     config: BoardConfig
-) -> Tuple[npt.NDArray[np.float32], npt.NDArray[np.float32], list[tuple[int, int, int]]]:
+) -> Tuple[npt.NDArray[np.float32], npt.NDArray[np.float32], List[Tuple[int, int, int]]]:
     """
     Check for isolated regions and capture marbles (stateless).
 
@@ -741,7 +745,7 @@ class BoardConfig:
         """Check if this config is for blitz mode."""
         ...
 
-    def get_directions(self) -> list[tuple[int, int]]:
+    def get_directions(self) -> List[Tuple[int, int]]:
         """Get the 6 hexagonal direction vectors."""
         ...
 
@@ -889,7 +893,7 @@ def is_inbounds(y: int, x: int, width: int) -> bool:
     ...
 
 
-def get_neighbors(y: int, x: int, config: BoardConfig) -> list[tuple[int, int]]:
+def get_neighbors(y: int, x: int, config: BoardConfig) -> List[Tuple[int, int]]:
     """
     Get list of neighboring indices (filtered to in-bounds only).
 
@@ -920,7 +924,7 @@ def get_jump_destination(start_y: int, start_x: int, cap_y: int, cap_x: int) -> 
     ...
 
 
-def get_regions(spatial_state: npt.NDArray[np.float32], config: BoardConfig) -> list[list[tuple[int, int]]]:
+def get_regions(spatial_state: npt.NDArray[np.float32], config: BoardConfig) -> List[List[Tuple[int, int]]]:
     """
     Find all connected regions on the board.
 
@@ -934,7 +938,7 @@ def get_regions(spatial_state: npt.NDArray[np.float32], config: BoardConfig) -> 
     ...
 
 
-def get_open_rings(spatial_state: npt.NDArray[np.float32], config: BoardConfig) -> list[tuple[int, int]]:
+def get_open_rings(spatial_state: npt.NDArray[np.float32], config: BoardConfig) -> List[Tuple[int, int]]:
     """
     Get list of empty ring indices across the entire board.
 
@@ -968,7 +972,7 @@ def is_ring_removable(spatial_state: npt.NDArray[np.float32], y: int, x: int, co
     ...
 
 
-def get_removable_rings(spatial_state: npt.NDArray[np.float32], config: BoardConfig) -> list[tuple[int, int]]:
+def get_removable_rings(spatial_state: npt.NDArray[np.float32], config: BoardConfig) -> List[Tuple[int, int]]:
     """
     Get list of removable ring indices.
 
@@ -1093,7 +1097,7 @@ def apply_placement_action(
     remove_y: Optional[int],
     remove_x: Optional[int],
     config: BoardConfig
-) -> list[tuple[int, int, int]]:
+) -> List[Tuple[int, int, int]]:
     """
     Apply placement action to state IN-PLACE.
 

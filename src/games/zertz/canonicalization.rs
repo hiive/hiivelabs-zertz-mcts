@@ -51,7 +51,7 @@
 use std::collections::HashMap;
 use std::ops::Range;
 
-use crate::board::BoardConfig;
+use super::board::BoardConfig;
 // NOTE: Action import removed - Action enum no longer exists in node.rs
 use ndarray::{s, Array3, ArrayView3};
 
@@ -258,55 +258,7 @@ fn get_translations(spatial_state: &ArrayView3<f32>, config: &BoardConfig) -> Ve
     }
 }
 
-pub fn translate_state(
-    spatial_state: &ArrayView3<f32>,
-    config: &BoardConfig,
-    layout: &[Vec<bool>],
-    dy: i32,
-    dx: i32,
-) -> Option<Array3<f32>> {
-    if dy == 0 && dx == 0 {
-        return Some(spatial_state.to_owned());
-    }
-
-    let width = config.width as i32;
-    let mut out = Array3::zeros(spatial_state.raw_dim());
-    let board_range = board_layers_range(config);
-    let board_start = board_range.start;
-    let board_end = board_range.end.min(spatial_state.shape()[0]);
-
-    if board_end < spatial_state.shape()[0] {
-        let src = spatial_state.slice(s![board_end.., .., ..]);
-        let mut dst = out.slice_mut(s![board_end.., .., ..]);
-        dst.assign(&src);
-    }
-
-    for y in 0..config.width {
-        for x in 0..config.width {
-            if !layout[y][x] {
-                continue;
-            }
-            if spatial_state[[config.ring_layer, y, x]] <= 0.5 {
-                continue;
-            }
-
-            let ny = y as i32 + dy;
-            let nx = x as i32 + dx;
-            if ny < 0 || nx < 0 || ny >= width || nx >= width {
-                return None;
-            }
-            if !layout[ny as usize][nx as usize] {
-                return None;
-            }
-
-            for layer in board_start..board_end {
-                out[[layer, ny as usize, nx as usize]] = spatial_state[[layer, y, x]];
-            }
-        }
-    }
-
-    Some(out)
-}
+// translate_state has been removed - use transform_state with dy, dx parameters instead
 
 fn transform_state_cached(
     spatial_state: &ArrayView3<f32>,
@@ -314,28 +266,72 @@ fn transform_state_cached(
     rot60_k: i32,
     mirror: bool,
     mirror_first: bool,
+    dy: i32,
+    dx: i32,
     yx_to_ax: &HashMap<(i32, i32), (i32, i32)>,
     ax_to_yx: &HashMap<(i32, i32), (i32, i32)>,
-) -> Array3<f32> {
+) -> Option<Array3<f32>> {
     let mut out = Array3::zeros(spatial_state.raw_dim());
+    let width = config.width as i32;
+    let board_range = board_layers_range(config);
+    let board_start = board_range.start;
+    let board_end = board_range.end.min(spatial_state.shape()[0]);
+
+    // Copy non-board layers (if any exist beyond board_end)
+    if board_end < spatial_state.shape()[0] {
+        let src = spatial_state.slice(s![board_end.., .., ..]);
+        let mut dst = out.slice_mut(s![board_end.., .., ..]);
+        dst.assign(&src);
+    }
 
     for y in 0..config.width as i32 {
         for x in 0..config.width as i32 {
             if !yx_to_ax.contains_key(&(y, x)) {
                 continue;
             }
-            if let Some((dest_y, dest_x)) =
-                transform_coordinate(y, x, rot60_k, mirror, mirror_first, yx_to_ax, ax_to_yx)
-            {
-                for layer in 0..spatial_state.shape()[0] {
-                    out[[layer, dest_y as usize, dest_x as usize]] =
-                        spatial_state[[layer, y as usize, x as usize]];
+
+            // For translations, only process positions that have rings
+            // For rotations/mirrors without translation, process all layout positions
+            if dy != 0 || dx != 0 {
+                // Translation mode: check if ring exists at source position
+                if spatial_state[[config.ring_layer, y as usize, x as usize]] <= 0.5 {
+                    continue;
                 }
+            }
+
+            // First apply rotation/mirror transformation
+            let (mut dest_y, mut dest_x) = if rot60_k != 0 || mirror {
+                match transform_coordinate(y, x, rot60_k, mirror, mirror_first, yx_to_ax, ax_to_yx) {
+                    Some((ty, tx)) => (ty, tx),
+                    None => continue,
+                }
+            } else {
+                (y, x)
+            };
+
+            // Then apply translation
+            dest_y += dy;
+            dest_x += dx;
+
+            // Check bounds after translation
+            if dest_y < 0 || dest_x < 0 || dest_y >= width || dest_x >= width {
+                return None;
+            }
+
+            // Check if destination is valid on layout
+            if !yx_to_ax.contains_key(&(dest_y, dest_x)) {
+                return None;
+            }
+
+            // Copy all board layers
+            for layer in board_start..board_end {
+                out[[layer, dest_y as usize, dest_x as usize]] =
+                    spatial_state[[layer, y as usize, x as usize]];
             }
         }
     }
 
-    out
+    Some(out)
 }
 
 pub fn canonicalize_internal(
@@ -389,9 +385,17 @@ pub fn canonicalize_internal(
     };
 
     for (trans_name, dy, dx) in translations.iter() {
-        let translated_state = if *dy == 0 && *dx == 0 {
-            spatial_state.to_owned()
-        } else if let Some(state) = translate_state(spatial_state, config, &layout, *dy, *dx) {
+        let translated_state = if let Some(state) = transform_state_cached(
+            spatial_state,
+            config,
+            0,  // rot60_k - no rotation for pure translation
+            false,  // mirror
+            false,  // mirror_first
+            *dy,
+            *dx,
+            &yx_to_ax,
+            &ax_to_yx,
+        ) {
             state
         } else {
             continue;
@@ -404,9 +408,11 @@ pub fn canonicalize_internal(
                 *rot60_k,
                 *mirror,
                 *mirror_first,
+                0,  // dy - no additional translation
+                0,  // dx
                 &yx_to_ax,
                 &ax_to_yx,
-            );
+            ).expect("Rotation/mirror transform should always succeed");
             let transformed_view = transformed.view();
             let key = canonical_key(&transformed_view, &layout, board_layers.clone());
             if key < best_key {
@@ -493,7 +499,7 @@ pub fn compute_canonical_key(spatial_state: &ArrayView3<f32>, config: &BoardConf
 }
 
 #[allow(dead_code)]
-fn generate_standard_layout_mask(rings: usize, width: usize) -> Vec<Vec<bool>> {
+pub fn generate_standard_layout_mask(rings: usize, width: usize) -> Vec<Vec<bool>> {
     let letters = match rings {
         37 => "ABCDEFG",
         48 => "ABCDEFGH",
@@ -756,12 +762,6 @@ pub fn parse_rot_component(component: &str) -> (i32, bool, bool) {
 // NOTE: Action transformation has been moved to game-specific modules.
 // For Zertz action transformation, see src/games/zertz/action_transform.rs
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    // NOTE: Old action transformation tests have been moved to src/games/zertz/action_transform.rs
-}
 #[allow(dead_code)]
 pub fn transform_state(
     spatial_state: &ArrayView3<f32>,
@@ -769,7 +769,9 @@ pub fn transform_state(
     rot60_k: i32,
     mirror: bool,
     mirror_first: bool,
-) -> Array3<f32> {
+    dy: i32,
+    dx: i32,
+) -> Option<Array3<f32>> {
     let layout = generate_standard_layout_mask(config.rings, config.width);
     let (yx_to_ax, ax_to_yx) = build_axial_maps(config, &layout);
     transform_state_cached(
@@ -778,6 +780,8 @@ pub fn transform_state(
         rot60_k,
         mirror,
         mirror_first,
+        dy,
+        dx,
         &yx_to_ax,
         &ax_to_yx,
     )
