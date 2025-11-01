@@ -546,6 +546,10 @@ def translate_state(
     """
     Translate a board state by (dy, dx) offset.
 
+    .. deprecated::
+        Use :func:`transform_state` with ``rot60_k=0, mirror=False, mirror_first=False``
+        and the desired ``dy, dx`` values instead. This function will be removed in a future version.
+
     Translates ring and marble data, preserving layout validity.
     Returns None if translation would move rings off the board.
 
@@ -559,7 +563,8 @@ def translate_state(
         Translated spatial_state array, or None if translation is invalid
 
     Example:
-        >>> translated = translate_state(state, config, 1, 0)
+        >>> # Deprecated - use transform_state instead
+        >>> translated = transform_state(state, config, 0, False, False, 1, 0)
         >>> if translated is not None:
         ...     # Successfully translated down by 1
         ...     pass

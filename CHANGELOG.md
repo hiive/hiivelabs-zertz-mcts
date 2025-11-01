@@ -2,8 +2,57 @@
 
 All notable changes to this project will be documented in this file.
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+[//]: # (The format is based on [Keep a Changelog]&#40;https://keepachangelog.com/en/1.0.0/&#41;,)
+
+[//]: # (and this project adheres to [Semantic Versioning]&#40;https://semver.org/spec/v2.0.0.html&#41;.)
+
+## [Unreleased]
+
+### Deprecated
+
+- **`translate_state` Python function** - Use `transform_state` with `rot60_k=0, mirror=False, mirror_first=False` instead
+  - The function now emits a `DeprecationWarning` when called
+  - Will be removed in a future major version
+  - Maintained for backward compatibility
+
+### Changed
+
+- **Module organization refactored** for clarity and consistency
+  - Moved Zertz implementation into `src/games/zertz/` subfolder with proper submodules:
+    - `mod.rs` - Main game implementation
+    - `board.rs` - Board configuration and game modes
+    - `logic.rs` - Core game rules and move generation
+    - `canonicalization.rs` - State canonicalization and symmetry detection
+    - `action_transform.rs` - Action transformation for testing
+    - `zobrist.rs` - Zobrist hashing (Zertz-specific, moved from generic)
+    - `py_logic.rs` - Python bindings for stateless functions
+    - `py_mcts.rs` - Python MCTS wrapper
+  - Moved Tic-Tac-Toe into `src/games/tictactoe/` subfolder for consistency
+  - All test modules extracted to separate files (`*_tests.rs`) co-located with source code
+  - ZobristHasher moved from generic infrastructure to Zertz-specific module (each game implements hashing via `MCTSGame::hash_state`)
+
+- **Canonicalization improvements**
+  - Unified `transform_state` to handle both rotation/mirror AND translation
+  - Removed separate `translate_state` function (now uses `transform_state` with `dy, dx` parameters)
+  - Python wrapper `translate_state` maintained for backward compatibility (calls unified implementation)
+  - More efficient implementation with fewer code paths
+
+- **Type stubs updated**
+  - `hiivelabs_mcts.pyi` now accurately reflects all API changes
+  - Fixed `translate_state` signature to match actual implementation
+  - Updated all type annotations for Python 3.7+ compatibility (`list` → `List`, `dict` → `Dict`, etc.)
+
+### Fixed
+
+- Corrected Python type stubs for `translate_state` function (parameters and return type)
+- Fixed module documentation to reflect current architecture
+
+### Technical Details
+
+- All 101 tests passing (up from 92)
+- No breaking changes to Python API
+- Improved code organization and maintainability
+- Clear separation between generic MCTS infrastructure and game-specific logic
 
 ## [0.6.0] - 2025-01-31
 

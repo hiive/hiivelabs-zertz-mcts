@@ -57,24 +57,32 @@ This design enables:
 
 **Core MCTS Engine:**
 - `src/game_trait.rs` — `MCTSGame` trait definition and documentation
-- `src/mcts.rs` — Generic selection/expansion/simulation/backpropagation logic, parameterized by `MCTSGame`
+- `src/mcts.rs` — Generic selection/expansion/simulation/backpropagation logic
 - `src/node.rs` — Generic concurrent node representation with atomic visit/value tracking
-- `src/transposition.rs` — Generic lock-free cache keyed by game-provided hashes
+- `src/transposition.rs` — Generic lock-free transposition table
+- `src/metrics.rs` — Performance metrics (optional feature)
 
 **Game Implementations:**
 - `src/games/mod.rs` — Game implementations module
-- `src/games/zertz.rs` — `ZertzGame` implementation of `MCTSGame` trait
-- `src/games/zertz_py.rs` — `PyZertzMCTS` Python wrapper for ZertzGame
-
-**Zertz-Specific Logic:**
-- `src/game.rs` — Zertz rule engine (state transitions, move generation, win checks)
-- `src/canonicalization.rs` — Symmetry transforms for the 37/48/61 ring boards
-- `src/zobrist.rs` — Zobrist hashing for Zertz states
-- `src/board.rs` — Board configuration for Zertz
+- `src/games/zertz/` — Complete Zertz implementation
+  - `mod.rs` — `ZertzGame` implementation of `MCTSGame` trait
+  - `board.rs` — Board configuration, game modes, win conditions
+  - `logic.rs` — Core game rules (placement, capture, termination)
+  - `canonicalization.rs` — Symmetry transforms for hexagonal boards
+  - `action_transform.rs` — Action transformation for symmetry operations
+  - `zobrist.rs` — Zobrist hashing for fast state hashing
+  - `py_logic.rs` — Python bindings for stateless game functions
+  - `py_mcts.rs` — `ZertzMCTS` Python wrapper
+- `src/games/tictactoe/` — Tic-Tac-Toe implementation
+  - `mod.rs` — `TicTacToeGame` implementation (minimal example)
+- `src/games/tictactoe_py.rs` — `TicTacToeMCTS` Python wrapper
 
 **Python Interface:**
 - `src/lib.rs` — PyO3 module registration (exports `hiivelabs_mcts` Python module)
-- `src/game_py.rs` — Python bindings for Zertz stateless functions
+- `hiivelabs_mcts.pyi` — Type stubs for IDE autocomplete and type checking
+
+**Tests:**
+All test modules are in separate files co-located with the code they test (e.g., `canonicalization_tests.rs`, `logic_tests.rs`)
 
 ## Installation
 - Rust toolchain (1.74+ recommended) and Python 3.8+ (ABI3 wheel target).
@@ -89,17 +97,19 @@ The compiled module is published as `hiivelabs_mcts` and can be imported from Py
 
 ## Adding a New Game
 
-To add support for a new game, implement the `MCTSGame` trait. The repository includes a complete Tic-Tac-Toe example (`src/games/tictactoe.rs`) demonstrating the minimal implementation:
+To add support for a new game, implement the `MCTSGame` trait. The repository includes a complete Tic-Tac-Toe example (`src/games/tictactoe/`) demonstrating the minimal implementation:
 
 **Key steps:**
-1. **Create game module** in `src/games/yourgame.rs`
+1. **Create game module** in `src/games/yourgame/` (for complex games) or `src/games/yourgame.rs` (for simple ones)
 2. **Define action type** (e.g., `struct YourGameAction`)
 3. **Implement `MCTSGame` trait** with all required methods
 4. **Create Python wrapper** in `src/games/yourgame_py.rs`
 5. **Register in `lib.rs`** and `src/games/mod.rs`
-6. **Write tests** in your game module
+6. **Write tests** in separate test files (e.g., `yourgame_tests.rs`)
 
-**Example:** See `src/games/tictactoe.rs` for a minimal (~300 line) working example, or `src/games/zertz.rs` for a complete implementation with advanced features.
+**Examples:**
+- **Simple game:** `src/games/tictactoe/` - minimal (~300 line) single-file implementation
+- **Complex game:** `src/games/zertz/` - full-featured multi-module implementation with canonicalization, Zobrist hashing, and extensive testing
 
 The trait requires implementing:
 - `get_valid_actions()` - Return legal moves
@@ -112,12 +122,28 @@ The trait requires implementing:
 - `hash_state()` - Hash state for transposition table lookup
 - Optional: `enable_deterministic_collapse()` and `get_forced_action()` for forced move sequences
 
-## State Encoding
-- Spatial tensor shape: `(t * 4 + 1, width, width)`  
+## Deprecations
+
+### Python API
+
+- **`translate_state()`** - *Deprecated* - Use `transform_state(spatial_state, config, 0, False, False, dy, dx)` instead
+  - This function now emits a `DeprecationWarning` when called
+  - Will be removed in a future major version
+  - Maintained for backward compatibility only
+
+## Zertz State Encoding
+- Spatial tensor shape: `(t * 4 + 1, width, width)`
   Layer 0 stores ring presence, layers 1–3 track colour occupancy across timesteps, the final layer carries capture overlays when history is provided.
 - Global vector length: `10 * t` (for `t = 1`, indices 0–2 = supply counts, 3–5 = player 1 captures, 6–8 = player 2 captures, 9 = active player flag).
 - Actions use flattened coordinates: `dst = y * width + x`; a `remove` equal to `width * width` indicates no ring removal.
 - Helper routines in `game.rs` mirror the Python loaders to keep replay, parity, and symmetry tooling in sync.
+
+## Tic-Tac-Toe State Encoding
+- Spatial tensor shape: `(2, 3, 3)`
+  Layer 0 stores X positions, Layer 1 stores O positions.
+- Global vector length: `1` (index 0 = current player: 0 for X, 1 for O).
+- Actions are simple `(row, col)` tuples (0-indexed).
+- Minimal encoding demonstrates the basic requirements for implementing `MCTSGame`.
 
 ## Development
 - `cargo test` covers rule regression tests and fast MCTS smoke checks.

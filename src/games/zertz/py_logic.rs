@@ -255,6 +255,10 @@ pub fn transform_state<'py>(
 
 /// Translate a board state by (dy, dx) offset
 ///
+/// .. deprecated::
+///     Use :func:`transform_state` with ``rot60_k=0, mirror=False, mirror_first=False``
+///     and the desired ``dy, dx`` values instead. This function will be removed in a future version.
+///
 /// Translates ring and marble data, preserving layout validity.
 /// Returns None if translation would move rings off the board.
 ///
@@ -273,10 +277,21 @@ pub fn translate_state<'py>(
     config: &BoardConfig,
     dy: i32,
     dx: i32,
-) -> Option<Py<PyArray3<f32>>> {
+) -> PyResult<Option<Py<PyArray3<f32>>>> {
+    // Emit deprecation warning
+    let warnings = py.import("warnings")?;
+    warnings.call_method1(
+        "warn",
+        (
+            "translate_state is deprecated. Use transform_state(spatial_state, config, 0, False, False, dy, dx) instead.",
+            py.get_type::<pyo3::exceptions::PyDeprecationWarning>(),
+            2, // stacklevel
+        ),
+    )?;
+
     let spatial_state = spatial_state.as_array();
-    canonicalization::transform_state(&spatial_state, config, 0, false, false, dy, dx)
-        .map(|result| PyArray3::from_array(py, &result).into())
+    Ok(canonicalization::transform_state(&spatial_state, config, 0, false, false, dy, dx)
+        .map(|result| PyArray3::from_array(py, &result).into()))
 }
 
 /// Get bounding box of all remaining rings
