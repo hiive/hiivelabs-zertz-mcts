@@ -20,6 +20,6 @@ pub mod tictactoe;
 pub mod tictactoe_py; // Python bindings for TicTacToe
 
 // Re-export game types for convenience
-pub use zertz::{ZertzGame, PyZertzMCTS, BoardConfig, BoardState};
+pub use zertz::{ZertzGame, PyZertzMCTS, PyZertzAction, BoardConfig, BoardState};
 pub use tictactoe::TicTacToeGame;
 pub use tictactoe_py::PyTicTacToeMCTS;

@@ -140,11 +140,15 @@ impl PyZertzMCTS {
                     start_x,
                     dest_y,
                     dest_x,
-                } => (
+                } => {
+                    let src_flat = start_y * width + start_x;
+                    let dst_flat = dest_y * width + dest_x;
+                    (
                     "CAP".to_string(),
-                    Some((*start_y, *start_x, *dest_y)),  // Note: only 3 values fit in tuple
+                    Some((0, src_flat, dst_flat)),  // Note: only 3 values fit in tuple
                     *score,
-                ),
+                    )
+                }
                 ZertzAction::Pass => ("PASS".to_string(), None, *score),
             })
             .collect()
@@ -181,7 +185,7 @@ impl PyZertzMCTS {
         seed: Option<u64>,
         progress_callback: Option<Py<PyAny>>,
         progress_interval_ms: u64,
-    ) -> PyResult<(String, Option<(usize, usize, usize)>)> {
+    ) -> PyResult<(String, Option<(Option<usize>, (usize, usize), (usize, usize))>)> {
         // Set seed if provided
         if let Some(s) = seed {
             self.search.set_seed(Some(s));
@@ -312,7 +316,7 @@ impl PyZertzMCTS {
         seed: Option<u64>,
         progress_callback: Option<Py<PyAny>>,
         progress_interval_ms: u64,
-    ) -> PyResult<(String, Option<(usize, usize, usize)>)> {
+    ) -> PyResult<(String, Option<(Option<usize>, (usize, usize), (usize, usize))>)> {
         // Set seed if provided
         if let Some(s) = seed {
             self.search.set_seed(Some(s));
@@ -433,7 +437,7 @@ impl PyZertzMCTS {
     fn select_best_action(
         &self,
         root: &MCTSNode<ZertzGame>,
-    ) -> PyResult<(String, Option<(usize, usize, usize)>)> {
+    ) -> PyResult<(String, Option<(Option<usize>, (usize, usize), (usize, usize))>)> {
         let children = root.children.read().unwrap();
 
         if children.is_empty() {
@@ -445,30 +449,8 @@ impl PyZertzMCTS {
 
         if let Some((action, _)) = best {
             let width = self.game.config().width;
-            match action {
-                ZertzAction::Placement {
-                    marble_type,
-                    dst_y,
-                    dst_x,
-                    remove_y,
-                    remove_x,
-                } => {
-                    let dst_flat = dst_y * width + dst_x;
-                    let remove_flat = match (remove_y, remove_x) {
-                        (Some(ry), Some(rx)) => ry * width + rx,
-                        _ => width * width,
-                    };
-                    Ok(("PUT".to_string(), Some((*marble_type, dst_flat, remove_flat))))
-                }
-                ZertzAction::Capture {
-                    start_y,
-                    start_x,
-                    dest_y,
-                    dest_x,
-                } => Ok(("CAP".to_string(), Some((*start_y, *start_x, *dest_y)))),  // TODO: Need dest_x too!
-                ZertzAction::Pass => Ok(("PASS".to_string(), None)),
-            }
-        } else {
+            action.to_tuple(width)
+    } else {
             Ok(("PASS".to_string(), None))
         }
     }

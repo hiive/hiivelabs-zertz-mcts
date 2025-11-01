@@ -45,6 +45,7 @@ use logic::{
 use zobrist::ZobristHasher;
 use ndarray::{Array1, Array3, ArrayView1, ArrayView3, ArrayViewMut1, ArrayViewMut3};
 use std::sync::Arc;
+use pyo3::{pyclass, pymethods, PyResult};
 
 /// Zertz-specific action representation
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -66,6 +67,181 @@ pub enum ZertzAction {
     },
     /// Pass (no legal moves)
     Pass,
+}
+
+impl ZertzAction {
+    /// Convert action to tuple format for serialization
+    ///
+    /// # Arguments
+    /// * `width` - Board width for coordinate flattening
+    ///
+    /// # Returns
+    /// Result containing tuple of (action_type, optional (param1, param2, param3))
+    /// - For Placement: ("PUT", Some((marble_type, dst_flat, remove_flat)))
+    /// - For Capture: ("CAP", Some((0, src_flat, dst_flat)))
+    /// - For Pass: ("PASS", None)
+    pub fn to_tuple(&self, width: usize) -> PyResult<(String, Option<(Option<usize>, (usize, usize), (usize, usize))>)> {
+        match self {
+            ZertzAction::Placement {
+                marble_type,
+                dst_y,
+                dst_x,
+                remove_y,
+                remove_x,
+            } => {
+                let (rem_y, rem_x) = match (remove_y, remove_x) {
+                    (Some(ry), Some(rx)) => (*ry, *rx),
+                    _ => (width, width)
+                };
+                Ok(("PUT".to_string(), Some((Some(*marble_type), (*dst_y, *dst_x), (rem_y, rem_x)))))
+            }
+            ZertzAction::Capture {
+                start_y,
+                start_x,
+                dest_y,
+                dest_x,
+            } => {
+                Ok(("CAP".to_string(), Some((None, (*start_y, *start_x), (*dest_y, *dest_x)))))
+            }
+            ZertzAction::Pass => Ok(("PASS".to_string(), None)),
+        }
+    }
+}
+
+/// Python wrapper for ZertzAction
+///
+/// Provides Python-friendly interface for creating and manipulating Zertz actions.
+#[pyclass(name = "ZertzAction")]
+#[derive(Clone)]
+pub struct PyZertzAction {
+    pub(crate) inner: ZertzAction,
+}
+
+#[pymethods]
+impl PyZertzAction {
+    /// Create a Placement action
+    ///
+    /// Args:
+    ///     marble_type: Marble type (0=white, 1=gray, 2=black)
+    ///     dst_y: Destination row
+    ///     dst_x: Destination column
+    ///     remove_y: Optional row of ring to remove
+    ///     remove_x: Optional column of ring to remove
+    #[staticmethod]
+    #[pyo3(signature = (marble_type, dst_y, dst_x, remove_y=None, remove_x=None))]
+    pub fn placement(
+        marble_type: usize,
+        dst_y: usize,
+        dst_x: usize,
+        remove_y: Option<usize>,
+        remove_x: Option<usize>,
+    ) -> Self {
+        PyZertzAction {
+            inner: ZertzAction::Placement {
+                marble_type,
+                dst_y,
+                dst_x,
+                remove_y,
+                remove_x,
+            },
+        }
+    }
+
+    /// Create a Capture action
+    ///
+    /// Args:
+    ///     start_y: Starting row
+    ///     start_x: Starting column
+    ///     dest_y: Destination row
+    ///     dest_x: Destination column
+    #[staticmethod]
+    pub fn capture(start_y: usize, start_x: usize, dest_y: usize, dest_x: usize) -> Self {
+        PyZertzAction {
+            inner: ZertzAction::Capture {
+                start_y,
+                start_x,
+                dest_y,
+                dest_x,
+            },
+        }
+    }
+
+    /// Create a Pass action
+    #[staticmethod]
+    pub fn pass() -> Self {
+        PyZertzAction {
+            inner: ZertzAction::Pass,
+        }
+    }
+
+    /// Convert action to tuple format
+    ///
+    /// Args:
+    ///     width: Board width for coordinate handling
+    ///
+    /// Returns:
+    ///     Tuple of (action_type, optional action_data)
+    pub fn to_tuple(&self, width: usize) -> PyResult<(String, Option<(Option<usize>, (usize, usize), (usize, usize))>)> {
+        self.inner.to_tuple(width)
+    }
+
+    /// Get action type as string
+    pub fn action_type(&self) -> String {
+        match &self.inner {
+            ZertzAction::Placement { .. } => "Placement".to_string(),
+            ZertzAction::Capture { .. } => "Capture".to_string(),
+            ZertzAction::Pass => "Pass".to_string(),
+        }
+    }
+
+    fn __repr__(&self) -> String {
+        match &self.inner {
+            ZertzAction::Placement {
+                marble_type,
+                dst_y,
+                dst_x,
+                remove_y,
+                remove_x,
+            } => {
+                let marble_name = match marble_type {
+                    0 => "white",
+                    1 => "gray",
+                    2 => "black",
+                    _ => "unknown",
+                };
+                if let (Some(ry), Some(rx)) = (remove_y, remove_x) {
+                    format!(
+                        "ZertzAction.Placement({}, ({}, {}), remove=({}, {}))",
+                        marble_name, dst_y, dst_x, ry, rx
+                    )
+                } else {
+                    format!("ZertzAction.Placement({}, ({}, {}))", marble_name, dst_y, dst_x)
+                }
+            }
+            ZertzAction::Capture {
+                start_y,
+                start_x,
+                dest_y,
+                dest_x,
+            } => format!(
+                "ZertzAction.Capture(({}, {}) -> ({}, {}))",
+                start_y, start_x, dest_y, dest_x
+            ),
+            ZertzAction::Pass => "ZertzAction.Pass".to_string(),
+        }
+    }
+
+    fn __eq__(&self, other: &PyZertzAction) -> bool {
+        self.inner == other.inner
+    }
+
+    fn __hash__(&self) -> u64 {
+        use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
+        let mut hasher = DefaultHasher::new();
+        self.inner.hash(&mut hasher);
+        hasher.finish()
+    }
 }
 
 /// Zertz game implementation for MCTS

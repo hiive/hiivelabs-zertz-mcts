@@ -10,7 +10,7 @@ mod tests {
     use std::sync::Arc;
     use std::sync::atomic::Ordering;
     use std::time::Instant;
-
+    use rand::Rng;
     // Note: Most MCTS testing is done via Python integration tests
     // due to the PyO3 boundary (PyReadonlyArray types can only be created from Python)
 
@@ -157,7 +157,7 @@ mod tests {
 
         // Use the RNG (this will cache it with current generation)
         use rand::Rng;
-        let val1 = mcts_mut.borrow().with_rng(|rng| rng.gen_range(0..100));
+        let val1 = mcts_mut.borrow().with_rng(|rng| rng.random_range(0..100));
 
         // Change seed (should increment generation)
         mcts_mut.borrow_mut().set_seed(Some(67890));
@@ -169,7 +169,7 @@ mod tests {
         // Using RNG again should work with new seed
         // (we can't easily verify it uses the new seed in a unit test without
         // full parallel infrastructure, but we can verify it doesn't panic)
-        let val2 = mcts_mut.borrow().with_rng(|rng| rng.gen_range(0..100));
+        let val2 = mcts_mut.borrow().with_rng(|rng| rng.random_range(0..100));
 
         // Both values should be valid (in range)
         assert!(val1 < 100);

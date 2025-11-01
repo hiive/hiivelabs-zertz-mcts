@@ -9,7 +9,7 @@
 
 use super::board::BoardConfig;
 use super::canonicalization::{
-    build_axial_maps, build_layout_mask, dir_index_map, parse_rot_component, parse_transform,
+    build_axial_maps, build_layout_mask, parse_rot_component, parse_transform,
     transform_coordinate,
 };
 use super::ZertzAction;
