@@ -11,14 +11,14 @@
 //!
 //! ## Available Games
 //!
-//! - **Zertz**: GIPF project game with capture mechanics
+//! - **Zertz**: GIPF project game with capture mechanics (see `zertz/` module)
 //! - **TicTacToe**: Classic 3x3 game (minimal example)
 
 // Game implementations
-pub mod zertz;
-pub mod zertz_py; // Python bindings
+pub mod zertz;      // Zertz game (contains logic, action_transform submodules)
+pub mod zertz_py;   // Python bindings for Zertz
 pub mod tictactoe;
-pub mod tictactoe_py; // Python bindings
+pub mod tictactoe_py; // Python bindings for TicTacToe
 
 // Re-export game types for convenience
 pub use zertz::ZertzGame;

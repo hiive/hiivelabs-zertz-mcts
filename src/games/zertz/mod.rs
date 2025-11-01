@@ -6,16 +6,20 @@
 //! - Capture mechanics (jump captures and isolation captures)
 //! - Win condition: collect required marbles or eliminate opponent
 //!
-//! This module implements the `MCTSGame` trait for Zertz, delegating to
-//! existing game logic in `game.rs` and `board.rs`.
+//! This module implements the `MCTSGame` trait for Zertz, organizing game logic into submodules:
+//! - `logic`: Core game rules (placement, capture, win conditions)
+//! - `action_transform`: Action transformation for testing symmetry operations
+
+pub mod logic;
+pub mod action_transform;
 
 use crate::board::BoardConfig;
 use crate::canonicalization;
-use crate::game::{
-    apply_capture, apply_placement, get_game_outcome, get_valid_actions, is_game_over,
-};
 use crate::game_trait::MCTSGame;
 use crate::zobrist::ZobristHasher;
+use logic::{
+    apply_capture, apply_placement, get_game_outcome, get_valid_actions, is_game_over,
+};
 use ndarray::{Array1, Array3, ArrayView1, ArrayView3, ArrayViewMut1, ArrayViewMut3};
 use std::sync::Arc;
 

@@ -1,7 +1,7 @@
-//! Tests for game.rs module
+//! Tests for Zertz game logic
 //!
-//! This file contains unit tests for the game logic functions.
-//! It is compiled only when running tests via #[cfg(test)] in game.rs.
+//! This file contains unit tests for the Zertz game logic functions.
+//! It is compiled only when running tests via #[cfg(test)] in logic.rs.
 
 use super::*;
 use ndarray::{s, Array1, Array3};

@@ -628,7 +628,7 @@ pub fn build_axial_maps(
 ///
 /// Applied k times for rotation by k × 60°.
 #[allow(dead_code)]
-fn ax_rot60(mut q: i32, mut r: i32, k: i32) -> (i32, i32) {
+pub fn ax_rot60(mut q: i32, mut r: i32, k: i32) -> (i32, i32) {
     let mut k = k.rem_euclid(6); // Normalize to 0-5
     while k > 0 {
         // Single 60° rotation
@@ -647,12 +647,12 @@ fn ax_rot60(mut q: i32, mut r: i32, k: i32) -> (i32, i32) {
 ///
 /// This is one of the 6 reflection symmetries in the D6 group.
 #[allow(dead_code)]
-fn ax_mirror_q_axis(q: i32, r: i32) -> (i32, i32) {
+pub fn ax_mirror_q_axis(q: i32, r: i32) -> (i32, i32) {
     (q, -q - r)
 }
 
 #[allow(dead_code)]
-fn transform_coordinate(
+pub fn transform_coordinate(
     y: i32,
     x: i32,
     rot60_k: i32,
@@ -685,28 +685,7 @@ fn transform_coordinate(
 }
 
 #[allow(dead_code)]
-fn transform_coordinate_put(
-    y: i32,
-    x: i32,
-    rot60_k: i32,
-    mirror: bool,
-    yx_to_ax: &HashMap<(i32, i32), (i32, i32)>,
-    ax_to_yx: &HashMap<(i32, i32), (i32, i32)>,
-) -> Option<(i32, i32)> {
-    let (mut q, mut r) = *yx_to_ax.get(&(y, x))?;
-    let tmp = ax_rot60(q, r, rot60_k);
-    q = tmp.0;
-    r = tmp.1;
-    if mirror {
-        let tmp = ax_mirror_q_axis(q, r);
-        q = tmp.0;
-        r = tmp.1;
-    }
-    ax_to_yx.get(&(q, r)).copied()
-}
-
-#[allow(dead_code)]
-fn dir_index_map(
+pub fn dir_index_map(
     rot60_k: i32,
     mirror: bool,
     mirror_first: bool,
@@ -748,7 +727,7 @@ fn dir_index_map(
 }
 
 #[allow(dead_code)]
-fn parse_transform(transform: &str) -> Vec<String> {
+pub fn parse_transform(transform: &str) -> Vec<String> {
     transform
         .split('_')
         .filter(|s| !s.is_empty() && *s != "R0")
@@ -757,7 +736,7 @@ fn parse_transform(transform: &str) -> Vec<String> {
 }
 
 #[allow(dead_code)]
-fn parse_rot_component(component: &str) -> (i32, bool, bool) {
+pub fn parse_rot_component(component: &str) -> (i32, bool, bool) {
     if component.ends_with('M') && !component.starts_with("MR") {
         let angle = component[1..component.len() - 1]
             .parse::<i32>()
@@ -774,401 +753,14 @@ fn parse_rot_component(component: &str) -> (i32, bool, bool) {
     }
 }
 
-/* NOTE: Action transformation functions have been commented out.
- * Actions are now game-specific (G::Action trait), so transformation is also game-specific.
- * These functions used the old Zertz-specific Action enum.
- * Action transformation will be handled per-game if needed.
- */
-
-/*
-#[allow(dead_code)]
-pub fn transform_action(action: &Action, transform: &str, config: &BoardConfig) -> Action {
-    if transform.is_empty() || transform == "R0" {
-        return action.clone();
-    }
-
-    let layout = build_layout_mask(config);
-    let (yx_to_ax, ax_to_yx) = build_axial_maps(config, &layout);
-
-    let mut current_action = action.clone();
-
-    for part in parse_transform(transform) {
-        if let Some(coords) = part.strip_prefix('T') {
-            let mut split = coords.split(',');
-            let dy = split.next().unwrap().parse::<i32>().unwrap();
-            let dx = split.next().unwrap().parse::<i32>().unwrap();
-            current_action = translate_action(&current_action, dy, dx, config, &layout);
-        } else {
-            let (rot60_k, mirror, mirror_first) = parse_rot_component(&part);
-            current_action = apply_orientation(
-                &current_action,
-                rot60_k,
-                mirror,
-                mirror_first,
-                config,
-                &yx_to_ax,
-                &ax_to_yx,
-            );
-        }
-    }
-
-    current_action
-}
-
-#[allow(dead_code)]
-fn translate_action(
-    action: &Action,
-    dy: i32,
-    dx: i32,
-    config: &BoardConfig,
-    layout: &[Vec<bool>],
-) -> Action {
-    let width = config.width as i32;
-    match action {
-        Action::Placement {
-            marble_type,
-            dst_y,
-            dst_x,
-            remove_y,
-            remove_x,
-        } => {
-            let new_dst_y = *dst_y as i32 + dy;
-            let new_dst_x = *dst_x as i32 + dx;
-            assert!(new_dst_y >= 0 && new_dst_y < width && new_dst_x >= 0 && new_dst_x < width);
-            assert!(layout[new_dst_y as usize][new_dst_x as usize]);
-
-            let new_remove = if let (Some(ry), Some(rx)) = (remove_y, remove_x) {
-                let new_ry = *ry as i32 + dy;
-                let new_rx = *rx as i32 + dx;
-                assert!(new_ry >= 0 && new_ry < width && new_rx >= 0 && new_rx < width);
-                assert!(layout[new_ry as usize][new_rx as usize]);
-                (Some(new_ry as usize), Some(new_rx as usize))
-            } else {
-                (None, None)
-            };
-
-            Action::Placement {
-                marble_type: *marble_type,
-                dst_y: new_dst_y as usize,
-                dst_x: new_dst_x as usize,
-                remove_y: new_remove.0,
-                remove_x: new_remove.1,
-            }
-        }
-        Action::Capture {
-            start_y,
-            start_x,
-            direction,
-        } => {
-            let new_y = *start_y as i32 + dy;
-            let new_x = *start_x as i32 + dx;
-            assert!(new_y >= 0 && new_y < width && new_x >= 0 && new_x < width);
-            assert!(layout[new_y as usize][new_x as usize]);
-            Action::Capture {
-                start_y: new_y as usize,
-                start_x: new_x as usize,
-                direction: *direction,
-            }
-        }
-        Action::Pass => Action::Pass,
-    }
-}
-
-#[allow(dead_code)]
-fn apply_orientation(
-    action: &Action,
-    rot60_k: i32,
-    mirror: bool,
-    mirror_first: bool,
-    config: &BoardConfig,
-    yx_to_ax: &HashMap<(i32, i32), (i32, i32)>,
-    ax_to_yx: &HashMap<(i32, i32), (i32, i32)>,
-) -> Action {
-    match action {
-        Action::Placement {
-            marble_type,
-            dst_y,
-            dst_x,
-            remove_y,
-            remove_x,
-        } => {
-            let dst = transform_coordinate_put(
-                *dst_y as i32,
-                *dst_x as i32,
-                rot60_k,
-                mirror,
-                yx_to_ax,
-                ax_to_yx,
-            )
-            .expect("destination outside board under transform");
-            let new_remove = if let (Some(ry), Some(rx)) = (remove_y, remove_x) {
-                let res = transform_coordinate_put(
-                    *ry as i32, *rx as i32, rot60_k, mirror, yx_to_ax, ax_to_yx,
-                )
-                .expect("removal outside board under transform");
-                (Some(res.0 as usize), Some(res.1 as usize))
-            } else {
-                (None, None)
-            };
-            Action::Placement {
-                marble_type: *marble_type,
-                dst_y: dst.0 as usize,
-                dst_x: dst.1 as usize,
-                remove_y: new_remove.0,
-                remove_x: new_remove.1,
-            }
-        }
-        Action::Capture {
-            start_y,
-            start_x,
-            direction,
-        } => {
-            let mapping = dir_index_map(rot60_k, mirror, mirror_first, config);
-            let new_dir = *mapping.get(direction).expect("direction map missing");
-            let (ny, nx) = transform_coordinate(
-                *start_y as i32,
-                *start_x as i32,
-                rot60_k,
-                mirror,
-                mirror_first,
-                yx_to_ax,
-                ax_to_yx,
-            )
-            .expect("capture start outside board under transform");
-            Action::Capture {
-                start_y: ny as usize,
-                start_x: nx as usize,
-                direction: new_dir,
-            }
-        }
-        Action::Pass => Action::Pass,
-    }
-}
-*/
+// NOTE: Action transformation has been moved to game-specific modules.
+// For Zertz action transformation, see src/games/zertz/action_transform.rs
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn flat(width: usize, y: usize, x: usize) -> usize {
-        y * width + x
-    }
-
-    /* NOTE: Action transformation tests have been commented out.
-     * These tests depended on the old Action enum and transform_action() functions
-     * which have been removed in favor of game-specific action handling.
-     */
-
-    /*
-    #[allow(dead_code)]
-    fn placement_action() -> Action {
-        Action::Placement {
-            marble_type: 0,
-            dst_y: 3,
-            dst_x: 2,
-            remove_y: Some(2),
-            remove_x: Some(4),
-        }
-    }
-
-    #[allow(dead_code)]
-    fn capture_action() -> Action {
-        Action::Capture {
-            start_y: 3,
-            start_x: 3,
-            direction: 0,
-        }
-    }
-
-    #[test]
-    fn test_transform_action_put_rotations() {
-        let config = BoardConfig::standard(37, 1).unwrap();
-        let width = config.width;
-        let action = placement_action();
-
-        let expected = [
-            ("MR60", (3, 2), (4, 5)),
-            ("R60M", (3, 2), (4, 5)),
-            ("MR120", (4, 3), (2, 4)),
-            ("R120M", (4, 3), (2, 4)),
-            ("R180", (3, 4), (4, 2)),
-        ];
-
-        for (transform, (dst_y, dst_x), (rem_y, rem_x)) in expected {
-            let transformed = transform_action(&action, transform, &config);
-            if let Action::Placement {
-                dst_y: dy,
-                dst_x: dx,
-                remove_y,
-                remove_x,
-                ..
-            } = transformed
-            {
-                assert_eq!((dy, dx), (dst_y, dst_x), "transform {}", transform);
-                assert_eq!(
-                    (remove_y, remove_x),
-                    (Some(rem_y), Some(rem_x)),
-                    "transform {}",
-                    transform
-                );
-                let flat_dst = flat(width, dy, dx);
-                let flat_rem = flat(width, rem_y, rem_x);
-                match transform {
-                    "MR60" | "R60M" => assert_eq!((flat_dst, flat_rem), (23, 33)),
-                    "MR120" | "R120M" => assert_eq!((flat_dst, flat_rem), (31, 18)),
-                    "R180" => assert_eq!((flat_dst, flat_rem), (25, 30)),
-                    _ => (),
-                }
-            } else {
-                panic!("Expected placement action for {}", transform);
-            }
-        }
-    }
-
-    #[test]
-    fn test_transform_action_put_translation() {
-        let config = BoardConfig::standard(37, 1).unwrap();
-        let width = config.width;
-        let action = placement_action();
-
-        let transformed = transform_action(&action, "T1,0", &config);
-        if let Action::Placement {
-            dst_y,
-            dst_x,
-            remove_y,
-            remove_x,
-            ..
-        } = transformed
-        {
-            assert_eq!((dst_y, dst_x), (4, 2));
-            assert_eq!((remove_y, remove_x), (Some(3), Some(4)));
-            assert_eq!(flat(width, dst_y, dst_x), 30);
-            assert_eq!(flat(width, remove_y.unwrap(), remove_x.unwrap()), 25);
-        } else {
-            panic!("Expected placement action");
-        }
-    }
-
-    #[test]
-    fn test_transform_action_cap_rotations() {
-        let config = BoardConfig::standard(37, 1).unwrap();
-        let action = capture_action();
-
-        let expected = [
-            ("MR60", (2, 3, 3)),
-            ("R60M", (4, 3, 3)),
-            ("R60", (1, 3, 3)),
-            ("R120", (2, 3, 3)),
-            ("R180", (3, 3, 3)),
-        ];
-
-        for (transform, (dir, y, x)) in expected {
-            let transformed = transform_action(&action, transform, &config);
-            if let Action::Capture {
-                direction,
-                start_y,
-                start_x,
-            } = transformed
-            {
-                assert_eq!(
-                    (direction, start_y, start_x),
-                    (dir, y, x),
-                    "transform {}",
-                    transform
-                );
-            } else {
-                panic!("Expected capture action for {}", transform);
-            }
-        }
-    }
-
-    #[test]
-    fn test_transform_action_cap_translation() {
-        let config = BoardConfig::standard(37, 1).unwrap();
-        let action = capture_action();
-
-        let transformed = transform_action(&action, "T2,-1", &config);
-        if let Action::Capture {
-            direction,
-            start_y,
-            start_x,
-        } = transformed
-        {
-            assert_eq!(direction, 0);
-            assert_eq!((start_y, start_x), (5, 2));
-        } else {
-            panic!("Expected capture action");
-        }
-    }
-
-    #[test]
-    fn test_transform_action_inverse_roundtrip() {
-        let config = BoardConfig::standard(37, 1).unwrap();
-        let action = placement_action();
-        let forward = transform_action(&action, "MR60", &config);
-        let inverse = transform_action(&forward, "MR60", &config); // MR60 is its own inverse
-        if let Action::Placement {
-            dst_y,
-            dst_x,
-            remove_y,
-            remove_x,
-            ..
-        } = inverse
-        {
-            assert_eq!((dst_y, dst_x), (3, 2));
-            assert_eq!((remove_y, remove_x), (Some(2), Some(4)));
-        } else {
-            panic!("Expected placement action");
-        }
-    }
-
-    #[test]
-    fn canonicalize_state_handles_translated_variants() {
-        let config = BoardConfig::standard(37, 1).unwrap();
-        let layout = build_layout_mask(&config);
-        let layers = config.layers_per_timestep * config.t + 1;
-        let mut base = Array3::zeros((layers, config.width, config.width));
-
-        let positions = [(3usize, 3usize), (3usize, 4usize), (4usize, 3usize)];
-        for &(y, x) in &positions {
-            assert!(layout[y][x], "source position ({}, {}) not on layout", y, x);
-            base[[config.ring_layer, y, x]] = 1.0;
-        }
-        // Add marbles to break rotational symmetry
-        base[[config.marble_layers.0, 3, 3]] = 1.0;
-        base[[config.marble_layers.0 + 1, 4, 3]] = 1.0;
-
-        let base_view = base.view();
-        let (canonical_base, _, _) = canonicalize_state(&base_view, &config);
-
-        let dy = -1;
-        let dx = 0;
-        for &(y, x) in &positions {
-            let ny_i = y as i32 + dy;
-            let nx_i = x as i32 + dx;
-            assert!(ny_i >= 0 && nx_i >= 0, "translation moves off board");
-            let ny = ny_i as usize;
-            let nx = nx_i as usize;
-            assert!(
-                layout[ny][nx],
-                "translated position ({}, {}) invalid",
-                ny, nx
-            );
-        }
-
-        let translated = translate_state(&base_view, &config, &layout, dy, dx)
-            .expect("translation should remain on board");
-        let translated_view = translated.view();
-        let (canonical_translated, transform, _) = canonicalize_state(&translated_view, &config);
-
-        assert_eq!(canonical_base, canonical_translated);
-        assert!(
-            transform.contains('T'),
-            "expected translation component in transform, got {}",
-            transform
-        );
-    }
-    */
+    // NOTE: Old action transformation tests have been moved to src/games/zertz/action_transform.rs
 }
 #[allow(dead_code)]
 pub fn transform_state(

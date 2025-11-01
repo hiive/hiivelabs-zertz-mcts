@@ -277,7 +277,7 @@ impl BoardState {
         let global = self.global.bind(py).readonly().as_array().to_owned();
 
         let (placement_mask, capture_mask) =
-            crate::game::get_valid_actions(&spatial_state.view(), &global.view(), &self.config);
+            crate::games::zertz::logic::get_valid_actions(&spatial_state.view(), &global.view(), &self.config);
 
         Ok((
             PyArray3::from_array(py, &placement_mask).into(),
@@ -309,7 +309,7 @@ impl BoardState {
         let mut spatial_state = self.spatial_state.bind(py).readonly().as_array().to_owned();
         let mut global = self.global.bind(py).readonly().as_array().to_owned();
 
-        crate::game::apply_placement(
+        crate::games::zertz::logic::apply_placement(
             &mut spatial_state.view_mut(),
             &mut global.view_mut(),
             marble_type,
@@ -338,7 +338,7 @@ impl BoardState {
         let mut spatial_state = self.spatial_state.bind(py).readonly().as_array().to_owned();
         let mut global = self.global.bind(py).readonly().as_array().to_owned();
 
-        crate::game::apply_capture(
+        crate::games::zertz::logic::apply_capture(
             &mut spatial_state.view_mut(),
             &mut global.view_mut(),
             start_y,

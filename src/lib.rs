@@ -2,10 +2,9 @@ use pyo3::prelude::*;
 
 mod board;
 mod canonicalization;
-mod game;
-mod game_py;
-mod game_trait;  // NEW: Game trait abstraction
-mod games;       // NEW: Game implementations module
+mod game_py;     // Python bindings for Zertz game logic
+mod game_trait;  // Game trait abstraction
+mod games;       // Game implementations module
 mod mcts;
 mod metrics;
 mod node;

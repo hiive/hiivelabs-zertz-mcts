@@ -59,31 +59,8 @@ pub const BOTH_LOSE: i8 = -2; // Tournament rule: both lose (collaboration detec
 ///
 /// # Returns
 /// Rotated (q, r) coordinates
-pub fn ax_rot60(mut q: i32, mut r: i32, k: i32) -> (i32, i32) {
-    // todo - check this functionality vs one in canonicalization.rs
-    let k_norm = k.rem_euclid(6);
-    for _ in 0..k_norm {
-        let temp = q;
-        q = -r;
-        r += temp;
-    }
-    (q, r)
-}
-
-/// Mirror axial coordinate across the q-axis
-///
-/// In cube coordinates (x=q, y=-q-r, z=r), mirroring across the q-axis
-/// swaps y and z, giving (x, z, y) = (q, r, -q-r) = (q, -q-r) in axial.
-///
-/// # Arguments
-/// * `q` - Axial q coordinate
-/// * `r` - Axial r coordinate
-///
-/// # Returns
-/// Mirrored (q, r) coordinates
-pub fn ax_mirror_q_axis(q: i32, r: i32) -> (i32, i32) {
-    (q, -q - r)
-}
+// Re-export from canonicalization module (single source of truth)
+pub use crate::canonicalization::{ax_rot60, ax_mirror_q_axis};
 
 // ============================================================================
 
@@ -1012,5 +989,5 @@ pub fn get_game_outcome(
 
 
 #[cfg(test)]
-#[path = "game_tests.rs"]
-mod game_tests;
+#[path = "logic_tests.rs"]
+mod logic_tests;

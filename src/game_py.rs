@@ -1,11 +1,11 @@
-//! Python bindings for game logic functions
+//! Python bindings for Zertz game logic functions
 //!
-//! This module exposes stateless game logic functions to Python,
+//! This module exposes stateless Zertz game logic functions to Python,
 //! allowing Python code to call Rust game logic directly.
 
 use crate::board::BoardConfig;
 use crate::canonicalization::{self, TransformFlags as RustTransformFlags};
-use crate::game;
+use crate::games::zertz::logic;
 use numpy::{PyArray1, PyArray3, PyArrayMethods, PyReadonlyArray1, PyReadonlyArray3};
 use pyo3::prelude::*;
 use std::collections::HashMap;
@@ -25,7 +25,7 @@ use std::collections::HashMap;
 ///     Tuple of (q, r) rotated coordinates
 #[pyfunction]
 pub fn ax_rot60(q: i32, r: i32, k: i32) -> (i32, i32) {
-    game::ax_rot60(q, r, k)
+    logic::ax_rot60(q, r, k)
 }
 
 /// Mirror axial coordinate across the q-axis
@@ -38,7 +38,7 @@ pub fn ax_rot60(q: i32, r: i32, k: i32) -> (i32, i32) {
 ///     Tuple of (q, r) mirrored coordinates
 #[pyfunction]
 pub fn ax_mirror_q_axis(q: i32, r: i32) -> (i32, i32) {
-    game::ax_mirror_q_axis(q, r)
+    logic::ax_mirror_q_axis(q, r)
 }
 
 /// Build bidirectional maps between (y,x) and axial (q,r) coordinates
@@ -84,6 +84,7 @@ pub struct TransformFlags {
     inner: RustTransformFlags,
 }
 
+
 #[pymethods]
 impl TransformFlags {
     /// All transforms enabled (rotation + mirror + translation)
@@ -94,30 +95,35 @@ impl TransformFlags {
 
     /// Only rotational symmetries
     #[classattr]
+    #[allow(non_snake_case)]
     fn ROTATION() -> Self {
         TransformFlags { inner: RustTransformFlags::ROTATION }
     }
 
     /// Only mirror symmetries
     #[classattr]
+    #[allow(non_snake_case)]
     fn MIRROR() -> Self {
         TransformFlags { inner: RustTransformFlags::MIRROR }
     }
 
     /// Only translation symmetries
     #[classattr]
+    #[allow(non_snake_case)]
     fn TRANSLATION() -> Self {
         TransformFlags { inner: RustTransformFlags::TRANSLATION }
     }
 
     /// Rotation and mirror only (no translation)
     #[classattr]
+    #[allow(non_snake_case)]
     fn ROTATION_MIRROR() -> Self {
         TransformFlags { inner: RustTransformFlags::ROTATION_MIRROR }
     }
 
     /// No transforms (identity only)
     #[classattr]
+    #[allow(non_snake_case)]
     fn NONE() -> Self {
         TransformFlags { inner: RustTransformFlags::NONE }
     }
@@ -338,14 +344,14 @@ pub fn inverse_transform_name(transform_name: &str) -> String {
 /// Check if (y, x) coordinates are within board bounds
 #[pyfunction]
 pub fn is_inbounds(y: i32, x: i32, width: usize) -> bool {
-    game::is_inbounds(y, x, width)
+    logic::is_inbounds(y, x, width)
 }
 
 /// Get list of neighboring indices (filtered to in-bounds only)
 /// Returns list of (y, x) tuples
 #[pyfunction]
 pub fn get_neighbors(y: usize, x: usize, config: &BoardConfig) -> Vec<(usize, usize)> {
-    game::get_neighbors(y, x, config).into_iter().collect()
+    logic::get_neighbors(y, x, config).into_iter().collect()
 }
 
 /// Calculate landing position after capturing marble
@@ -357,7 +363,7 @@ pub fn get_jump_destination(
     cap_y: usize,
     cap_x: usize,
 ) -> (i32, i32) {
-    game::get_jump_destination(start_y, start_x, cap_y, cap_x)
+    logic::get_jump_destination(start_y, start_x, cap_y, cap_x)
 }
 
 /// Find all connected regions on the board
@@ -368,7 +374,7 @@ pub fn get_regions<'py>(
     config: &BoardConfig,
 ) -> Vec<Vec<(usize, usize)>> {
     let spatial_state = spatial_state.as_array();
-    game::get_regions(&spatial_state, config)
+    logic::get_regions(&spatial_state, config)
 }
 
 /// Get list of empty ring indices across the board
@@ -379,7 +385,7 @@ pub fn get_open_rings<'py>(
     config: &BoardConfig,
 ) -> Vec<(usize, usize)> {
     let spatial_state = spatial_state.as_array();
-    game::get_open_rings(&spatial_state, config)
+    logic::get_open_rings(&spatial_state, config)
 }
 
 /// Check if ring can be removed (geometric rule)
@@ -391,7 +397,7 @@ pub fn is_ring_removable<'py>(
     config: &BoardConfig,
 ) -> bool {
     let spatial_state = spatial_state.as_array();
-    game::is_ring_removable(&spatial_state, y, x, config)
+    logic::is_ring_removable(&spatial_state, y, x, config)
 }
 
 /// Get removable rings (rings that can be removed without disconnecting board)
@@ -402,19 +408,14 @@ pub fn get_removable_rings<'py>(
     config: &BoardConfig,
 ) -> Vec<(usize, usize)> {
     let spatial_state = spatial_state.as_array();
-    game::get_removable_rings(&spatial_state, config)
+    logic::get_removable_rings(&spatial_state, config)
 }
 
 /// Get global_state index for marble type in supply
 #[pyfunction]
 pub fn get_supply_index(marble_type: char) -> usize {
-    // Supply indices are always the same: W=0, G=1, B=2
-    match marble_type {
-        'w' => 0,
-        'g' => 1,
-        'b' => 2,
-        _ => panic!("Invalid marble type: {}", marble_type),
-    }
+    let config = BoardConfig::standard(37, 1).unwrap(); // Default config for Python interface
+    logic::get_supply_index(marble_type, &config)
 }
 
 /// Get global_state index for captured marble
@@ -444,15 +445,8 @@ pub fn get_marble_type_at<'py>(
     x: usize,
 ) -> char {
     let spatial_state = spatial_state.as_array();
-    if spatial_state[[1, y, x]] == 1.0 {
-        'w'
-    } else if spatial_state[[2, y, x]] == 1.0 {
-        'g'
-    } else if spatial_state[[3, y, x]] == 1.0 {
-        'b'
-    } else {
-        '\0'
-    }
+    let config = BoardConfig::standard(37, 1).unwrap(); // Default config for Python interface
+    logic::get_marble_type_at(&spatial_state, y, x, &config)
 }
 
 /// Get valid placement actions
@@ -466,7 +460,7 @@ pub fn get_placement_moves<'py>(
 ) -> Py<PyArray3<f32>> {
     let spatial_state = spatial_state.as_array();
     let global_state = global_state.as_array();
-    let result = game::get_placement_actions(&spatial_state, &global_state, config);
+    let result = logic::get_placement_actions(&spatial_state, &global_state, config);
     PyArray3::from_array(py, &result).into()
 }
 
@@ -479,7 +473,7 @@ pub fn get_capture_moves<'py>(
     config: &BoardConfig,
 ) -> Py<PyArray3<f32>> {
     let spatial_state = spatial_state.as_array();
-    let result = game::get_capture_actions(&spatial_state, config);
+    let result = logic::get_capture_actions(&spatial_state, config);
     PyArray3::from_array(py, &result).into()
 }
 
@@ -494,7 +488,7 @@ pub fn get_valid_actions<'py>(
 ) -> (Py<PyArray3<f32>>, Py<PyArray3<f32>>) {
     let spatial_state = spatial_state.as_array();
     let global_state = global_state.as_array();
-    let (placement, capture) = game::get_valid_actions(&spatial_state, &global_state, config);
+    let (placement, capture) = logic::get_valid_actions(&spatial_state, &global_state, config);
     (PyArray3::from_array(py, &placement).into(), PyArray3::from_array(py, &capture).into())
 }
 
@@ -514,7 +508,7 @@ pub fn apply_placement_action<'py>(
     let captured_marbles = unsafe {
         let mut spatial_state_arr = spatial_state.as_array_mut();
         let mut global_state_arr = global_state.as_array_mut();
-        game::apply_placement(
+        logic::apply_placement(
             &mut spatial_state_arr,
             &mut global_state_arr,
             marble_type,
@@ -541,7 +535,7 @@ pub fn apply_capture_action<'py>(
     unsafe {
         let mut spatial_state_arr = spatial_state.as_array_mut();
         let mut global_state_arr = global_state.as_array_mut();
-        game::apply_capture(
+        logic::apply_capture(
             &mut spatial_state_arr,
             &mut global_state_arr,
             start_y,
@@ -562,7 +556,7 @@ pub fn is_game_over<'py>(
 ) -> bool {
     let spatial_state = spatial_state.as_array();
     let global_state = global_state.as_array();
-    game::is_game_over(&spatial_state, &global_state, config)
+    logic::is_game_over(&spatial_state, &global_state, config)
 }
 
 /// Get game outcome from Player 1's perspective
@@ -575,7 +569,7 @@ pub fn get_game_outcome<'py>(
 ) -> i8 {
     let spatial_state = spatial_state.as_array();
     let global_state = global_state.as_array();
-    game::get_game_outcome(&spatial_state, &global_state, config)
+    logic::get_game_outcome(&spatial_state, &global_state, config)
 }
 
 /// Check for isolated regions and capture marbles
@@ -591,7 +585,7 @@ pub fn check_for_isolation_capture<'py>(
     let spatial_state = spatial_state.as_array();
     let global_state = global_state.as_array();
     let (spatial_state_out, global_state_out, captured_marbles) =
-        game::check_for_isolation_capture(&spatial_state, &global_state, config);
+        logic::check_for_isolation_capture(&spatial_state, &global_state, config);
     (
         PyArray3::from_array(py, &spatial_state_out).into(),
         PyArray1::from_array(py, &global_state_out).into(),
