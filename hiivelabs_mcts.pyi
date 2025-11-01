@@ -1,10 +1,13 @@
 """
-Type stubs for hiivelabs_zertz_mcts Rust extension module.
+Type stubs for hiivelabs_mcts Rust extension module.
+
+Generic MCTS engine with game-specific implementations.
+Currently supports: Zertz
 
 This file provides type hints for IDE autocomplete and static type checking.
 """
 
-from typing import Optional, Tuple
+from typing import Callable, Optional, Tuple
 import numpy as np
 import numpy.typing as npt
 
@@ -130,7 +133,7 @@ class BoardState:
         ...
 
 
-class MCTSSearch:
+class ZertzMCTS:
     """
     Monte Carlo Tree Search implementation for Zertz.
 
@@ -139,18 +142,22 @@ class MCTSSearch:
 
     def __init__(
         self,
+        rings: int,
         *,
         exploration_constant: Optional[float] = None,
         widening_constant: Optional[float] = None,
         fpu_reduction: Optional[float] = None,
         rave_constant: Optional[float] = None,
-        use_transposition_table: Optional[bool] = None,
-        use_transposition_lookups: Optional[bool] = None
+        use_transposition_table: bool = True,
+        use_transposition_lookups: bool = True,
+        blitz: bool = False,
+        t: int = 1
     ) -> None:
         """
-        Create a new MCTS search instance.
+        Create a new MCTS search instance for a specific Zertz game configuration.
 
         Args:
+            rings: Number of rings on the board (37, 48, or 61)
             exploration_constant: UCB1 exploration parameter (default: 1.41, √2)
             widening_constant: Progressive widening constant. When None (default), all
                 legal actions are explored. When set to a value (e.g., 10.0), limits
@@ -167,6 +174,11 @@ class MCTSSearch:
                 When None (default), standard UCB1 is used.
             use_transposition_table: Enable transposition table (default: True)
             use_transposition_lookups: Enable transposition lookups (default: True)
+            blitz: Use blitz mode rules (default: False)
+            t: Time history depth (default: 1)
+
+        Raises:
+            ValueError: If rings is not 37, 48, or 61
         """
         ...
 
@@ -205,10 +217,8 @@ class MCTSSearch:
         self,
         spatial_state: npt.NDArray[np.float32],
         global_state: npt.NDArray[np.float32],
-        rings: int,
         iterations: int,
         *,
-        t: int = 1,
         max_depth: Optional[int] = None,
         time_limit: Optional[float] = None,
         use_transposition_table: Optional[bool] = None,
@@ -216,7 +226,8 @@ class MCTSSearch:
         clear_table: bool = False,
         verbose: bool = False,
         seed: Optional[int] = None,
-        blitz: bool = False
+        progress_callback: Optional[Callable[[dict], None]] = None,
+        progress_interval_ms: int = 100
     ) -> Tuple[str, Optional[Tuple[int, int, int]]]:
         """
         Run MCTS search (serial mode).
@@ -224,9 +235,7 @@ class MCTSSearch:
         Args:
             spatial_state: 3D array of shape (L, H, W) containing board layers
             global_state: 1D array containing supply and captured marble counts
-            rings: Number of rings on the board (37, 48, or 61)
             iterations: Number of MCTS iterations to run
-            t: Transposition table size parameter (default: 1)
             max_depth: Maximum simulation depth (default: unlimited)
             time_limit: Time limit in seconds (default: no limit)
             use_transposition_table: Override default transposition table setting
@@ -234,7 +243,12 @@ class MCTSSearch:
             clear_table: Clear transposition table before search (default: False)
             verbose: Print search statistics (default: False)
             seed: Random seed for this search
-            blitz: Use blitz mode rules (default: False)
+            progress_callback: Optional callback function for progress events.
+                Receives dict with keys depending on event type:
+                - SearchStarted: {"event": "SearchStarted", "root_visits": int, "root_value": float}
+                - IterationProgress: {"event": "IterationProgress", "iteration": int, "root_visits": int, "root_value": float, "elapsed_ms": int}
+                - SearchEnded: {"event": "SearchEnded", "total_iterations": int, "total_time_ms": int}
+            progress_interval_ms: Minimum milliseconds between IterationProgress callbacks (default: 100)
 
         Returns:
             Tuple of (action_type, action_tuple):
@@ -243,9 +257,6 @@ class MCTSSearch:
                 - PUT: (marble_type, dst_flat, remove_flat)
                 - CAP: (direction, start_y, start_x)
                 - PASS: None
-
-        Raises:
-            ValueError: If rings is not 37, 48, or 61
         """
         ...
 
@@ -253,38 +264,40 @@ class MCTSSearch:
         self,
         spatial_state: npt.NDArray[np.float32],
         global_state: npt.NDArray[np.float32],
-        rings: int,
         iterations: int,
         *,
-        t: int = 1,
         max_depth: Optional[int] = None,
         time_limit: Optional[float] = None,
         use_transposition_table: Optional[bool] = None,
         use_transposition_lookups: Optional[bool] = None,
         clear_table: bool = False,
-        num_threads: int = 16,
         verbose: bool = False,
         seed: Optional[int] = None,
-        blitz: bool = False
+        progress_callback: Optional[Callable[[dict], None]] = None,
+        progress_interval_ms: int = 100
     ) -> Tuple[str, Optional[Tuple[int, int, int]]]:
         """
         Run MCTS search (parallel mode using Rayon).
 
+        Uses Rayon's thread pool to run iterations in parallel. Thread count is
+        automatically managed by Rayon based on system capabilities.
+
         Args:
             spatial_state: 3D array of shape (L, H, W) containing board layers
             global_state: 1D array containing supply and captured marble counts
-            rings: Number of rings on the board (37, 48, or 61)
             iterations: Number of MCTS iterations to run
-            t: Transposition table size parameter (default: 1)
             max_depth: Maximum simulation depth (default: unlimited)
             time_limit: Time limit in seconds (default: no limit)
             use_transposition_table: Override default transposition table setting
             use_transposition_lookups: Override default transposition lookup setting
             clear_table: Clear transposition table before search (default: False)
-            num_threads: Number of threads to use (default: 16)
             verbose: Print search statistics (default: False)
             seed: Random seed for this search
-            blitz: Use blitz mode rules (default: False)
+            progress_callback: Optional callback function for progress events.
+                Note: In parallel mode, progress callbacks are best-effort due to
+                thread safety limitations. Only SearchStarted and SearchEnded events
+                are reliably fired. IterationProgress events may be skipped.
+            progress_interval_ms: Minimum milliseconds between IterationProgress callbacks (default: 100)
 
         Returns:
             Tuple of (action_type, action_tuple):
@@ -294,9 +307,9 @@ class MCTSSearch:
                 - CAP: (direction, start_y, start_x)
                 - PASS: None
 
-        Raises:
-            ValueError: If rings is not 37, 48, or 61
-            RuntimeError: If thread pool creation fails
+        Note:
+            Parallel search uses Rayon for thread management. The number of threads
+            is automatically determined by Rayon based on available CPU cores.
         """
         ...
 

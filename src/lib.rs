@@ -4,6 +4,8 @@ mod board;
 mod canonicalization;
 mod game;
 mod game_py;
+mod game_trait;  // NEW: Game trait abstraction
+mod games;       // NEW: Game implementations module
 mod mcts;
 mod metrics;
 mod node;
@@ -11,15 +13,22 @@ mod transposition;
 mod zobrist;
 
 use board::{BoardConfig, BoardState};
-use mcts::MCTSSearch;
+use games::{PyZertzMCTS, PyTicTacToeMCTS};
 
-/// Rust-accelerated MCTS for Zertz
+/// Generic MCTS engine with game-specific implementations
+///
+/// Currently supports:
+/// - Zertz (via ZertzMCTS class)
+/// - TicTacToe (via TicTacToeMCTS class)
 #[pymodule]
-#[pyo3(name = "hiivelabs_zertz_mcts")]
-fn zertz_mcts(m: &Bound<'_, PyModule>) -> PyResult<()> {
+#[pyo3(name = "hiivelabs_mcts")]
+fn hiivelabs_mcts(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<BoardConfig>()?;
     m.add_class::<BoardState>()?;
-    m.add_class::<MCTSSearch>()?;
+
+    // Register game implementations
+    m.add_class::<PyZertzMCTS>()?;
+    m.add_class::<PyTicTacToeMCTS>()?;
 
     // Register game logic functions
     game_py::register(m)?;

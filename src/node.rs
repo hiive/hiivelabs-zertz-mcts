@@ -32,9 +32,10 @@
 //!
 //! This enables lock-free parallel tree search with minimal thread collisions.
 
-use crate::board::BoardConfig;
+use crate::game_trait::MCTSGame;
 use crate::transposition::TranspositionEntry;
 use ndarray::{Array1, Array3};
+use std::collections::HashMap;
 use std::sync::atomic::{AtomicI32, AtomicU32, Ordering};
 use std::sync::{Arc, RwLock, Weak};
 
@@ -56,38 +57,11 @@ pub(crate) const VIRTUAL_LOSS: u32 = 3;
 pub(crate) const VIRTUAL_LOSS_SCALED: i32 = -3000;
 
 // ============================================================================
-// ACTION TYPES
-// ============================================================================
-
-/// Game actions for MCTS tree edges
-///
-/// Each action represents a state transition in the game tree.
-#[derive(Clone, Debug)]
-pub enum Action {
-    /// Place a marble from supply/captured pool, optionally removing a ring
-    Placement {
-        marble_type: usize,      // 0=white, 1=gray, 2=black
-        dst_y: usize,            // Destination y coordinate
-        dst_x: usize,            // Destination x coordinate
-        remove_y: Option<usize>, // Optional ring removal y coordinate
-        remove_x: Option<usize>, // Optional ring removal x coordinate
-    },
-    /// Capture by jumping over opponent's marble(s)
-    Capture {
-        start_y: usize,    // Starting position y
-        start_x: usize,    // Starting position x
-        direction: usize,  // Direction index (0-5 for hexagonal grid)
-    },
-    /// Pass turn (when no valid moves available)
-    Pass,
-}
-
-// ============================================================================
 // MCTS NODE
 // ============================================================================
 
 /// MCTS Node with atomic counters and Mutex for thread-safe tree modification
-pub struct MCTSNode {
+pub struct MCTSNode<G: MCTSGame> {
     // State representation
     pub spatial_state: Array3<f32>,
     pub global_state: Array1<f32>,
@@ -108,19 +82,20 @@ pub struct MCTSNode {
     pub(crate) virtual_loss_count: AtomicU32,
 
     // Tree structure (RwLock allows concurrent reads, exclusive writes)
-    pub children: RwLock<Vec<(Action, Arc<MCTSNode>)>>,
-    pub parent: Option<Weak<MCTSNode>>, // Weak pointer to avoid cycles
+    // Changed from Vec to HashMap for O(1) action lookup
+    pub children: RwLock<HashMap<G::Action, Arc<MCTSNode<G>>>>,
+    pub parent: Option<Weak<MCTSNode<G>>>, // Weak pointer to avoid cycles
 
-    // Config
-    pub config: Arc<BoardConfig>,
+    // Game instance (stores config internally)
+    pub game: Arc<G>,
 }
 
-impl MCTSNode {
+impl<G: MCTSGame> MCTSNode<G> {
     /// Create a new MCTS node
     pub fn new(
         spatial_state: Array3<f32>,
         global_state: Array1<f32>,
-        config: Arc<BoardConfig>,
+        game: Arc<G>,
         shared_stats: Option<Arc<TranspositionEntry>>,
     ) -> Self {
         MCTSNode {
@@ -133,9 +108,9 @@ impl MCTSNode {
             rave_total_value: AtomicI32::new(0),
             #[cfg(debug_assertions)]
             virtual_loss_count: AtomicU32::new(0),
-            children: RwLock::new(Vec::new()),
+            children: RwLock::new(HashMap::new()),
             parent: None,
-            config,
+            game,
         }
     }
 
@@ -143,8 +118,8 @@ impl MCTSNode {
     pub fn new_child(
         spatial_state: Array3<f32>,
         global_state: Array1<f32>,
-        config: Arc<BoardConfig>,
-        parent: &Arc<MCTSNode>,
+        game: Arc<G>,
+        parent: &Arc<MCTSNode<G>>,
         shared_stats: Option<Arc<TranspositionEntry>>,
     ) -> Self {
         MCTSNode {
@@ -157,15 +132,15 @@ impl MCTSNode {
             rave_total_value: AtomicI32::new(0),
             #[cfg(debug_assertions)]
             virtual_loss_count: AtomicU32::new(0),
-            children: RwLock::new(Vec::new()),
+            children: RwLock::new(HashMap::new()),
             parent: Some(Arc::downgrade(parent)),
-            config,
+            game,
         }
     }
 
     /// Add a child to this node (thread-safe, requires exclusive write lock)
-    pub fn add_child(&self, action: Action, child: Arc<MCTSNode>) {
-        self.children.write().unwrap().push((action, child));
+    pub fn add_child(&self, action: G::Action, child: Arc<MCTSNode<G>>) {
+        self.children.write().unwrap().insert(action, child);
     }
 
     /// Get number of children (thread-safe)
@@ -425,7 +400,7 @@ impl MCTSNode {
         match widening_constant {
             None => {
                 // Standard MCTS: expand until all actions tried
-                children_count == legal_actions
+                children_count >= legal_actions
             }
             Some(constant) => {
                 // Progressive widening: allow sqrt(visits + 1) * constant children
@@ -437,22 +412,13 @@ impl MCTSNode {
         }
     }
 
-    /// Count legal actions
+    /// Count legal actions using game trait
     fn count_legal_actions(&self) -> usize {
-        use crate::game::get_valid_actions;
-
-        let (placement_mask, capture_mask) =
-            get_valid_actions(&self.spatial_state.view(), &self.global_state.view(), &self.config);
-
-        let placement_count = placement_mask.iter().filter(|&&x| x > 0.0).count();
-        let capture_count = capture_mask.iter().filter(|&&x| x > 0.0).count();
-
-        let total = placement_count + capture_count;
-        if total == 0 {
-            1
-        } else {
-            total
-        } // At least 1 for PASS
+        let actions = self.game.get_valid_actions(
+            &self.spatial_state.view(),
+            &self.global_state.view(),
+        );
+        actions.len()
     }
 }
 
@@ -460,6 +426,7 @@ impl MCTSNode {
 mod tests {
     use super::*;
     use crate::board::BoardConfig;
+    use crate::games::ZertzGame;
     use crate::transposition::TranspositionTable;
     use ndarray::{Array1, Array3};
 
@@ -472,15 +439,15 @@ mod tests {
 
     #[test]
     fn node_updates_shared_entry() {
-        let config = Arc::new(BoardConfig::standard(37, 1).unwrap());
-        let (spatial_state, global_state) = empty_state(&config);
-        let table = TranspositionTable::new();
-        let shared = table.get_or_insert(&spatial_state.view(), &global_state.view(), config.as_ref());
+        let game = Arc::new(ZertzGame::new(37, 1, false).unwrap());
+        let (spatial_state, global_state) = empty_state(game.config());
+        let table = TranspositionTable::new(Arc::clone(&game));
+        let shared = table.get_or_insert(&spatial_state.view(), &global_state.view());
 
         let node = MCTSNode::new(
             spatial_state,
             global_state,
-            Arc::clone(&config),
+            Arc::clone(&game),
             Some(Arc::clone(&shared)),
         );
         node.update(0.5);
@@ -492,9 +459,9 @@ mod tests {
 
     #[test]
     fn node_without_shared_entry_uses_local_stats() {
-        let config = Arc::new(BoardConfig::standard(37, 1).unwrap());
-        let (spatial_state, global_state) = empty_state(&config);
-        let node = MCTSNode::new(spatial_state, global_state, Arc::clone(&config), None);
+        let game = Arc::new(ZertzGame::new(37, 1, false).unwrap());
+        let (spatial_state, global_state) = empty_state(game.config());
+        let node = MCTSNode::new(spatial_state, global_state, Arc::clone(&game), None);
 
         node.update(-1.0);
 
@@ -524,29 +491,30 @@ mod tests {
 
     #[test]
     fn canonical_symmetric_nodes_share_stats() {
-        let config = Arc::new(BoardConfig::standard(37, 1).unwrap());
-        let (spatial_state, global_state) = canonical_variant_state(&config);
+        let game = Arc::new(ZertzGame::new(37, 1, false).unwrap());
+        let config = game.config();
+        let (spatial_state, global_state) = canonical_variant_state(config);
 
         // Prepare table and canonical entry
-        let table = TranspositionTable::new();
-        let entry = table.get_or_insert(&spatial_state.view(), &global_state.view(), config.as_ref());
+        let table = TranspositionTable::new(Arc::clone(&game));
+        let entry = table.get_or_insert(&spatial_state.view(), &global_state.view());
 
         let node_canonical = Arc::new(MCTSNode::new(
             spatial_state.clone(),
             global_state.clone(),
-            Arc::clone(&config),
+            Arc::clone(&game),
             Some(Arc::clone(&entry)),
         ));
         node_canonical.update(0.75);
 
         // Rotate spatial_state state by 60 degrees (same canonical class)
         let rotated =
-            crate::canonicalization::transform_state(&spatial_state.view(), &config, 1, false, false);
-        let rotated_entry = table.get_or_insert(&rotated.view(), &global_state.view(), config.as_ref());
+            crate::canonicalization::transform_state(&spatial_state.view(), config, 1, false, false);
+        let rotated_entry = table.get_or_insert(&rotated.view(), &global_state.view());
         let node_rotated = Arc::new(MCTSNode::new(
             rotated.to_owned(),
             global_state.clone(),
-            Arc::clone(&config),
+            Arc::clone(&game),
             Some(Arc::clone(&rotated_entry)),
         ));
         node_rotated.update(-0.25);
@@ -565,9 +533,9 @@ mod tests {
 
     #[test]
     fn virtual_loss_adds_and_removes_correctly() {
-        let config = Arc::new(BoardConfig::standard(37, 1).unwrap());
-        let (spatial_state, global_state) = empty_state(&config);
-        let node = MCTSNode::new(spatial_state, global_state, Arc::clone(&config), None);
+        let game = Arc::new(ZertzGame::new(37, 1, false).unwrap());
+        let (spatial_state, global_state) = empty_state(game.config());
+        let node = MCTSNode::new(spatial_state, global_state, Arc::clone(&game), None);
 
         // Initial state: 0 visits, 0 value
         assert_eq!(node.get_visits(), 0);
@@ -586,9 +554,9 @@ mod tests {
 
     #[test]
     fn virtual_loss_with_real_updates() {
-        let config = Arc::new(BoardConfig::standard(37, 1).unwrap());
-        let (spatial_state, global_state) = empty_state(&config);
-        let node = MCTSNode::new(spatial_state, global_state, Arc::clone(&config), None);
+        let game = Arc::new(ZertzGame::new(37, 1, false).unwrap());
+        let (spatial_state, global_state) = empty_state(game.config());
+        let node = MCTSNode::new(spatial_state, global_state, Arc::clone(&game), None);
 
         // Add virtual loss
         node.add_virtual_loss();
@@ -606,15 +574,15 @@ mod tests {
 
     #[test]
     fn virtual_loss_with_shared_stats() {
-        let config = Arc::new(BoardConfig::standard(37, 1).unwrap());
-        let (spatial_state, global_state) = empty_state(&config);
-        let table = TranspositionTable::new();
-        let shared = table.get_or_insert(&spatial_state.view(), &global_state.view(), config.as_ref());
+        let game = Arc::new(ZertzGame::new(37, 1, false).unwrap());
+        let (spatial_state, global_state) = empty_state(game.config());
+        let table = TranspositionTable::new(Arc::clone(&game));
+        let shared = table.get_or_insert(&spatial_state.view(), &global_state.view());
 
         let node = MCTSNode::new(
             spatial_state,
             global_state,
-            Arc::clone(&config),
+            Arc::clone(&game),
             Some(Arc::clone(&shared)),
         );
 
@@ -631,9 +599,9 @@ mod tests {
 
     #[test]
     fn fpu_unvisited_node_with_reduction() {
-        let config = Arc::new(BoardConfig::standard(37, 1).unwrap());
-        let (spatial_state, global_state) = empty_state(&config);
-        let node = MCTSNode::new(spatial_state, global_state, Arc::clone(&config), None);
+        let game = Arc::new(ZertzGame::new(37, 1, false).unwrap());
+        let (spatial_state, global_state) = empty_state(game.config());
+        let node = MCTSNode::new(spatial_state, global_state, Arc::clone(&game), None);
 
         // Unvisited node with FPU reduction = 0.2
         let parent_visits = 10;
@@ -656,9 +624,9 @@ mod tests {
 
     #[test]
     fn fpu_unvisited_node_without_reduction() {
-        let config = Arc::new(BoardConfig::standard(37, 1).unwrap());
-        let (spatial_state, global_state) = empty_state(&config);
-        let node = MCTSNode::new(spatial_state, global_state, Arc::clone(&config), None);
+        let game = Arc::new(ZertzGame::new(37, 1, false).unwrap());
+        let (spatial_state, global_state) = empty_state(game.config());
+        let node = MCTSNode::new(spatial_state, global_state, Arc::clone(&game), None);
 
         // Unvisited node with no FPU (standard UCB1)
         let parent_visits = 10;
@@ -674,9 +642,9 @@ mod tests {
 
     #[test]
     fn fpu_visited_node_ignores_fpu() {
-        let config = Arc::new(BoardConfig::standard(37, 1).unwrap());
-        let (spatial_state, global_state) = empty_state(&config);
-        let node = MCTSNode::new(spatial_state, global_state, Arc::clone(&config), None);
+        let game = Arc::new(ZertzGame::new(37, 1, false).unwrap());
+        let (spatial_state, global_state) = empty_state(game.config());
+        let node = MCTSNode::new(spatial_state, global_state, Arc::clone(&game), None);
 
         // Visit the node
         node.update(0.6);
@@ -704,9 +672,9 @@ mod tests {
 
     #[test]
     fn fpu_negative_parent_value() {
-        let config = Arc::new(BoardConfig::standard(37, 1).unwrap());
-        let (spatial_state, global_state) = empty_state(&config);
-        let node = MCTSNode::new(spatial_state, global_state, Arc::clone(&config), None);
+        let game = Arc::new(ZertzGame::new(37, 1, false).unwrap());
+        let (spatial_state, global_state) = empty_state(game.config());
+        let node = MCTSNode::new(spatial_state, global_state, Arc::clone(&game), None);
 
         // Parent has negative value (losing position from parent's perspective)
         let parent_visits = 10;

@@ -52,7 +52,7 @@ use std::collections::HashMap;
 use std::ops::Range;
 
 use crate::board::BoardConfig;
-use crate::node::Action;
+// NOTE: Action import removed - Action enum no longer exists in node.rs
 use ndarray::{s, Array3, ArrayView3};
 
 // ============================================================================
@@ -774,6 +774,13 @@ fn parse_rot_component(component: &str) -> (i32, bool, bool) {
     }
 }
 
+/* NOTE: Action transformation functions have been commented out.
+ * Actions are now game-specific (G::Action trait), so transformation is also game-specific.
+ * These functions used the old Zertz-specific Action enum.
+ * Action transformation will be handled per-game if needed.
+ */
+
+/*
 #[allow(dead_code)]
 pub fn transform_action(action: &Action, transform: &str, config: &BoardConfig) -> Action {
     if transform.is_empty() || transform == "R0" {
@@ -937,6 +944,7 @@ fn apply_orientation(
         Action::Pass => Action::Pass,
     }
 }
+*/
 
 #[cfg(test)]
 mod tests {
@@ -946,6 +954,12 @@ mod tests {
         y * width + x
     }
 
+    /* NOTE: Action transformation tests have been commented out.
+     * These tests depended on the old Action enum and transform_action() functions
+     * which have been removed in favor of game-specific action handling.
+     */
+
+    /*
     #[allow(dead_code)]
     fn placement_action() -> Action {
         Action::Placement {
@@ -1154,6 +1168,7 @@ mod tests {
             transform
         );
     }
+    */
 }
 #[allow(dead_code)]
 pub fn transform_state(
