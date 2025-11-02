@@ -662,6 +662,20 @@ pub fn algebraic_to_coordinate(notation: &str, config: &BoardConfig) -> PyResult
         .map_err(pyo3::exceptions::PyValueError::new_err)
 }
 
+#[pyfunction]
+pub fn generate_standard_layout_mask<'py>(
+    py: Python<'py>,
+    rings: usize,
+    width: usize,
+) -> PyResult<Py<numpy::PyArray2<bool>>> {
+    let layout = canonicalization::generate_standard_layout_mask(rings, width);
+
+    // Convert Vec<Vec<bool>> to numpy array
+    Ok(numpy::PyArray2::from_vec2(py, &layout)
+        .map_err(|e| pyo3::exceptions::PyValueError::new_err(format!("Failed to create numpy array: {}", e)))?
+        .into())
+}
+
 /// Register all game logic functions with the Python module
 pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     // Axial coordinate transformations
@@ -679,6 +693,7 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(get_bounding_box, m)?)?;
     m.add_function(wrap_pyfunction!(canonical_key, m)?)?;
     m.add_function(wrap_pyfunction!(inverse_transform_name, m)?)?;
+    m.add_function(wrap_pyfunction!(generate_standard_layout_mask, m)?)?;
 
     // Utility functions
     m.add_function(wrap_pyfunction!(is_inbounds, m)?)?;
