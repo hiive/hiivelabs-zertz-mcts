@@ -93,6 +93,9 @@ impl ZertzAction {
                 start_flat,
                 dst_flat,
             } => {
+                // Return (None, src_flat, dst_flat)
+                // None distinguishes captures from placements (which have Some(marble_type))
+                // Python will unflatten both coordinates and calculate cap_index as midpoint
                 Ok(("CAP".to_string(), Some((None, *start_flat, *dst_flat))))
             }
             ZertzAction::Pass => Ok(("PASS".to_string(), None)),
