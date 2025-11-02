@@ -183,7 +183,7 @@ impl BoardConfig {
     }
 
     /// Get hex direction offsets
-    fn get_directions(&self) -> Vec<(i32, i32)> {
+    pub fn get_directions(&self) -> Vec<(i32, i32)> {
         self.directions.clone()
     }
 

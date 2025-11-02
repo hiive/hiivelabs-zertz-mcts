@@ -211,7 +211,9 @@ pub fn get_removable_rings(spatial_state: &ArrayView3<f32>, config: &BoardConfig
         .collect()
 }
 
-fn get_captured_index(config: &BoardConfig, player: usize, marble_idx: usize) -> usize {
+/// Get global_state index for captured marble by player and marble index
+/// Used by internal logic and tests
+pub fn get_captured_index(config: &BoardConfig, player: usize, marble_idx: usize) -> usize {
     if player == config.player_1 {
         config.p1_cap_w + marble_idx
     } else {

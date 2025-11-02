@@ -498,21 +498,21 @@ pub fn compute_canonical_key(spatial_state: &ArrayView3<f32>, config: &BoardConf
     canonical_key(spatial_state, &layout, board_layers)
 }
 
-#[allow(dead_code)]
-pub fn generate_standard_layout_mask(rings: usize, width: usize) -> Vec<Vec<bool>> {
+pub fn generate_standard_layout_mask(rings: usize, width: usize) -> Result<Vec<Vec<bool>>, String> {
     let letters = match rings {
         37 => "ABCDEFG",
         48 => "ABCDEFGH",
         61 => "ABCDEFGHJ",
-        _ => panic!("Unsupported ring count {}", rings),
+        _ => return Err(format!("Unsupported ring count: {} (supported: 37, 48, 61)", rings)),
     };
     let letters: Vec<char> = letters.chars().collect();
     let r_max = letters.len();
-    assert_eq!(
-        r_max, width,
-        "expected width {} to match standard layout width {}",
-        width, r_max
-    );
+    if r_max != width {
+        return Err(format!(
+            "Width mismatch: expected {} to match standard layout width {}",
+            width, r_max
+        ));
+    }
 
     let is_even = r_max.is_multiple_of(2);
     let h_max =
@@ -549,12 +549,13 @@ pub fn generate_standard_layout_mask(rings: usize, width: usize) -> Vec<Vec<bool
         }
     }
 
-    layout
+    Ok(layout)
 }
 
 #[allow(dead_code)]
 pub fn build_layout_mask(config: &BoardConfig) -> Vec<Vec<bool>> {
     generate_standard_layout_mask(config.rings, config.width)
+        .expect("BoardConfig should always have valid rings/width")
 }
 
 /// Build bidirectional maps between (y,x) and axial (q,r) coordinates
@@ -772,7 +773,8 @@ pub fn transform_state(
     dy: i32,
     dx: i32,
 ) -> Option<Array3<f32>> {
-    let layout = generate_standard_layout_mask(config.rings, config.width);
+    let layout = generate_standard_layout_mask(config.rings, config.width)
+        .expect("BoardConfig should always have valid rings/width");
     let (yx_to_ax, ax_to_yx) = build_axial_maps(config, &layout);
     transform_state_cached(
         spatial_state,

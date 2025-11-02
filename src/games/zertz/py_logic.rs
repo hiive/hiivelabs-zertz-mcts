@@ -3,7 +3,7 @@
 //! This module exposes stateless Zertz game logic functions to Python,
 //! allowing Python code to call Rust game logic directly.
 
-use super::{board::BoardConfig, canonicalization, logic, notation};
+use super::{action_transform, board::BoardConfig, canonicalization, logic, notation, ZertzAction};
 use canonicalization::TransformFlags as RustTransformFlags;
 use numpy::{PyArray1, PyArray3, PyArrayMethods, PyReadonlyArray1, PyReadonlyArray3};
 use pyo3::prelude::*;
@@ -668,12 +668,170 @@ pub fn generate_standard_layout_mask<'py>(
     rings: usize,
     width: usize,
 ) -> PyResult<Py<numpy::PyArray2<bool>>> {
-    let layout = canonicalization::generate_standard_layout_mask(rings, width);
+    let layout = canonicalization::generate_standard_layout_mask(rings, width)
+        .map_err(|e| pyo3::exceptions::PyValueError::new_err(e))?;
 
     // Convert Vec<Vec<bool>> to numpy array
     Ok(numpy::PyArray2::from_vec2(py, &layout)
         .map_err(|e| pyo3::exceptions::PyValueError::new_err(format!("Failed to create numpy array: {}", e)))?
         .into())
+}
+
+// ============================================================================
+// Action Transformation
+// ============================================================================
+
+/// Transform an action using symmetry operations
+///
+/// Applies rotation, mirror, and/or translation transforms to an action tuple.
+/// This is used for action canonicalization and replay with symmetries.
+///
+/// Args:
+///     action_type: Action type string ("PUT", "CAP", or "PASS")
+///     action_data: Action data tuple:
+///         - For PUT: (marble_idx, put_flat, rem_flat) where rem_flat = width² means no removal
+///         - For CAP: (direction_idx, y, x)
+///         - For PASS: empty tuple ()
+///     transform: Transform string (e.g., "R60", "MR120", "T1,0_R180M")
+///     config: BoardConfig specifying board size
+///
+/// Returns:
+///     Tuple of (action_type, action_data) in same format as input
+///
+/// Examples:
+///     >>> transform_action("PUT", (0, 10, 15), "R60", config)
+///     ("PUT", (0, 12, 17))
+///     >>> transform_action("CAP", (0, 3, 3), "MR120", config)
+///     ("CAP", (2, 4, 2))
+///     >>> transform_action("PASS", (), "R60", config)
+///     ("PASS", ())
+#[pyfunction]
+pub fn transform_action(
+    action_type: &str,
+    action_data: &Bound<'_, pyo3::types::PyTuple>,
+    transform: &str,
+    config: &BoardConfig,
+) -> PyResult<(String, Vec<usize>)> {
+    let width = config.width;
+
+    // Convert Python tuple format to ZertzAction
+    let action = match action_type {
+        "PUT" => {
+            if action_data.len() != 3 {
+                return Err(pyo3::exceptions::PyValueError::new_err(
+                    format!("PUT action requires 3 elements, got {}", action_data.len())
+                ));
+            }
+            let marble_type: usize = action_data.get_item(0)?.extract()?;
+            let dst_flat: usize = action_data.get_item(1)?.extract()?;
+            let rem_flat: usize = action_data.get_item(2)?.extract()?;
+
+            // Convert width² sentinel to None
+            let remove_flat = if rem_flat == width * width {
+                None
+            } else {
+                Some(rem_flat)
+            };
+
+            ZertzAction::Placement {
+                marble_type,
+                dst_flat,
+                remove_flat,
+            }
+        }
+        "CAP" => {
+            if action_data.len() != 3 {
+                return Err(pyo3::exceptions::PyValueError::new_err(
+                    format!("CAP action requires 3 elements, got {}", action_data.len())
+                ));
+            }
+            let direction_idx: usize = action_data.get_item(0)?.extract()?;
+            let y: usize = action_data.get_item(1)?.extract()?;
+            let x: usize = action_data.get_item(2)?.extract()?;
+
+            // Convert direction + coordinates to start/dest flat indices
+            // Get direction vector from config
+            let directions = config.get_directions();
+            if direction_idx >= directions.len() {
+                return Err(pyo3::exceptions::PyValueError::new_err(
+                    format!("Invalid direction index: {}", direction_idx)
+                ));
+            }
+            let (dy, dx) = directions[direction_idx];
+
+            // Calculate capture and landing positions
+            let cap_y = (y as i32 + dy) as usize;
+            let cap_x = (x as i32 + dx) as usize;
+            let (dst_y, dst_x) = logic::get_jump_destination(y, x, cap_y, cap_x);
+
+            if dst_y < 0 || dst_x < 0 {
+                return Err(pyo3::exceptions::PyValueError::new_err(
+                    "Jump destination out of bounds"
+                ));
+            }
+
+            let start_flat = y * width + x;
+            let dst_flat = (dst_y as usize) * width + (dst_x as usize);
+
+            ZertzAction::Capture {
+                start_flat,
+                dst_flat,
+            }
+        }
+        "PASS" => ZertzAction::Pass,
+        _ => {
+            return Err(pyo3::exceptions::PyValueError::new_err(
+                format!("Invalid action type: {}", action_type)
+            ));
+        }
+    };
+
+    // Call Rust transform_action
+    let transformed = action_transform::transform_action(&action, transform, config);
+
+    // Convert back to Python tuple format
+    match transformed {
+        ZertzAction::Placement {
+            marble_type,
+            dst_flat,
+            remove_flat,
+        } => {
+            let rem_flat = remove_flat.unwrap_or(width * width);
+            Ok(("PUT".to_string(), vec![marble_type, dst_flat, rem_flat]))
+        }
+        ZertzAction::Capture {
+            start_flat,
+            dst_flat,
+        } => {
+            // Convert start/dest flat indices back to direction + coordinates
+            let start_y = start_flat / width;
+            let start_x = start_flat % width;
+            let dst_y = dst_flat / width;
+            let dst_x = dst_flat % width;
+
+            // Calculate direction
+            let dy = dst_y as i32 - start_y as i32;
+            let dx = dst_x as i32 - start_x as i32;
+
+            // Divide by 2 to get direction vector (since jump is 2 steps)
+            let dir_dy = dy / 2;
+            let dir_dx = dx / 2;
+
+            // Find direction index
+            let directions = config.get_directions();
+            let direction_idx = directions
+                .iter()
+                .position(|&(dy, dx)| dy == dir_dy && dx == dir_dx)
+                .ok_or_else(|| {
+                    pyo3::exceptions::PyValueError::new_err(
+                        format!("Could not find direction for ({}, {})", dir_dy, dir_dx)
+                    )
+                })?;
+
+            Ok(("CAP".to_string(), vec![direction_idx, start_y, start_x]))
+        }
+        ZertzAction::Pass => Ok(("PASS".to_string(), vec![])),
+    }
 }
 
 /// Register all game logic functions with the Python module
@@ -724,6 +882,9 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     // Algebraic notation
     m.add_function(wrap_pyfunction!(coordinate_to_algebraic, m)?)?;
     m.add_function(wrap_pyfunction!(algebraic_to_coordinate, m)?)?;
+
+    // Action transformation
+    m.add_function(wrap_pyfunction!(transform_action, m)?)?;
 
     Ok(())
 }

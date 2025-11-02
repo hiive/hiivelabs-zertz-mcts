@@ -1350,4 +1350,316 @@ mod termination_tests {
             "Turn should pass to next player"
         );
     }
+
+    // ========================================================================
+    // Helper Function Tests
+    // ========================================================================
+
+    #[test]
+    fn test_is_inbounds_center() {
+        let config = create_test_config();
+        // Center positions should be in bounds
+        assert!(is_inbounds(3, 3, config.width));
+        assert!(is_inbounds(0, 0, config.width));
+        assert!(is_inbounds(6, 6, config.width));
+    }
+
+    #[test]
+    fn test_is_inbounds_edges() {
+        let config = create_test_config();
+        // Edge positions should be in bounds
+        assert!(is_inbounds(0, 0, config.width));
+        assert!(is_inbounds(0, 6, config.width));
+        assert!(is_inbounds(6, 0, config.width));
+        assert!(is_inbounds(6, 6, config.width));
+    }
+
+    #[test]
+    fn test_is_inbounds_negative() {
+        let config = create_test_config();
+        // Negative coordinates should be out of bounds
+        assert!(!is_inbounds(-1, 0, config.width));
+        assert!(!is_inbounds(0, -1, config.width));
+        assert!(!is_inbounds(-1, -1, config.width));
+    }
+
+    #[test]
+    fn test_is_inbounds_too_large() {
+        let config = create_test_config();
+        // Coordinates >= width should be out of bounds
+        assert!(!is_inbounds(7, 0, config.width));
+        assert!(!is_inbounds(0, 7, config.width));
+        assert!(!is_inbounds(7, 7, config.width));
+        assert!(!is_inbounds(100, 100, config.width));
+    }
+
+    #[test]
+    fn test_get_neighbors_center() {
+        let config = create_test_config();
+        let neighbors = get_neighbors(3, 3, &config);
+
+        // Center position should have 6 neighbors
+        assert_eq!(neighbors.len(), 6);
+
+        // Check all neighbors are in bounds
+        for (ny, nx) in neighbors.iter() {
+            assert!(is_inbounds(*ny as i32, *nx as i32, config.width));
+        }
+    }
+
+    #[test]
+    fn test_get_neighbors_corner() {
+        let config = create_test_config();
+        let neighbors = get_neighbors(0, 0, &config);
+
+        // Corner should have fewer neighbors (3 neighbors for hexagonal grid)
+        assert_eq!(neighbors.len(), 3, "Corner should have 3 neighbors");
+
+        // All should be in bounds
+        for (ny, nx) in neighbors.iter() {
+            assert!(is_inbounds(*ny as i32, *nx as i32, config.width));
+        }
+    }
+
+    #[test]
+    fn test_get_neighbors_edge() {
+        let config = create_test_config();
+        let neighbors = get_neighbors(0, 3, &config);
+
+        // Edge position should have 4-5 neighbors
+        assert!(neighbors.len() >= 4 && neighbors.len() <= 5);
+
+        // All should be in bounds
+        for (ny, nx) in neighbors.iter() {
+            assert!(is_inbounds(*ny as i32, *nx as i32, config.width));
+        }
+    }
+
+    #[test]
+    fn test_get_neighbors_no_duplicates() {
+        let config = create_test_config();
+        let neighbors = get_neighbors(3, 3, &config);
+
+        // Check no duplicates
+        for i in 0..neighbors.len() {
+            for j in (i+1)..neighbors.len() {
+                assert_ne!(neighbors[i], neighbors[j], "Neighbors should be unique");
+            }
+        }
+    }
+
+    #[test]
+    fn test_get_jump_destination_horizontal() {
+        // Jump horizontally: start (3,3), capture (3,4), land (3,5)
+        let (dst_y, dst_x) = get_jump_destination(3, 3, 3, 4);
+        assert_eq!((dst_y, dst_x), (3, 5));
+    }
+
+    #[test]
+    fn test_get_jump_destination_vertical() {
+        // Jump vertically: start (3,3), capture (4,3), land (5,3)
+        let (dst_y, dst_x) = get_jump_destination(3, 3, 4, 3);
+        assert_eq!((dst_y, dst_x), (5, 3));
+    }
+
+    #[test]
+    fn test_get_jump_destination_diagonal() {
+        // Jump diagonally: start (3,3), capture (2,2), land (1,1)
+        let (dst_y, dst_x) = get_jump_destination(3, 3, 2, 2);
+        assert_eq!((dst_y, dst_x), (1, 1));
+    }
+
+    #[test]
+    fn test_get_jump_destination_reverse() {
+        // Jump in reverse direction: start (5,5), capture (4,4), land (3,3)
+        let (dst_y, dst_x) = get_jump_destination(5, 5, 4, 4);
+        assert_eq!((dst_y, dst_x), (3, 3));
+    }
+
+    #[test]
+    fn test_get_marble_type_at_white() {
+        let config = create_test_config();
+        let (mut spatial_state, _) = create_empty_state(&config);
+
+        // Place white marble at (3,3)
+        spatial_state[[1, 3, 3]] = 1.0;
+
+        let marble_type = get_marble_type_at(&spatial_state.view(), 3, 3, &config);
+        assert_eq!(marble_type, 'w');
+    }
+
+    #[test]
+    fn test_get_marble_type_at_gray() {
+        let config = create_test_config();
+        let (mut spatial_state, _) = create_empty_state(&config);
+
+        // Place gray marble at (4,4)
+        spatial_state[[2, 4, 4]] = 1.0;
+
+        let marble_type = get_marble_type_at(&spatial_state.view(), 4, 4, &config);
+        assert_eq!(marble_type, 'g');
+    }
+
+    #[test]
+    fn test_get_marble_type_at_black() {
+        let config = create_test_config();
+        let (mut spatial_state, _) = create_empty_state(&config);
+
+        // Place black marble at (2,2)
+        spatial_state[[3, 2, 2]] = 1.0;
+
+        let marble_type = get_marble_type_at(&spatial_state.view(), 2, 2, &config);
+        assert_eq!(marble_type, 'b');
+    }
+
+    #[test]
+    fn test_get_marble_type_at_empty() {
+        let config = create_test_config();
+        let (spatial_state, _) = create_empty_state(&config);
+
+        // No marble at (3,3)
+        let marble_type = get_marble_type_at(&spatial_state.view(), 3, 3, &config);
+        assert_eq!(marble_type, '\0');
+    }
+
+    #[test]
+    fn test_get_supply_index_white() {
+        let config = create_test_config();
+        let idx = get_supply_index('w', &config);
+        assert_eq!(idx, config.supply_w);
+    }
+
+    #[test]
+    fn test_get_supply_index_gray() {
+        let config = create_test_config();
+        let idx = get_supply_index('g', &config);
+        assert_eq!(idx, config.supply_g);
+    }
+
+    #[test]
+    fn test_get_supply_index_black() {
+        let config = create_test_config();
+        let idx = get_supply_index('b', &config);
+        assert_eq!(idx, config.supply_b);
+    }
+
+    #[test]
+    fn test_get_captured_index_p1_white() {
+        let config = create_test_config();
+        let idx = get_captured_index(&config, config.player_1, 0); // marble_idx 0 = white
+        assert_eq!(idx, config.p1_cap_w);
+    }
+
+    #[test]
+    fn test_get_captured_index_p1_gray() {
+        let config = create_test_config();
+        let idx = get_captured_index(&config, config.player_1, 1); // marble_idx 1 = gray
+        assert_eq!(idx, config.p1_cap_g);
+    }
+
+    #[test]
+    fn test_get_captured_index_p1_black() {
+        let config = create_test_config();
+        let idx = get_captured_index(&config, config.player_1, 2); // marble_idx 2 = black
+        assert_eq!(idx, config.p1_cap_b);
+    }
+
+    #[test]
+    fn test_get_captured_index_p2_white() {
+        let config = create_test_config();
+        let idx = get_captured_index(&config, config.player_2, 0); // marble_idx 0 = white
+        assert_eq!(idx, config.p2_cap_w);
+    }
+
+    #[test]
+    fn test_get_captured_index_p2_gray() {
+        let config = create_test_config();
+        let idx = get_captured_index(&config, config.player_2, 1); // marble_idx 1 = gray
+        assert_eq!(idx, config.p2_cap_g);
+    }
+
+    #[test]
+    fn test_get_captured_index_p2_black() {
+        let config = create_test_config();
+        let idx = get_captured_index(&config, config.player_2, 2); // marble_idx 2 = black
+        assert_eq!(idx, config.p2_cap_b);
+    }
+
+    #[test]
+    fn test_get_regions_single_region() {
+        let config = create_test_config();
+        let (mut spatial_state, _) = create_empty_state(&config);
+
+        // Create a small connected region: 3x3 grid
+        for y in 2..=4 {
+            for x in 2..=4 {
+                spatial_state[[config.ring_layer, y, x]] = 1.0;
+            }
+        }
+
+        let regions = get_regions(&spatial_state.view(), &config);
+
+        // Should have exactly one region
+        assert_eq!(regions.len(), 1);
+
+        // Region should have 9 rings
+        assert_eq!(regions[0].len(), 9);
+    }
+
+    #[test]
+    fn test_get_regions_two_disconnected() {
+        let config = create_test_config();
+        let (mut spatial_state, _) = create_empty_state(&config);
+
+        // Create two disconnected regions
+        // Region 1: (0,0), (0,1)
+        spatial_state[[config.ring_layer, 0, 0]] = 1.0;
+        spatial_state[[config.ring_layer, 0, 1]] = 1.0;
+
+        // Region 2: (5,5), (5,6)
+        spatial_state[[config.ring_layer, 5, 5]] = 1.0;
+        spatial_state[[config.ring_layer, 5, 6]] = 1.0;
+
+        let regions = get_regions(&spatial_state.view(), &config);
+
+        // Should have exactly two regions
+        assert_eq!(regions.len(), 2);
+
+        // Each region should have 2 rings
+        assert_eq!(regions[0].len(), 2);
+        assert_eq!(regions[1].len(), 2);
+    }
+
+    #[test]
+    fn test_get_regions_empty_board() {
+        let config = create_test_config();
+        let (spatial_state, _) = create_empty_state(&config);
+
+        // No rings placed
+        let regions = get_regions(&spatial_state.view(), &config);
+
+        // Should have no regions
+        assert_eq!(regions.len(), 0);
+    }
+
+    #[test]
+    fn test_get_regions_full_board() {
+        let config = create_test_config();
+        let (mut spatial_state, _) = create_empty_state(&config);
+
+        // Fill entire board with rings
+        for y in 0..config.width {
+            for x in 0..config.width {
+                spatial_state[[config.ring_layer, y, x]] = 1.0;
+            }
+        }
+
+        let regions = get_regions(&spatial_state.view(), &config);
+
+        // Should have exactly one region (entire board)
+        assert_eq!(regions.len(), 1);
+
+        // Region should have width^2 rings
+        assert_eq!(regions[0].len(), config.width * config.width);
+    }
 }
