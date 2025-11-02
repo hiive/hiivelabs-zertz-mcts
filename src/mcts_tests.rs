@@ -20,36 +20,32 @@ mod tests {
         let action2 = ZertzAction::Pass;
         assert_eq!(action1, action2);
 
+        let config = BoardConfig::standard(37, 1).unwrap();
+        let width = config.width;
+
+        // Test Placement actions with flat coordinates
         let placement1 = ZertzAction::Placement {
             marble_type: 0,
-            dst_y: 3,
-            dst_x: 4,
-            remove_y: Some(1),
-            remove_x: Some(2),
+            dst_flat: 3 * width + 4,  // (y=3, x=4) -> flat
+            remove_flat: Some(1 * width + 2),  // (y=1, x=2) -> flat
         };
         let placement2 = ZertzAction::Placement {
             marble_type: 0,
-            dst_y: 3,
-            dst_x: 4,
-            remove_y: Some(1),
-            remove_x: Some(2),
+            dst_flat: 3 * width + 4,
+            remove_flat: Some(1 * width + 2),
         };
         assert_eq!(placement1, placement2);
 
-        let config = BoardConfig::standard(37, 1).unwrap();
+        // Test Capture actions with flat coordinates
         let (dest_y, dest_x) = config.dest_from_direction(2, 3, 1);
 
         let capture1 = ZertzAction::Capture {
-            start_y: 2,
-            start_x: 3,
-            dest_y,
-            dest_x,
+            start_flat: 2 * width + 3,
+            dst_flat: dest_y * width + dest_x,
         };
         let capture2 = ZertzAction::Capture {
-            start_y: 2,
-            start_x: 3,
-            dest_y,
-            dest_x,
+            start_flat: 2 * width + 3,
+            dst_flat: dest_y * width + dest_x,
         };
         assert_eq!(capture1, capture2);
 

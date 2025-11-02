@@ -119,33 +119,26 @@ impl PyZertzMCTS {
             .map(|(action, score)| match action {
                 ZertzAction::Placement {
                     marble_type,
-                    dst_y,
-                    dst_x,
-                    remove_y,
-                    remove_x,
+                    dst_flat,
+                    remove_flat,
                 } => {
-                    let dst_flat = dst_y * width + dst_x;
-                    let remove_flat = match (remove_y, remove_x) {
-                        (Some(ry), Some(rx)) => ry * width + rx,
+                    let rem_flat = match remove_flat {
+                        Some(r) => *r,
                         _ => width * width,
                     };
                     (
                         "PUT".to_string(),
-                        Some((*marble_type, dst_flat, remove_flat)),
+                        Some((*marble_type, *dst_flat, rem_flat)),
                         *score,
                     )
                 }
                 ZertzAction::Capture {
-                    start_y,
-                    start_x,
-                    dest_y,
-                    dest_x,
+                    start_flat,
+                    dst_flat,
                 } => {
-                    let src_flat = start_y * width + start_x;
-                    let dst_flat = dest_y * width + dest_x;
                     (
                     "CAP".to_string(),
-                    Some((0, src_flat, dst_flat)),  // Note: only 3 values fit in tuple
+                    Some((0, *start_flat, *dst_flat)),  // Note: only 3 values fit in tuple
                     *score,
                     )
                 }
@@ -185,7 +178,7 @@ impl PyZertzMCTS {
         seed: Option<u64>,
         progress_callback: Option<Py<PyAny>>,
         progress_interval_ms: u64,
-    ) -> PyResult<(String, Option<(Option<usize>, (usize, usize), (usize, usize))>)> {
+    ) -> PyResult<(String, Option<(Option<usize>, usize, usize)>)> {
         // Set seed if provided
         if let Some(s) = seed {
             self.search.set_seed(Some(s));
@@ -316,7 +309,7 @@ impl PyZertzMCTS {
         seed: Option<u64>,
         progress_callback: Option<Py<PyAny>>,
         progress_interval_ms: u64,
-    ) -> PyResult<(String, Option<(Option<usize>, (usize, usize), (usize, usize))>)> {
+    ) -> PyResult<(String, Option<(Option<usize>, usize, usize)>)> {
         // Set seed if provided
         if let Some(s) = seed {
             self.search.set_seed(Some(s));
@@ -437,7 +430,7 @@ impl PyZertzMCTS {
     fn select_best_action(
         &self,
         root: &MCTSNode<ZertzGame>,
-    ) -> PyResult<(String, Option<(Option<usize>, (usize, usize), (usize, usize))>)> {
+    ) -> PyResult<(String, Option<(Option<usize>, usize, usize)>)> {
         let children = root.children.read().unwrap();
 
         if children.is_empty() {

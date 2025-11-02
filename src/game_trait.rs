@@ -15,6 +15,7 @@
 use ndarray::{Array1, Array3, ArrayView1, ArrayView3, ArrayViewMut1, ArrayViewMut3};
 use std::fmt::Debug;
 use std::hash::Hash;
+use crate::games::BoardConfig;
 
 /// Core trait that all MCTS-compatible games must implement.
 ///
@@ -43,7 +44,7 @@ use std::hash::Hash;
 ///     }
 ///
 ///     fn apply_action(&self, spatial: &mut ArrayViewMut3<f32>, global: &mut ArrayViewMut1<f32>, action: &MyAction) {
-///         // Modify state according to action
+///         // Modify state according to action (use self.config if needed)
 ///     }
 ///
 ///     fn is_terminal(&self, spatial: &ArrayView3<f32>, global: &ArrayView1<f32>) -> bool {
