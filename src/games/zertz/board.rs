@@ -178,6 +178,18 @@ impl BoardConfig {
       (flat / self.width, flat % self.width)
     }
 
+    /// Convert optional flat coordinate to optional (y, x) coordinates
+    #[inline]
+    pub fn flat_to_optional_yx(&self, flat: Option<usize>) -> (Option<usize>, Option<usize>) {
+        match flat {
+            Some(f) => {
+                let (y, x) = self.flat_to_yx(f);
+                (Some(y), Some(x))
+            }
+            None => (None, None)
+        }
+    }
+
     #[inline]
     pub fn yx_to_flat(&self, y: usize, x: usize) -> usize {
       y * self.width + x

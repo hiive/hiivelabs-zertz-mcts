@@ -357,6 +357,48 @@ class ZertzMCTS:
         ...
 
 
+class ZertzActionResult:
+    """
+    Result of applying a ZertzAction to the game state.
+
+    Contains information about what happened when an action was applied,
+    such as isolation captures for placements or captured marbles for captures.
+    """
+
+    def result_type(self) -> str:
+        """
+        Get the result type as a string.
+
+        Returns:
+            One of: "Placement", "Capture", "Pass"
+        """
+        ...
+
+    def isolation_captures(self) -> Optional[List[Tuple[int, int, int]]]:
+        """
+        Get isolation captures (only for Placement results).
+
+        Returns:
+            List of (marble_layer, y, x) tuples for marbles captured due to isolation,
+            or None if not a Placement result
+        """
+        ...
+
+    def captured_marble(self) -> Optional[Tuple[int, int, int]]:
+        """
+        Get captured marble (only for Capture results).
+
+        Returns:
+            Tuple of (marble_type, y, x) for the captured marble,
+            or None if not a Capture result
+        """
+        ...
+
+    def __repr__(self) -> str:
+        """String representation of the result."""
+        ...
+
+
 class ZertzAction:
     """
     Zertz action representation for creating and manipulating game actions.
@@ -787,6 +829,33 @@ def get_bounding_box(
         >>> if bbox:
         ...     min_y, max_y, min_x, max_x = bbox
         ...     print(f"Rings span from ({min_y},{min_x}) to ({max_y},{max_x})")
+    """
+    ...
+
+
+def generate_standard_layout_mask(rings: int, width: int) -> npt.NDArray[np.bool_]:
+    """
+    Generate standard hexagonal layout mask for a given board size.
+
+    Creates a 2D boolean mask indicating which positions are valid on a standard
+    Zertz hexagonal board. This is used for initializing boards and validating moves.
+
+    Args:
+        rings: Number of rings on the board (37, 48, or 61)
+        width: Board grid width (typically 7, 8, or 9)
+
+    Returns:
+        2D boolean array of shape (width, width) where True indicates a valid position
+
+    Raises:
+        ValueError: If rings/width combination is invalid
+
+    Example:
+        >>> layout = generate_standard_layout_mask(37, 7)
+        >>> layout.shape
+        (7, 7)
+        >>> layout[3, 3]  # Center position is always valid
+        True
     """
     ...
 
@@ -1328,26 +1397,28 @@ def get_valid_actions(
 
 
 def apply_action(
+    config: BoardConfig,
     spatial_state: npt.NDArray[np.float32],
     global_state: npt.NDArray[np.float32],
-    action: ZertzAction,
-    config: BoardConfig
-) -> Optional[List[Tuple[int, int, int]]]:
+    action: ZertzAction
+) -> ZertzActionResult:
     """
     Apply a ZertzAction to state IN-PLACE.
 
     Convenience function that dispatches to the appropriate apply_* function
-    based on action type.
+    based on action type and returns a structured result.
 
     Args:
+        config: BoardConfig
         spatial_state: (L, H, W) spatial_state state array (MUTATED IN-PLACE)
         global_state: (10,) global_state state array (MUTATED IN-PLACE)
         action: ZertzAction to apply
-        config: BoardConfig
 
     Returns:
-        For Placement actions: List of captured marble positions from isolation as (marble_layer, y, x) tuples
-        For Capture/Pass actions: None
+        ZertzActionResult containing:
+        - For Placement: isolation captures as (marble_layer, y, x) tuples
+        - For Capture: captured marble as (marble_type, y, x)
+        - For Pass: no additional data
     """
     ...
 

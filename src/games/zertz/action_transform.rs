@@ -95,18 +95,14 @@ fn translate_action(
                 "translated position not on layout"
             );
 
-            let new_remove_flat = match remove_flat {
-                Some(rf) => {
-                    let ry = rf / config.width;
-                    let rx = rf % config.width;
-                    let ny = (ry as i32 + dy) as usize;
-                    let nx = (rx as i32 + dx) as usize;
-                    assert!(ny < config.width && nx < config.width);
-                    assert!(layout[ny][nx]);
-                    Some(ny * config.width + nx)
-                }
-                None => None,
-            };
+            let new_remove_flat = remove_flat.map(|rf| {
+                let (ry, rx) = config.flat_to_yx(rf);
+                let ny = (ry as i32 + dy) as usize;
+                let nx = (rx as i32 + dx) as usize;
+                assert!(ny < config.width && nx < config.width);
+                assert!(layout[ny][nx]);
+                ny * config.width + nx
+            });
 
             ZertzAction::Placement {
                 marble_type: *marble_type,
@@ -169,24 +165,20 @@ fn apply_orientation(
             )
             .expect("destination outside board under transform");
 
-            let new_remove_flat = match remove_flat {
-                Some(rf) => {
-                    let ry = rf / config.width;
-                    let rx = rf % config.width;
-                    let (ny, nx) = transform_coordinate(
-                        ry as i32,
-                        rx as i32,
-                        rot60_k,
-                        mirror,
-                        mirror_first,
-                        yx_to_ax,
-                        ax_to_yx,
-                    )
-                    .expect("removal outside board under transform");
-                    Some(ny as usize * config.width + nx as usize)
-                }
-                None => None,
-            };
+            let new_remove_flat = remove_flat.map(|rf| {
+                let (ry, rx) = config.flat_to_yx(rf);
+                let (ny, nx) = transform_coordinate(
+                    ry as i32,
+                    rx as i32,
+                    rot60_k,
+                    mirror,
+                    mirror_first,
+                    yx_to_ax,
+                    ax_to_yx,
+                )
+                .expect("removal outside board under transform");
+                ny as usize * config.width + nx as usize
+            });
 
             ZertzAction::Placement {
                 marble_type: *marble_type,

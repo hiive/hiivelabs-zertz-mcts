@@ -535,26 +535,21 @@ pub fn get_valid_actions<'py>(
 }
 
 #[pyfunction]
+// #[pyo3(signature = (config, spatial_state, global_state, action))]
 pub fn apply_action<'py>(
+    config: &BoardConfig,
     spatial_state: &Bound<'py, PyArray3<f32>>,
     global_state: &Bound<'py, PyArray1<f32>>,
     action: &PyZertzAction,
-    config: &BoardConfig,
-) -> PyResult<Option<Vec<(usize, usize, usize)>>>
+) -> PyResult<super::PyZertzActionResult>
 {
-    match &action.inner {
+    let result = match &action.inner {
         ZertzAction::Placement { marble_type, dst_flat, remove_flat} => {
-            let captured_marbles = unsafe {
+            let isolation_captures = unsafe {
                 let mut spatial_state_arr = spatial_state.as_array_mut();
                 let mut global_state_arr = global_state.as_array_mut();
                 let (dst_y, dst_x) = config.flat_to_yx(*dst_flat);
-                let (rem_y, rem_x) = match remove_flat {
-                    Some(rem_flat) => {
-                        let (ry, rx) = config.flat_to_yx(*rem_flat);
-                        (Some(ry), Some(rx))
-                    },
-                    _ => (None, None)
-                };
+                let (rem_y, rem_x) = config.flat_to_optional_yx(*remove_flat);
                 logic::apply_placement(
                     &mut spatial_state_arr,
                     &mut global_state_arr,
@@ -566,15 +561,53 @@ pub fn apply_action<'py>(
                     config,
                 )
             };
-            Ok(Some(captured_marbles))
+            super::ZertzActionResult::placement(isolation_captures)
         }
         ZertzAction::Capture { src_flat, dst_flat } => {
-            Ok(None)
+            let (src_y, src_x) = config.flat_to_yx(*src_flat);
+            let (dst_y, dst_x) = config.flat_to_yx(*dst_flat);
+
+            // Calculate the captured marble position (midpoint between src and dst)
+            let cap_y = (src_y + dst_y) / 2;
+            let cap_x = (src_x + dst_x) / 2;
+
+            // Get marble type before applying the capture
+            // Layers: 0=ring, 1=white, 2=gray, 3=black
+            // Find which layer (1-3) has a marble, then map to type (0-2)
+            let marble_type = unsafe {
+                let spatial_state_arr = spatial_state.as_array();
+                (1..=3)
+                    .position(|layer| spatial_state_arr[[layer, cap_y, cap_x]] > 0.5)
+                    .ok_or_else(|| {
+                        pyo3::exceptions::PyValueError::new_err(
+                            format!("No marble found at capture position ({}, {})", cap_y, cap_x)
+                        )
+                    })?
+            };
+
+            unsafe {
+                let mut spatial_state_arr = spatial_state.as_array_mut();
+                let mut global_state_arr = global_state.as_array_mut();
+
+                logic::apply_capture(
+                    &mut spatial_state_arr,
+                    &mut global_state_arr,
+                    src_y,
+                    src_x,
+                    dst_y,
+                    dst_x,
+                    config,
+                );
+            }
+
+            super::ZertzActionResult::capture(marble_type, cap_y, cap_x)
         }
         ZertzAction::Pass => {
-            Ok(None)
+            super::ZertzActionResult::pass()
         }
-    }
+    };
+
+    Ok(super::PyZertzActionResult { inner: result })
 }
 
 /// Apply a placement action (mutates arrays in-place)
