@@ -950,6 +950,7 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(get_placement_moves, m)?)?;
     m.add_function(wrap_pyfunction!(get_capture_moves, m)?)?;
     m.add_function(wrap_pyfunction!(get_valid_actions, m)?)?;
+    m.add_function(wrap_pyfunction!(apply_action, m)?)?;
     m.add_function(wrap_pyfunction!(apply_placement_action, m)?)?;
     m.add_function(wrap_pyfunction!(apply_capture_action, m)?)?;
 
