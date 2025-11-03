@@ -102,7 +102,7 @@ impl ZertzAction {
         }
     }
 
-    pub fn to_placement_action(&self, config: &BoardConfig) -> Option<(String, Vec<usize>)> {
+    pub fn to_placement_action(&self, config: &BoardConfig) -> Option<(String, Vec<Option<usize>>)> {
         // Returns ((dst_y, dst_x), optional (rem_y, rem_x))
         match self {
             ZertzAction::Placement {
@@ -112,12 +112,17 @@ impl ZertzAction {
             } => {
                 let (dst_y, dst_x) = config.flat_to_yx(*dst_flat);
                 let (rem_y, rem_x) = match remove_flat {
-                    Some(r_f) => config.flat_to_yx(*r_f),
-                    _ => (dst_y, dst_x)
+                    Some(r_f) => {
+                        let (ry, rx) = config.flat_to_yx(*r_f);
+                        (Some(ry), Some(rx))
+                    },
+                    _ => (None, None)
                 };
                 // Ok(("PUT".to_string(), vec![marble_type, dst_flat, rem_flat]))
 
-                Some(("PUT".to_string(), vec![*marble_type, dst_y, dst_x, rem_y, rem_x]))
+                Some(("PUT".to_string(), vec![Some(*marble_type),
+                                              Some(dst_y), Some(dst_x),
+                                              rem_y, rem_x]))
             }
             _ => {
                 None

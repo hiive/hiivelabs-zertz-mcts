@@ -738,7 +738,7 @@ pub fn transform_action(
     action_data: &Bound<'_, pyo3::types::PyTuple>,
     transform: &str,
     config: &BoardConfig,
-) -> PyResult<(String, Vec<usize>)> {
+) -> PyResult<(String, Vec<Option<usize>>)> {
     let width = config.width;
 
     // Convert Python tuple format to ZertzAction
@@ -828,7 +828,7 @@ pub fn transform_action(
             dst_flat,
             remove_flat,
         } => {
-            match(transformed.to_placement_action(config))
+            match transformed.to_placement_action(config)
             {
                 Some(p) => Ok(p),
                 _ => Err(pyo3::exceptions::PyValueError::new_err(
@@ -865,7 +865,7 @@ pub fn transform_action(
                     )
                 })?;
 
-            Ok(("CAP".to_string(), vec![direction_idx, start_y, start_x]))
+            Ok(("CAP".to_string(), vec![Some(direction_idx), Some(start_y), Some(start_x)]))
         }
         ZertzAction::Pass => Ok(("PASS".to_string(), vec![])),
     }

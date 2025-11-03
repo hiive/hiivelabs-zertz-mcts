@@ -17,6 +17,11 @@
 //! - Win: Three in a row (horizontal, vertical, or diagonal)
 //! - Draw: Board full, with no winner
 
+mod canonicalization;
+
+#[cfg(test)]
+mod canonicalization_tests;
+
 use crate::game_trait::MCTSGame;
 use ndarray::{Array1, Array3, ArrayView1, ArrayView3, ArrayViewMut1, ArrayViewMut3};
 use crate::games::BoardConfig;
@@ -235,10 +240,9 @@ impl MCTSGame for TicTacToeGame {
         spatial_state: &ArrayView3<f32>,
         global_state: &ArrayView1<f32>,
     ) -> (Array3<f32>, Array1<f32>) {
-        // Tic-Tac-Toe has 8-fold symmetry (4 rotations × 2 reflections)
-        // For simplicity, we'll just return the state as-is
-        // A full implementation would find the lexicographically minimal rotation/reflection
-        (spatial_state.to_owned(), global_state.to_owned())
+        // Use D4 dihedral group symmetries to find canonical form
+        let (canonical_spatial, _transform_idx) = canonicalization::canonicalize_state(spatial_state);
+        (canonical_spatial, global_state.to_owned())
     }
 
     fn hash_state(

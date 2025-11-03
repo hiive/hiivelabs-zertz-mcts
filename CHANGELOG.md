@@ -10,6 +10,24 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **TicTacToe canonicalization** - Full D4 dihedral group implementation for 3×3 board symmetries
+  - Implements 8-fold symmetry reduction (4 rotations + 4 reflections)
+  - `canonicalize_state()` finds lexicographically minimal representation among all transformations
+  - Significant transposition table efficiency improvement (eliminates ~87.5% redundant positions)
+  - Rust module: `src/games/tictactoe/canonicalization.rs` (240 lines)
+  - Tests: `src/games/tictactoe/canonicalization_tests.rs` (27 comprehensive tests)
+  - Covers: corner/edge equivalence, rotation/reflection, L-shapes, win patterns, idempotence
+  - TicTacToe now serves as complete reference implementation for canonicalization
+
+- **ZertzAction Python bindings** - Zertz action type now accessible from Python
+  - `ZertzAction.placement(config, marble_type, dst_y, dst_x, remove_y, remove_x)` - Create placement action
+  - `ZertzAction.capture(config, start_y, start_x, dest_y, dest_x)` - Create capture action
+  - `ZertzAction.pass()` - Create pass action
+  - `action.to_tuple(width)` - Convert to tuple format for serialization
+  - `action.action_type()` - Get action type as string ("Placement", "Capture", "Pass")
+  - Actions are hashable, comparable, and have readable `__repr__`
+  - Python class name: `ZertzAction` (Rust: `PyZertzAction`)
+
 - **Algebraic notation support for Zertz** - Convert between array coordinates and human-readable notation
   - `coordinate_to_algebraic(y, x, config)` - Convert (y, x) to notation like "D4"
   - `algebraic_to_coordinate(notation, config)` - Parse "D4" to (y, x) coordinates
