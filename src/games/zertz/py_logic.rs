@@ -314,6 +314,33 @@ pub fn get_bounding_box(
     canonicalization::bounding_box(&spatial_state, config)
 }
 
+/// Get all valid translation offsets for the current board state.
+///
+/// Tests each potential translation by attempting to apply it, only including
+/// translations that successfully keep all rings within valid board positions.
+///
+/// Args:
+///     spatial_state: 3D array of shape (L, H, W) containing board state
+///     config: BoardConfig specifying board size
+///
+/// Returns:
+///     List of (name, dy, dx) tuples for valid translations
+///
+/// Example:
+///     >>> config = BoardConfig.standard_config(37)
+///     >>> state = np.zeros((layers, 7, 7))
+///     >>> translations = get_translations(state, config)
+///     >>> translations[0]
+///     ('T0,0', 0, 0)
+#[pyfunction]
+pub fn get_translations(
+    spatial_state: PyReadonlyArray3<f32>,
+    config: &BoardConfig,
+) -> Vec<(String, i32, i32)> {
+    let spatial_state = spatial_state.as_array();
+    canonicalization::get_translations(&spatial_state, config)
+}
+
 /// Compute canonical key for lexicographic comparison
 ///
 /// Returns a byte vector representing the board state over valid positions only.
@@ -849,6 +876,7 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(transform_state, m)?)?;
     m.add_function(wrap_pyfunction!(translate_state, m)?)?;
     m.add_function(wrap_pyfunction!(get_bounding_box, m)?)?;
+    m.add_function(wrap_pyfunction!(get_translations, m)?)?;
     m.add_function(wrap_pyfunction!(canonical_key, m)?)?;
     m.add_function(wrap_pyfunction!(inverse_transform_name, m)?)?;
     m.add_function(wrap_pyfunction!(generate_standard_layout_mask, m)?)?;

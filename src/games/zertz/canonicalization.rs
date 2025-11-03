@@ -239,7 +239,19 @@ pub fn bounding_box(
     }
 }
 
-fn get_translations(spatial_state: &ArrayView3<f32>, config: &BoardConfig) -> Vec<(String, i32, i32)> {
+/// Get all valid translation offsets for the current board state.
+///
+/// Tests each potential translation by attempting to apply it, only including
+/// translations that successfully keep all rings within valid board positions.
+/// This matches the Python implementation's validation behavior.
+///
+/// # Arguments
+/// * `spatial_state` - The board state to find translations for
+/// * `config` - Board configuration
+///
+/// # Returns
+/// Vector of (name, dy, dx) tuples for all valid translations
+pub fn get_translations(spatial_state: &ArrayView3<f32>, config: &BoardConfig) -> Vec<(String, i32, i32)> {
     if let Some((min_y, max_y, min_x, max_x)) = bounding_box(spatial_state, config) {
         let mut translations = Vec::new();
         let width = config.width as i32;
@@ -247,9 +259,31 @@ fn get_translations(spatial_state: &ArrayView3<f32>, config: &BoardConfig) -> Ve
         let max_y = max_y as i32;
         let min_x = min_x as i32;
         let max_x = max_x as i32;
+
+        // Build coordinate maps once for validation
+        let layout = build_layout_mask(config);
+        let (yx_to_ax, ax_to_yx) = build_axial_maps(config, &layout);
+
         for dy in -min_y..(width - max_y) {
             for dx in -min_x..(width - max_x) {
-                translations.push((format!("T{},{}", dy, dx), dy, dx));
+                // Test if this translation is valid by attempting to apply it
+                let translated = transform_state_with_maps(
+                    spatial_state,
+                    config,
+                    0,      // rot60_k - no rotation
+                    false,  // mirror
+                    false,  // mirror_first
+                    dy,
+                    dx,
+                    true,   // translate_first - forward transform
+                    &yx_to_ax,
+                    &ax_to_yx,
+                );
+
+                // Only include translations that succeed
+                if translated.is_some() {
+                    translations.push((format!("T{},{}", dy, dx), dy, dx));
+                }
             }
         }
         translations
@@ -257,8 +291,6 @@ fn get_translations(spatial_state: &ArrayView3<f32>, config: &BoardConfig) -> Ve
         vec![("T0,0".to_string(), 0, 0)]
     }
 }
-
-// translate_state has been removed - use transform_state with dy, dx parameters instead
 
 /// Apply translation transform to coordinates
 fn apply_translation(
@@ -301,7 +333,11 @@ fn apply_rotation_mirror(
     transform_coordinate(y, x, rot60_k, mirror, mirror_first, yx_to_ax, ax_to_yx)
 }
 
-fn transform_state_cached(
+/// Internal implementation of transform_state that accepts pre-computed coordinate maps.
+///
+/// This version is more efficient when transforming multiple states with the same
+/// board configuration, as the coordinate maps can be built once and reused.
+fn transform_state_with_maps(
     spatial_state: &ArrayView3<f32>,
     config: &BoardConfig,
     rot60_k: i32,
@@ -426,7 +462,7 @@ pub fn canonicalize_internal(
     };
 
     for (trans_name, dy, dx) in translations.iter() {
-        let translated_state = if let Some(state) = transform_state_cached(
+        let translated_state = if let Some(state) = transform_state_with_maps(
             spatial_state,
             config,
             0,  // rot60_k - no rotation for pure translation
@@ -444,7 +480,7 @@ pub fn canonicalize_internal(
         };
 
         for (sym_name, rot60_k, mirror, mirror_first) in sym_ops.iter() {
-            let transformed = transform_state_cached(
+            let transformed = transform_state_with_maps(
                 &translated_state.view(),
                 config,
                 *rot60_k,
@@ -595,7 +631,6 @@ pub fn generate_standard_layout_mask(rings: usize, width: usize) -> Result<Vec<V
     Ok(layout)
 }
 
-#[allow(dead_code)]
 pub fn build_layout_mask(config: &BoardConfig) -> Vec<Vec<bool>> {
     generate_standard_layout_mask(config.rings, config.width)
         .expect("BoardConfig should always have valid rings/width")
@@ -677,7 +712,6 @@ pub fn build_axial_maps(
 /// **Formula**: One 60° rotation transforms (q, r) → (-r, q+r)
 ///
 /// Applied k times for rotation by k × 60°.
-#[allow(dead_code)]
 pub fn ax_rot60(mut q: i32, mut r: i32, k: i32) -> (i32, i32) {
     let mut k = k.rem_euclid(6); // Normalize to 0-5
     while k > 0 {
@@ -696,12 +730,10 @@ pub fn ax_rot60(mut q: i32, mut r: i32, k: i32) -> (i32, i32) {
 /// **Formula**: (q, r) → (q, -q-r)
 ///
 /// This is one of the 6 reflection symmetries in the D6 group.
-#[allow(dead_code)]
 pub fn ax_mirror_q_axis(q: i32, r: i32) -> (i32, i32) {
     (q, -q - r)
 }
 
-#[allow(dead_code)]
 pub fn transform_coordinate(
     y: i32,
     x: i32,
@@ -776,7 +808,6 @@ pub fn dir_index_map(
     map
 }
 
-#[allow(dead_code)]
 pub fn parse_transform(transform: &str) -> Vec<String> {
     transform
         .split('_')
@@ -785,7 +816,6 @@ pub fn parse_transform(transform: &str) -> Vec<String> {
         .collect()
 }
 
-#[allow(dead_code)]
 pub fn parse_rot_component(component: &str) -> (i32, bool, bool) {
     if component.ends_with('M') && !component.starts_with("MR") {
         let angle = component[1..component.len() - 1]
@@ -806,7 +836,11 @@ pub fn parse_rot_component(component: &str) -> (i32, bool, bool) {
 // NOTE: Action transformation has been moved to game-specific modules.
 // For Zertz action transformation, see src/games/zertz/action_transform.rs
 
-#[allow(dead_code)]
+/// Transform board state using rotation, mirror, and/or translation.
+///
+/// This is the public convenience API that builds coordinate maps internally.
+/// For batch transformations, consider using `transform_state_with_maps` directly
+/// with pre-computed maps for better performance.
 pub fn transform_state(
     spatial_state: &ArrayView3<f32>,
     config: &BoardConfig,
@@ -820,7 +854,7 @@ pub fn transform_state(
     let layout = generate_standard_layout_mask(config.rings, config.width)
         .expect("BoardConfig should always have valid rings/width");
     let (yx_to_ax, ax_to_yx) = build_axial_maps(config, &layout);
-    transform_state_cached(
+    transform_state_with_maps(
         spatial_state,
         config,
         rot60_k,

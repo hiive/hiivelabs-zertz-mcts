@@ -42,7 +42,7 @@ mod tests {
     }
 
     #[test]
-    fn test_algebraic_to_coordinate_7x7() {
+    fn test_algebraic_to_coordinate_37() {
         assert_eq!(algebraic_to_coordinate("A1", 7).unwrap(), (3, 0));
         assert_eq!(algebraic_to_coordinate("D7", 7).unwrap(), (0, 3));
         assert_eq!(algebraic_to_coordinate("D4", 7).unwrap(), (3, 3));
@@ -58,14 +58,14 @@ mod tests {
     }
 
     #[test]
-    fn test_algebraic_to_coordinate_8x8() {
+    fn test_algebraic_to_coordinate_48() {
         assert_eq!(algebraic_to_coordinate("A1", 8).unwrap(), (4, 0));
         assert_eq!(algebraic_to_coordinate("D8", 8).unwrap(), (0, 3));
         assert_eq!(algebraic_to_coordinate("D4", 8).unwrap(), (4, 3));
     }
 
     #[test]
-    fn test_algebraic_to_coordinate_9x9() {
+    fn test_algebraic_to_coordinate_61() {
         assert_eq!(algebraic_to_coordinate("A1", 9).unwrap(), (4, 0));
         assert_eq!(algebraic_to_coordinate("E9", 9).unwrap(), (0, 4));
         assert_eq!(algebraic_to_coordinate("E5", 9).unwrap(), (4, 4));
