@@ -8,7 +8,7 @@ use canonicalization::TransformFlags as RustTransformFlags;
 use numpy::{PyArray1, PyArray3, PyArray5, PyArrayMethods, PyReadonlyArray1, PyReadonlyArray3};
 use pyo3::prelude::*;
 use std::collections::HashMap;
-
+use crate::games::PyZertzAction;
 // ============================================================================
 // Axial Coordinate Transformations
 // ============================================================================
@@ -532,6 +532,49 @@ pub fn get_valid_actions<'py>(
     let global_state = global_state.as_array();
     let (placement, capture) = logic::get_valid_actions(&spatial_state, &global_state, config);
     (PyArray5::from_array(py, &placement).into(), PyArray3::from_array(py, &capture).into())
+}
+
+#[pyfunction]
+pub fn apply_action<'py>(
+    spatial_state: &Bound<'py, PyArray3<f32>>,
+    global_state: &Bound<'py, PyArray1<f32>>,
+    action: &PyZertzAction,
+    config: &BoardConfig,
+) -> PyResult<Option<Vec<(usize, usize, usize)>>>
+{
+    match &action.inner {
+        ZertzAction::Placement { marble_type, dst_flat, remove_flat} => {
+            let captured_marbles = unsafe {
+                let mut spatial_state_arr = spatial_state.as_array_mut();
+                let mut global_state_arr = global_state.as_array_mut();
+                let (dst_y, dst_x) = config.flat_to_yx(*dst_flat);
+                let (rem_y, rem_x) = match remove_flat {
+                    Some(rem_flat) => {
+                        let (ry, rx) = config.flat_to_yx(*rem_flat);
+                        (Some(ry), Some(rx))
+                    },
+                    _ => (None, None)
+                };
+                logic::apply_placement(
+                    &mut spatial_state_arr,
+                    &mut global_state_arr,
+                    *marble_type,
+                    dst_y,
+                    dst_x,
+                    rem_y,
+                    rem_x,
+                    config,
+                )
+            };
+            Ok(Some(captured_marbles))
+        }
+        ZertzAction::Capture { src_flat, dst_flat } => {
+            Ok(None)
+        }
+        ZertzAction::Pass => {
+            Ok(None)
+        }
+    }
 }
 
 /// Apply a placement action (mutates arrays in-place)

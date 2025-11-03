@@ -1327,6 +1327,31 @@ def get_valid_actions(
     ...
 
 
+def apply_action(
+    spatial_state: npt.NDArray[np.float32],
+    global_state: npt.NDArray[np.float32],
+    action: ZertzAction,
+    config: BoardConfig
+) -> Optional[List[Tuple[int, int, int]]]:
+    """
+    Apply a ZertzAction to state IN-PLACE.
+
+    Convenience function that dispatches to the appropriate apply_* function
+    based on action type.
+
+    Args:
+        spatial_state: (L, H, W) spatial_state state array (MUTATED IN-PLACE)
+        global_state: (10,) global_state state array (MUTATED IN-PLACE)
+        action: ZertzAction to apply
+        config: BoardConfig
+
+    Returns:
+        For Placement actions: List of captured marble positions from isolation as (marble_layer, y, x) tuples
+        For Capture/Pass actions: None
+    """
+    ...
+
+
 def apply_placement_action(
     spatial_state: npt.NDArray[np.float32],
     global_state: npt.NDArray[np.float32],
