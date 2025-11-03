@@ -1,4 +1,4 @@
-use numpy::{PyArray1, PyArray3, PyArrayMethods, PyReadonlyArray1, PyReadonlyArray3};
+use numpy::{PyArray1, PyArray3, PyArray5, PyArrayMethods, PyReadonlyArray1, PyReadonlyArray3};
 use pyo3::prelude::*;
 use std::collections::HashMap;
 
@@ -156,6 +156,32 @@ impl BoardConfig {
             marble_to_layer,
         })
     }
+
+    /// Helper: compute destination coordinates from start position and direction
+    ///
+    /// Useful for tests and for converting direction-based capture notation
+    /// to coordinate-based notation.
+    pub fn dest_from_direction(
+        &self,
+        start_y: usize,
+        start_x: usize,
+        direction: usize,
+    ) -> (usize, usize) {
+        let (dy, dx) = self.directions[direction];
+        let dest_y = ((start_y as i32) + 2 * dy) as usize;
+        let dest_x = ((start_x as i32) + 2 * dx) as usize;
+        (dest_y, dest_x)
+    }
+
+    #[inline]
+    pub fn flat_to_yx(&self, flat: usize) -> (usize, usize) {
+      (flat / self.width, flat % self.width)
+    }
+
+    #[inline]
+    pub fn yx_to_flat(&self, y: usize, x: usize) -> usize {
+      y * self.width + x
+    }
 }
 
 /// Python methods for BoardConfig
@@ -204,24 +230,6 @@ impl BoardConfig {
     fn p2_cap_slice(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
         let slice = pyo3::types::PySlice::new(py, 6, 9, 1);
         Ok(slice.into())
-    }
-}
-
-impl BoardConfig {
-    /// Helper: compute destination coordinates from start position and direction
-    ///
-    /// Useful for tests and for converting direction-based capture notation
-    /// to coordinate-based notation.
-    pub fn dest_from_direction(
-        &self,
-        start_y: usize,
-        start_x: usize,
-        direction: usize,
-    ) -> (usize, usize) {
-        let (dy, dx) = self.directions[direction];
-        let dest_y = ((start_y as i32) + 2 * dy) as usize;
-        let dest_x = ((start_x as i32) + 2 * dx) as usize;
-        (dest_y, dest_x)
     }
 }
 
@@ -290,7 +298,7 @@ impl BoardState {
     fn get_valid_actions(
         &self,
         py: Python<'_>,
-    ) -> PyResult<(Py<PyArray3<f32>>, Py<PyArray3<f32>>)> {
+    ) -> PyResult<(Py<PyArray5<f32>>, Py<PyArray3<f32>>)> {
         let spatial_state = self.spatial_state.bind(py).readonly().as_array().to_owned();
         let global = self.global.bind(py).readonly().as_array().to_owned();
 
@@ -298,7 +306,7 @@ impl BoardState {
             super::logic::get_valid_actions(&spatial_state.view(), &global.view(), &self.config);
 
         Ok((
-            PyArray3::from_array(py, &placement_mask).into(),
+            PyArray5::from_array(py, &placement_mask).into(),
             PyArray3::from_array(py, &capture_mask).into(),
         ))
     }

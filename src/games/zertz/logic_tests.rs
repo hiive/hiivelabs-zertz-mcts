@@ -106,16 +106,14 @@ mod tests {
 
         let placement_mask = get_placement_actions(&spatial_state.view(), &global_state.view(), &config);
 
-        let width = config.width;
-        let width2 = width * width;
-        let dst_flat = 3 * width + 3;
-
         // Should have exactly one valid placement (white marble at 3,3 with no removal)
-        assert_eq!(placement_mask[[0, dst_flat, width2]], 1.0);
+        // Format: (marble_type, dst_y, dst_x, rem_y, rem_x)
+        // Sentinel: (dst_y, dst_x) as removal means "no removal"
+        assert_eq!(placement_mask[[0, 3, 3, 3, 3]], 1.0);
 
         // No entries for other marble colours
-        assert_eq!(placement_mask[[1, dst_flat, width2]], 0.0);
-        assert_eq!(placement_mask[[2, dst_flat, width2]], 0.0);
+        assert_eq!(placement_mask[[1, 3, 3, 3, 3]], 0.0);
+        assert_eq!(placement_mask[[2, 3, 3, 3, 3]], 0.0);
     }
 
     #[test]
@@ -135,12 +133,9 @@ mod tests {
 
         let placement_mask = get_placement_actions(&spatial_state.view(), &global_state.view(), &config);
 
-        let width = config.width;
-        let width2 = width * width;
-        let dst_flat = 3 * width + 3;
-
         // Should be able to place white marble from captured pool (no removal)
-        assert_eq!(placement_mask[[0, dst_flat, width2]], 1.0);
+        // Sentinel: (dst_y, dst_x) as removal means "no removal"
+        assert_eq!(placement_mask[[0, 3, 3, 3, 3]], 1.0);
     }
 
     #[test]
@@ -156,8 +151,11 @@ mod tests {
 
         let placement_mask = get_placement_actions(&spatial_state.view(), &global_state.view(), &config);
 
-        // Should not be able to place on occupied ring
-        assert_eq!(placement_mask[[0, 3, 3]], 0.0);
+        let width = config.width;
+
+        // Should not be able to place on occupied ring (check white marble, no removal)
+        // New format: (marble_type, dst_y, dst_x, rem_y, rem_x) with (width, width) = no removal
+        assert_eq!(placement_mask[[0, 3, 3, 3, 3]], 0.0);
     }
 
     #[test]

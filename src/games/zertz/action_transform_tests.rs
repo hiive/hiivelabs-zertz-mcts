@@ -16,10 +16,10 @@ mod tests {
 
     fn capture_action(config: &BoardConfig) -> ZertzAction {
         // Start at (3,3), direction 0 is typically (-1, 0) in hexagonal, so dest is (1,3)
-        let start_flat = 3 * config.width + 3;  // (3, 3) -> flat
+        let src_flat = 3 * config.width + 3;  // (3, 3) -> flat
         let dst_flat = 1 * config.width + 3;  // (1, 3) -> flat
         ZertzAction::Capture {
-            start_flat,
+            src_flat,
             dst_flat,
         }
     }
@@ -46,8 +46,7 @@ mod tests {
                     remove_flat,
                     ..
                 } => {
-                    let dst_y = dst_flat / width;
-                    let dst_x = dst_flat % width;
+                    let (dst_y, dst_x) = config.flat_to_yx(dst_flat);
                     assert_eq!(
                         (dst_y, dst_x),
                         (exp_dst_y, exp_dst_x),
@@ -55,8 +54,8 @@ mod tests {
                         transform
                     );
                     if let Some(rf) = remove_flat {
-                        let rem_y = rf / width;
-                        let rem_x = rf % width;
+                        let (rem_y, rem_x) = config.flat_to_yx(rf);
+
                         assert_eq!(
                             (rem_y, rem_x),
                             (exp_rem_y, exp_rem_x),
@@ -85,13 +84,11 @@ mod tests {
                 remove_flat,
                 ..
             } => {
-                let dst_y = dst_flat / width;
-                let dst_x = dst_flat % width;
+            let (dst_y, dst_x) = config.flat_to_yx(dst_flat);
                 assert_eq!((dst_y, dst_x), (4, 2));
 
                 if let Some(rf) = remove_flat {
-                    let rem_y = rf / width;
-                    let rem_x = rf % width;
+                    let (rem_y, rem_x) = config.flat_to_yx(rf);
                     assert_eq!((rem_y, rem_x), (3, 4));
                 } else {
                     panic!("Expected remove_flat");
@@ -107,27 +104,25 @@ mod tests {
         let action = capture_action(&config);
         let width = config.width;
 
-        // Test cases: (transform_name, (expected_start_y, expected_start_x, expected_dest_y, expected_dest_x))
+        // Test cases: (transform_name, (expected_src_y, expected_src_x, expected_dst_y, expected_dst_x))
         // Note: Expected values verified by running actual transformations
         let test_cases = vec![
             ("R60", (3, 3, 3, 5)),   // Test basic rotation
             ("R180", (3, 3, 5, 3)),  // Test 180 rotation
         ];
 
-        for (transform, (exp_start_y, exp_start_x, exp_dest_y, exp_dest_x)) in test_cases {
+        for (transform, (exp_src_y, exp_src_x, exp_dst_y, exp_dst_x)) in test_cases {
             let transformed = transform_action(&action, transform, &config);
             match transformed {
                 ZertzAction::Capture {
-                    start_flat,
+                    src_flat,
                     dst_flat,
                 } => {
-                    let start_y = start_flat / width;
-                    let start_x = start_flat % width;
-                    let dest_y = dst_flat / width;
-                    let dest_x = dst_flat % width;
+                    let (src_y, src_x) = config.flat_to_yx(src_flat);
+                    let (dst_y, dst_x) = config.flat_to_yx(dst_flat);
                     assert_eq!(
-                        (start_y, start_x, dest_y, dest_x),
-                        (exp_start_y, exp_start_x, exp_dest_y, exp_dest_x),
+                        (src_y, src_x, dst_y, dst_x),
+                        (exp_src_y, exp_src_x, exp_dst_y, exp_dst_x),
                         "transform {}",
                         transform
                     );
@@ -146,17 +141,15 @@ mod tests {
         let transformed = transform_action(&action, "T2,-1", &config);
         match transformed {
             ZertzAction::Capture {
-                start_flat,
+                src_flat,
                 dst_flat,
             } => {
-                let start_y = start_flat / width;
-                let start_x = start_flat % width;
-                let dest_y = dst_flat / width;
-                let dest_x = dst_flat % width;
+                let (src_y, src_x) = config.flat_to_yx(src_flat);
+                let (dst_y, dst_x) = config.flat_to_yx(dst_flat);
                 // Original: start (3,3), dest (1,3)
                 // After T2,-1: start (5,2), dest (3,2)
-                assert_eq!((start_y, start_x), (5, 2));
-                assert_eq!((dest_y, dest_x), (3, 2));
+                assert_eq!((src_y, src_x), (5, 2));
+                assert_eq!((dst_y, dst_x), (3, 2));
             }
             _ => panic!("Expected capture action"),
         }
@@ -176,13 +169,11 @@ mod tests {
                 remove_flat,
                 ..
             } => {
-                let dst_y = dst_flat / width;
-                let dst_x = dst_flat % width;
+                let (dst_y, dst_x) = config.flat_to_yx(dst_flat);
                 assert_eq!((dst_y, dst_x), (3, 2));
 
                 if let Some(rf) = remove_flat {
-                    let rem_y = rf / width;
-                    let rem_x = rf % width;
+                    let (rem_y, rem_x) = config.flat_to_yx(rf);
                     assert_eq!((rem_y, rem_x), (2, 4));
                 } else {
                     panic!("Expected remove_flat");

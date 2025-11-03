@@ -133,12 +133,12 @@ impl PyZertzMCTS {
                     )
                 }
                 ZertzAction::Capture {
-                    start_flat,
+                    src_flat,
                     dst_flat,
                 } => {
                     (
                     "CAP".to_string(),
-                    Some((0, *start_flat, *dst_flat)),  // Note: only 3 values fit in tuple
+                    Some((0, *src_flat, *dst_flat)),  // Note: only 3 values fit in tuple
                     *score,
                     )
                 }

@@ -21,7 +21,7 @@
 //!   - [9]: Current player (1 or 2)
 
 use super::board::BoardConfig;
-use ndarray::{s, Array1, Array3, ArrayView1, ArrayView3, ArrayViewMut1, ArrayViewMut3};
+use ndarray::{s, Array1, Array3, Array5, ArrayView1, ArrayView3, ArrayViewMut1, ArrayViewMut3};
 use smallvec::SmallVec;
 use std::collections::{HashSet, VecDeque};
 
@@ -329,17 +329,21 @@ fn apply_isolation_capture(
 }
 
 /// Get valid placement actions
-/// Returns Array3<f32> with shape (3, width², width²+1)
-/// Indices are (marble_type, dst_flat, remove_flat)
-/// where dst_flat and remove_flat are flattened (y * width + x) positions
-/// remove_flat can be width² to indicate "no removal"
+/// Returns Array5<f32> with shape (3, width, width, width, width)
+/// Indices are (marble_type, dst_y, dst_x, rem_y, rem_x)
+/// where dst and rem are 2D grid coordinates
+///
+/// SENTINEL FOR "NO REMOVAL":
+/// When no ring removal is required, we use (dst_y, dst_x) as the removal position.
+/// This is safe because you can never remove the ring you're placing on.
+/// The action extraction code checks: if rem_y == dst_y && rem_x == dst_x → remove_flat = None
 pub fn get_placement_actions(
     spatial_state: &ArrayView3<f32>,
     global_state: &ArrayView1<f32>,
     config: &BoardConfig,
-) -> Array3<f32> {
-    let width2 = config.width * config.width;
-    let mut placement_mask = Array3::zeros((3, width2, width2 + 1));
+) -> Array5<f32> {
+    let width = config.width;
+    let mut placement_mask = Array5::zeros((3, width, width, width, width));
 
     // Get current player supply counts
     let cur_player = global_state[config.cur_player] as usize;
@@ -381,14 +385,11 @@ pub fn get_placement_actions(
 
         // For each open ring in main region
         for &(dst_y, dst_x) in &open_rings {
-            let dst_flat = dst_y * config.width + dst_x;
-
             // For each removable ring position
             for &(rem_y, rem_x) in &removable_rings {
-                let rem_flat = rem_y * config.width + rem_x;
                 // Cannot remove the same ring we're placing on
-                if dst_flat != rem_flat {
-                    placement_mask[[marble_idx, dst_flat, rem_flat]] = 1.0;
+                if dst_y != rem_y || dst_x != rem_x {
+                    placement_mask[[marble_idx, dst_y, dst_x, rem_y, rem_x]] = 1.0;
                 }
             }
 
@@ -401,7 +402,9 @@ pub fn get_placement_actions(
                     .any(|&(ry, rx)| ry == dst_y && rx == dst_x);
 
             if removable_rings.is_empty() || only_removable_is_dest {
-                placement_mask[[marble_idx, dst_flat, width2]] = 1.0;
+                // Sentinel: use (dst_y, dst_x) as removal position to indicate "no removal"
+                // This is safe because you can never remove the ring you're placing on
+                placement_mask[[marble_idx, dst_y, dst_x, dst_y, dst_x]] = 1.0;
             }
         }
     }
@@ -489,15 +492,15 @@ pub fn get_valid_actions(
     spatial_state: &ArrayView3<f32>,
     global_state: &ArrayView1<f32>,
     config: &BoardConfig,
-) -> (Array3<f32>, Array3<f32>) {
+) -> (Array5<f32>, Array3<f32>) {
     let capture_mask = get_capture_actions(spatial_state, config);
 
     // If any captures available, placement is not allowed
     let has_captures = capture_mask.iter().any(|&x| x > 0.0);
 
-    let width2 = config.width * config.width;
+    let width = config.width;
     let placement_mask = if has_captures {
-        Array3::zeros((3, width2, width2 + 1))
+        Array5::zeros((3, width, width, width, width))
     } else {
         get_placement_actions(spatial_state, global_state, config)
     };

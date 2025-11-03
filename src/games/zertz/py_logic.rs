@@ -5,7 +5,7 @@
 
 use super::{action_transform, board::BoardConfig, canonicalization, logic, notation, ZertzAction};
 use canonicalization::TransformFlags as RustTransformFlags;
-use numpy::{PyArray1, PyArray3, PyArrayMethods, PyReadonlyArray1, PyReadonlyArray3};
+use numpy::{PyArray1, PyArray3, PyArray5, PyArrayMethods, PyReadonlyArray1, PyReadonlyArray3};
 use pyo3::prelude::*;
 use std::collections::HashMap;
 
@@ -492,18 +492,18 @@ pub fn get_marble_type_at<'py>(
 }
 
 /// Get valid placement actions
-/// Returns Array3<f32> with shape (3, width², width²+1)
+/// Returns Array5<f32> with shape (3, width, width, width, width)
 #[pyfunction]
 pub fn get_placement_moves<'py>(
     py: Python<'py>,
     spatial_state: PyReadonlyArray3<'py, f32>,
     global_state: PyReadonlyArray1<'py, f32>,
     config: &BoardConfig,
-) -> Py<PyArray3<f32>> {
+) -> Py<PyArray5<f32>> {
     let spatial_state = spatial_state.as_array();
     let global_state = global_state.as_array();
     let result = logic::get_placement_actions(&spatial_state, &global_state, config);
-    PyArray3::from_array(py, &result).into()
+    PyArray5::from_array(py, &result).into()
 }
 
 /// Get valid capture actions
@@ -527,11 +527,11 @@ pub fn get_valid_actions<'py>(
     spatial_state: PyReadonlyArray3<'py, f32>,
     global_state: PyReadonlyArray1<'py, f32>,
     config: &BoardConfig,
-) -> (Py<PyArray3<f32>>, Py<PyArray3<f32>>) {
+) -> (Py<PyArray5<f32>>, Py<PyArray3<f32>>) {
     let spatial_state = spatial_state.as_array();
     let global_state = global_state.as_array();
     let (placement, capture) = logic::get_valid_actions(&spatial_state, &global_state, config);
-    (PyArray3::from_array(py, &placement).into(), PyArray3::from_array(py, &capture).into())
+    (PyArray5::from_array(py, &placement).into(), PyArray3::from_array(py, &capture).into())
 }
 
 /// Apply a placement action (mutates arrays in-place)
@@ -744,20 +744,25 @@ pub fn transform_action(
     // Convert Python tuple format to ZertzAction
     let action = match action_type {
         "PUT" => {
-            if action_data.len() != 3 {
+            if action_data.len() != 5 {
                 return Err(pyo3::exceptions::PyValueError::new_err(
-                    format!("PUT action requires 3 elements, got {}", action_data.len())
+                    format!("PUT action requires 5 elements, got {}", action_data.len())
                 ));
             }
             let marble_type: usize = action_data.get_item(0)?.extract()?;
-            let dst_flat: usize = action_data.get_item(1)?.extract()?;
-            let rem_flat: usize = action_data.get_item(2)?.extract()?;
+            let dst_y: usize = action_data.get_item(1)?.extract()?;
+            let dst_x: usize = action_data.get_item(2)?.extract()?;
+            let rem_y: usize = action_data.get_item(3)?.extract()?;
+            let rem_x: usize = action_data.get_item(4)?.extract()?;
 
-            // Convert width² sentinel to None
-            let remove_flat = if rem_flat == width * width {
+            let dst_flat = config.yx_to_flat(dst_y, dst_x);
+
+
+            // Convert sentinel to None
+            let remove_flat = if (rem_y, rem_x) == (dst_y, dst_x) {
                 None
             } else {
-                Some(rem_flat)
+                Some(config.yx_to_flat(rem_y, rem_x))
             };
 
             ZertzAction::Placement {
@@ -797,11 +802,11 @@ pub fn transform_action(
                 ));
             }
 
-            let start_flat = y * width + x;
+            let src_flat = y * width + x;
             let dst_flat = (dst_y as usize) * width + (dst_x as usize);
 
             ZertzAction::Capture {
-                start_flat,
+                src_flat,
                 dst_flat,
             }
         }
@@ -823,16 +828,21 @@ pub fn transform_action(
             dst_flat,
             remove_flat,
         } => {
-            let rem_flat = remove_flat.unwrap_or(width * width);
-            Ok(("PUT".to_string(), vec![marble_type, dst_flat, rem_flat]))
+            match(transformed.to_placement_action(config))
+            {
+                Some(p) => Ok(p),
+                _ => Err(pyo3::exceptions::PyValueError::new_err(
+                        "Invalid placement action conversion"
+                    ))
+            }
         }
         ZertzAction::Capture {
-            start_flat,
+            src_flat,
             dst_flat,
         } => {
             // Convert start/dest flat indices back to direction + coordinates
-            let start_y = start_flat / width;
-            let start_x = start_flat % width;
+            let start_y = src_flat / width;
+            let start_x = src_flat % width;
             let dst_y = dst_flat / width;
             let dst_x = dst_flat % width;
 

@@ -29,7 +29,6 @@ use super::ZertzAction;
 /// let action = ZertzAction::Placement { marble_type: 0, dst_y: 3, dst_x: 2, ... };
 /// let transformed = transform_action(&action, "R60", &config);
 /// ```
-#[allow(dead_code)]
 pub fn transform_action(
     action: &ZertzAction,
     transform: &str,
@@ -82,8 +81,7 @@ fn translate_action(
             remove_flat,
         } => {
             // Convert flat to (y, x)
-            let dst_y = dst_flat / config.width;
-            let dst_x = dst_flat % config.width;
+            let (dst_y, dst_x) = config.flat_to_yx(*dst_flat);
 
             let new_dst_y = (dst_y as i32 + dy) as usize;
             let new_dst_x = (dst_x as i32 + dx) as usize;
@@ -117,25 +115,23 @@ fn translate_action(
             }
         }
         ZertzAction::Capture {
-            start_flat,
+            src_flat,
             dst_flat,
         } => {
             // Convert flat to (y, x)
-            let start_y = start_flat / config.width;
-            let start_x = start_flat % config.width;
-            let dest_y = dst_flat / config.width;
-            let dest_x = dst_flat % config.width;
+            let (src_y, src_x) = config.flat_to_yx(*src_flat);
+            let (dst_y, dst_x) = config.flat_to_yx(*dst_flat);
 
-            let new_start_y = (start_y as i32 + dy) as usize;
-            let new_start_x = (start_x as i32 + dx) as usize;
-            let new_dest_y = (dest_y as i32 + dy) as usize;
-            let new_dest_x = (dest_x as i32 + dx) as usize;
-            assert!(new_start_y < config.width && new_start_x < config.width);
-            assert!(layout[new_start_y][new_start_x]);
+            let new_src_y = (src_y as i32 + dy) as usize;
+            let new_src_x = (src_x as i32 + dx) as usize;
+            let new_dst_y = (dst_y as i32 + dy) as usize;
+            let new_dst_x = (dst_x as i32 + dx) as usize;
+            assert!(new_src_y < config.width && new_src_x < config.width);
+            assert!(layout[new_src_y][new_src_x]);
 
             ZertzAction::Capture {
-                start_flat: new_start_y * config.width + new_start_x,
-                dst_flat: new_dest_y * config.width + new_dest_x,
+                src_flat: new_src_y * config.width + new_src_x,
+                dst_flat: new_dst_y * config.width + new_dst_x,
             }
         }
         ZertzAction::Pass => ZertzAction::Pass,
@@ -159,8 +155,7 @@ fn apply_orientation(
             remove_flat,
         } => {
             // Convert flat to (y, x)
-            let dst_y = dst_flat / config.width;
-            let dst_x = dst_flat % config.width;
+            let (dst_y, dst_x) = config.flat_to_yx(*dst_flat);
 
             // Placements respect mirror_first like all other transformations
             let (new_dst_y, new_dst_x) = transform_coordinate(
@@ -200,19 +195,17 @@ fn apply_orientation(
             }
         }
         ZertzAction::Capture {
-            start_flat,
+            src_flat,
             dst_flat,
         } => {
             // Convert flat to (y, x)
-            let start_y = start_flat / config.width;
-            let start_x = start_flat % config.width;
-            let dest_y = dst_flat / config.width;
-            let dest_x = dst_flat % config.width;
+            let (src_y, src_x) = config.flat_to_yx(*src_flat);
+            let (dst_y, dst_x) = config.flat_to_yx(*dst_flat);
 
             // Captures use transform_coordinate (respects mirror_first)
-            let (new_start_y, new_start_x) = transform_coordinate(
-                start_y as i32,
-                start_x as i32,
+            let (new_src_y, new_src_x) = transform_coordinate(
+                src_y as i32,
+                src_x as i32,
                 rot60_k,
                 mirror,
                 mirror_first,
@@ -221,9 +214,9 @@ fn apply_orientation(
             )
             .expect("capture start outside board under transform");
 
-            let (new_dest_y, new_dest_x) = transform_coordinate(
-                dest_y as i32,
-                dest_x as i32,
+            let (new_dst_y, new_dst_x) = transform_coordinate(
+                dst_y as i32,
+                dst_x as i32,
                 rot60_k,
                 mirror,
                 mirror_first,
@@ -233,8 +226,8 @@ fn apply_orientation(
             .expect("capture dest outside board under transform");
 
             ZertzAction::Capture {
-                start_flat: new_start_y as usize * config.width + new_start_x as usize,
-                dst_flat: new_dest_y as usize * config.width + new_dest_x as usize,
+                src_flat: new_src_y as usize * config.width + new_src_x as usize,
+                dst_flat: new_dst_y as usize * config.width + new_dst_x as usize,
             }
         }
         ZertzAction::Pass => ZertzAction::Pass,

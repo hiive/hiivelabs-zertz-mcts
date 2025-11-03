@@ -40,11 +40,11 @@ mod tests {
         let (dest_y, dest_x) = config.dest_from_direction(2, 3, 1);
 
         let capture1 = ZertzAction::Capture {
-            start_flat: 2 * width + 3,
+            src_flat: 2 * width + 3,
             dst_flat: dest_y * width + dest_x,
         };
         let capture2 = ZertzAction::Capture {
-            start_flat: 2 * width + 3,
+            src_flat: 2 * width + 3,
             dst_flat: dest_y * width + dest_x,
         };
         assert_eq!(capture1, capture2);
