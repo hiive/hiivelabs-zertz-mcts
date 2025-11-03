@@ -300,7 +300,7 @@ mod tests {
             fn get_valid_actions(&self, s: &ArrayView3<f32>, g: &ArrayView1<f32>) -> Vec<Self::Action> {
                 self.0.get_valid_actions(s, g)
             }
-            fn apply_action(&self, s: &mut ArrayViewMut3<f32>, g: &mut ArrayViewMut1<f32>, a: &Self::Action) {
+            fn apply_action(&self, s: &mut ArrayViewMut3<f32>, g: &mut ArrayViewMut1<f32>, a: &Self::Action) -> Result<(), String> {
                 self.0.apply_action(s, g, a)
             }
             fn is_terminal(&self, s: &ArrayView3<f32>, g: &ArrayView1<f32>) -> bool {
@@ -530,10 +530,11 @@ mod tests {
                 vec![ZertzAction::Pass]
             }
 
-            fn apply_action(&self, _s: &mut ArrayViewMut3<f32>, g: &mut ArrayViewMut1<f32>, _a: &Self::Action) {
+            fn apply_action(&self, _s: &mut ArrayViewMut3<f32>, g: &mut ArrayViewMut1<f32>, _a: &Self::Action) -> Result<(), String> {
                 // Just flip player to simulate state change
                 let cur = g[0] as usize;
                 g[0] = if cur == 0 { 1.0 } else { 0.0 };
+                Ok(())
             }
 
             fn is_terminal(&self, _s: &ArrayView3<f32>, _g: &ArrayView1<f32>) -> bool {

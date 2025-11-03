@@ -76,6 +76,7 @@ impl ZertzAction {
     /// - For Placement: ("PUT", Some((marble_type, dst_flat, remove_flat)))
     /// - For Capture: ("CAP", Some((None, src_flat, dst_flat)))
     /// - For Pass: ("PASS", None)
+    // todo - remove?
     pub fn to_tuple(&self, width: usize) -> PyResult<(String, Option<(Option<usize>, usize, usize)>)> {
         match self {
             ZertzAction::Placement {
@@ -209,9 +210,9 @@ impl PyZertzActionResult {
     /// Get the result type as a string
     fn result_type(&self) -> String {
         match &self.inner {
-            ZertzActionResult::Placement { .. } => "Placement".to_string(),
-            ZertzActionResult::Capture { .. } => "Capture".to_string(),
-            ZertzActionResult::Pass => "Pass".to_string(),
+            ZertzActionResult::Placement { .. } => "PUT".to_string(),
+            ZertzActionResult::Capture { .. } => "CAP".to_string(),
+            ZertzActionResult::Pass => "PASS".to_string(),
         }
     }
 
@@ -289,11 +290,9 @@ impl PyZertzAction {
         remove_y: Option<usize>,
         remove_x: Option<usize>,
     ) -> Self {
-        let dst_flat = dst_y * config.width + dst_x;
-        let remove_flat = match (remove_x, remove_y) {
-            (Some(x), Some(y)) => Some(x * config.width + y),
-            _ => None
-        };
+        let dst_flat = config.yx_to_flat(dst_y, dst_x);
+        let remove_flat = config.yx_to_optional_flat(remove_y, remove_x);
+
         PyZertzAction {
             inner: ZertzAction::Placement {
                 marble_type,
@@ -307,16 +306,16 @@ impl PyZertzAction {
     /// Create a Capture action
     ///
     /// Args:
-    ///     start_y: Starting row
-    ///     start_x: Starting column
-    ///     dest_y: Destination row
-    ///     dest_x: Destination column
+    ///     src_y: Starting row
+    ///     src_x: Starting column
+    ///     dst_y: Destination row
+    ///     dst_x: Destination column
     #[staticmethod]
-    pub fn capture(config: &BoardConfig, start_y: usize, start_x: usize, dest_y: usize, dest_x: usize) -> Self {
+    pub fn capture(config: &BoardConfig, src_y: usize, src_x: usize, dst_y: usize, dst_x: usize) -> Self {
         PyZertzAction {
             inner: ZertzAction::Capture {
-                src_flat: start_y * config.width + start_x,
-                dst_flat: dest_y * config.width + dest_x,
+                src_flat: config.yx_to_flat(src_y, src_x),
+                dst_flat: config.yx_to_flat(dst_y, dst_x),
             },
         }
     }
@@ -343,9 +342,9 @@ impl PyZertzAction {
     /// Get action type as string
     pub fn action_type(&self) -> String {
         match &self.inner {
-            ZertzAction::Placement { .. } => "Placement".to_string(),
-            ZertzAction::Capture { .. } => "Capture".to_string(),
-            ZertzAction::Pass => "Pass".to_string(),
+            ZertzAction::Placement { .. } => "PUT".to_string(),
+            ZertzAction::Capture { .. } => "CAP".to_string(),
+            ZertzAction::Pass => "PASS".to_string(),
         }
     }
 
@@ -460,13 +459,13 @@ impl MCTSGame for ZertzGame {
                     for rem_y in 0..width {
                         for rem_x in 0..width {
                             if placement_mask[[marble_type, dst_y, dst_x, rem_y, rem_x]] > 0.0 {
-                                let dst_flat = dst_y * width + dst_x;
+                                let dst_flat = self.config.yx_to_flat(dst_y, dst_x);
                                 // Sentinel: (dst_y, dst_x) as removal means no removal
                                 // Safe because you can never remove the ring you're placing on
                                 let remove_flat = if rem_y == dst_y && rem_x == dst_x {
                                     None
                                 } else {
-                                    Some(rem_y * width + rem_x)
+                                    Some(self.config.yx_to_flat(rem_y, rem_x))
                                 };
                                 actions.push(ZertzAction::Placement {
                                     marble_type,
@@ -512,7 +511,7 @@ impl MCTSGame for ZertzGame {
         spatial_state: &mut ArrayViewMut3<f32>,
         global_state: &mut ArrayViewMut1<f32>,
         action: &Self::Action,
-    ) {
+    ) -> Result<(), String> {
         match action {
             ZertzAction::Placement {
                 marble_type,
@@ -530,7 +529,7 @@ impl MCTSGame for ZertzGame {
                     remove_y,
                     remove_x,
                     &self.config,
-                );
+                )?;
             }
             ZertzAction::Capture {
                 src_flat,
@@ -558,6 +557,7 @@ impl MCTSGame for ZertzGame {
                 };
             }
         }
+        Ok(())
     }
 
     fn is_terminal(

@@ -22,6 +22,7 @@
 
 use super::board::BoardConfig;
 use ndarray::{s, Array1, Array3, Array5, ArrayView1, ArrayView3, ArrayViewMut1, ArrayViewMut3};
+use pyo3::prelude::*;
 use smallvec::SmallVec;
 use std::collections::{HashSet, VecDeque};
 
@@ -510,6 +511,7 @@ pub fn get_valid_actions(
 
 /// Apply a placement action
 /// Returns list of captured marble positions from isolation as (marble_layer, y, x) tuples
+/// Returns Err if placement position is invalid (not an empty ring)
 pub fn apply_placement(
     spatial_state: &mut ArrayViewMut3<f32>,
     global_state: &mut ArrayViewMut1<f32>,
@@ -519,7 +521,18 @@ pub fn apply_placement(
     remove_y: Option<usize>,
     remove_x: Option<usize>,
     config: &BoardConfig,
-) -> Vec<(usize, usize, usize)> {
+) -> Result<Vec<(usize, usize, usize)>, String> {
+    // Validate placement position (must be empty ring)
+    let has_ring = spatial_state[[config.ring_layer, dst_y, dst_x]] == 1.0;
+    let has_marble = (1..4).any(|layer| spatial_state[[layer, dst_y, dst_x]] > 0.0);
+
+    if !has_ring || has_marble {
+        return Err(format!(
+            "Invalid placement: position ({}, {}) is not an empty ring",
+            dst_y, dst_x
+        ));
+    }
+
     // STEP 1: Reset capture layer (matches Python zertz_board.py behavior)
     // Placements always end any ongoing chain capture sequence
     spatial_state.slice_mut(s![config.capture_layer, .., ..]).fill(0.0);
@@ -580,7 +593,7 @@ pub fn apply_placement(
         config.player_1 as f32
     };
 
-    captured_marbles
+    Ok(captured_marbles)
 }
 
 /// Apply a capture action

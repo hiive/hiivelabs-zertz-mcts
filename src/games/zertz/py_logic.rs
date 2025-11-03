@@ -559,7 +559,7 @@ pub fn apply_action<'py>(
                     rem_y,
                     rem_x,
                     config,
-                )
+                ).map_err(pyo3::exceptions::PyValueError::new_err)?
             };
             super::ZertzActionResult::placement(isolation_captures)
         }
@@ -635,7 +635,7 @@ pub fn apply_placement_action<'py>(
             remove_y,
             remove_x,
             config,
-        )
+        ).map_err(pyo3::exceptions::PyValueError::new_err)?
     };
     Ok(captured_marbles)
 }

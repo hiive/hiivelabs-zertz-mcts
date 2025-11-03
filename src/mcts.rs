@@ -794,7 +794,7 @@ impl<G: MCTSGame> MCTSSearch<G> {
                             &mut child_spatial.view_mut(),
                             &mut child_global.view_mut(),
                             &action,
-                        );
+                        ).expect("apply_action failed on forced action from get_forced_action (should always be valid)");
 
                         // Create child without transposition table lookup
                         // Forced nodes don't need transposition entries since they're
@@ -940,7 +940,7 @@ impl<G: MCTSGame> MCTSSearch<G> {
             &mut child_spatial_state.view_mut(),
             &mut child_global_state.view_mut(),
             &action,
-        );
+        ).expect("apply_action failed on untried action from get_valid_actions (should always be valid)");
 
         // Create child node with parent pointer
         let shared_entry = if use_lookups {
@@ -1037,7 +1037,7 @@ impl<G: MCTSGame> MCTSSearch<G> {
                 &mut sim_spatial_state.view_mut(),
                 &mut sim_global_state.view_mut(),
                 &action,
-            );
+            ).expect("apply_action failed during simulation on action from get_valid_actions (should always be valid)");
         }
 
         // Depth limit reached - use heuristic evaluation

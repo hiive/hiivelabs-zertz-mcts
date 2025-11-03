@@ -194,6 +194,14 @@ impl BoardConfig {
     pub fn yx_to_flat(&self, y: usize, x: usize) -> usize {
       y * self.width + x
     }
+
+    #[inline]
+    pub fn yx_to_optional_flat(&self, y: Option<usize>, x: Option<usize>) -> Option<usize> {
+      match (y, x) {
+        (Some(sy), Some(sx)) => Some(sy * self.width + sx),
+        _ => None
+      }
+    }
 }
 
 /// Python methods for BoardConfig
@@ -356,7 +364,7 @@ impl BoardState {
             remove_y,
             remove_x,
             &self.config,
-        );
+        ).map_err(pyo3::exceptions::PyValueError::new_err)?;
 
         // Update stored arrays
         self.spatial_state = PyArray3::from_array(py, &spatial_state).into();

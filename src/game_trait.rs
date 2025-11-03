@@ -122,14 +122,19 @@ pub trait MCTSGame: Send + Sync + 'static {
     /// * `global_state` - Mutable view of global state
     /// * `action` - The action to apply (opaque to MCTS)
     ///
-    /// # Panics
-    /// Should not panic if action is legal. Behavior undefined for illegal actions.
+    /// # Returns
+    /// `Ok(())` if the action was successfully applied, or `Err(String)` with an error message
+    /// if the action is invalid (e.g., placing on an occupied position).
+    ///
+    /// # Notes
+    /// Actions from `get_valid_actions()` should never return errors. Errors indicate
+    /// invalid actions that violate game rules.
     fn apply_action(
         &self,
         spatial_state: &mut ArrayViewMut3<f32>,
         global_state: &mut ArrayViewMut1<f32>,
         action: &Self::Action,
-    );
+    ) -> Result<(), String>;
 
     /// Check if the game has ended.
     ///

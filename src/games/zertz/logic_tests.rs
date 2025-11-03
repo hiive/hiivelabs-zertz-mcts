@@ -256,7 +256,7 @@ mod tests {
             Some(4),
             Some(4),
             &config,
-        );
+        ).unwrap();
 
         // Check marble placed
         assert_eq!(spatial_state[[1, 3, 3]], 1.0);
@@ -283,7 +283,7 @@ mod tests {
         global_state[config.cur_player] = config.player_1 as f32;
 
         // Apply placement
-        apply_placement(&mut spatial_state.view_mut(), &mut global_state.view_mut(), 0, 3, 3, None, None, &config);
+        apply_placement(&mut spatial_state.view_mut(), &mut global_state.view_mut(), 0, 3, 3, None, None, &config).unwrap();
 
         // Check captured pool decremented
         assert_eq!(global_state[config.p1_cap_w], 2.0);
@@ -588,7 +588,7 @@ mod tests {
             Some(4),
             Some(4),
             &config,
-        );
+        ).unwrap();
 
         // Verify capture layer was cleared
         assert_eq!(
@@ -741,7 +741,7 @@ mod tests {
             Some(f2.0),
             Some(f2.1),
             &config,
-        );
+        ).unwrap();
 
         // Both D4 and G1 should be captured (2 marbles total)
         assert_eq!(global_state[config.p1_cap_w], 2.0);
@@ -806,7 +806,7 @@ mod tests {
             Some(f2.0),
             Some(f2.1),
             &config,
-        );
+        ).unwrap();
 
         // Verify ALL three regions were captured
         assert_eq!(spatial_state[[1, d4.0, d4.1]], 0.0, "D4 marble should be captured");
@@ -849,7 +849,7 @@ mod tests {
             None,
             None,
             &config,
-        );
+        ).unwrap();
     }
 }
 
@@ -1326,7 +1326,7 @@ mod termination_tests {
         let rings_before = spatial_state.slice(s![config.ring_layer, .., ..]).sum();
 
         // Apply placement with no ring removal (None, None)
-        apply_placement(&mut spatial_state.view_mut(), &mut global_state.view_mut(), 0, 3, 3, None, None, &config);
+        apply_placement(&mut spatial_state.view_mut(), &mut global_state.view_mut(), 0, 3, 3, None, None, &config).unwrap();
 
         // Check marble placed
         assert_eq!(spatial_state[[1, 3, 3]], 1.0, "Marble should be placed");

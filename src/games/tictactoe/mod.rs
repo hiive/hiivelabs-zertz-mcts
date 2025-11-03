@@ -131,7 +131,7 @@ impl MCTSGame for TicTacToeGame {
         spatial_state: &mut ArrayViewMut3<f32>,
         global_state: &mut ArrayViewMut1<f32>,
         action: &Self::Action,
-    ) {
+    ) -> Result<(), String> {
         let current_player = global_state[0] as usize;
 
         // Place mark for current player
@@ -139,6 +139,8 @@ impl MCTSGame for TicTacToeGame {
 
         // Switch player
         global_state[0] = if current_player == 0 { 1.0 } else { 0.0 };
+
+        Ok(())
     }
 
     fn is_terminal(
