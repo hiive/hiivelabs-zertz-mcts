@@ -82,11 +82,16 @@ All notable changes to this project will be documented in this file.
 
 ### Technical Details
 
-- All 114 tests passing (up from 92 in v0.5.0)
-  - 13 new tests for algebraic notation (including roundtrip validation for all board sizes)
-- No breaking changes to Python API
+- All 141 tests passing (up from 114 in previous version)
+  - 27 new TicTacToe canonicalization tests (corner/edge equivalence, rotations, L-shapes, etc.)
+  - 13 algebraic notation tests from previous release
+- No breaking changes to Python API (internal refactorings only)
 - Improved code organization and maintainability
 - Clear separation between generic MCTS infrastructure and game-specific logic
+- TicTacToe now serves as complete reference implementation for:
+  - MCTSGame trait implementation
+  - D4 dihedral group canonicalization
+  - Comprehensive testing patterns
 
 ## [0.6.0] - 2025-01-31
 
