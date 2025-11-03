@@ -260,6 +260,47 @@ fn get_translations(spatial_state: &ArrayView3<f32>, config: &BoardConfig) -> Ve
 
 // translate_state has been removed - use transform_state with dy, dx parameters instead
 
+/// Apply translation transform to coordinates
+fn apply_translation(
+    y: i32,
+    x: i32,
+    dy: i32,
+    dx: i32,
+    width: i32,
+    yx_to_ax: &HashMap<(i32, i32), (i32, i32)>,
+) -> Option<(i32, i32)> {
+    let trans_y = y + dy;
+    let trans_x = x + dx;
+
+    // Check bounds
+    if trans_y < 0 || trans_x < 0 || trans_y >= width || trans_x >= width {
+        return None;
+    }
+
+    // Check if translated position is valid on layout
+    if !yx_to_ax.contains_key(&(trans_y, trans_x)) {
+        return None;
+    }
+
+    Some((trans_y, trans_x))
+}
+
+/// Apply rotation/mirror transform to coordinates
+fn apply_rotation_mirror(
+    y: i32,
+    x: i32,
+    rot60_k: i32,
+    mirror: bool,
+    mirror_first: bool,
+    yx_to_ax: &HashMap<(i32, i32), (i32, i32)>,
+    ax_to_yx: &HashMap<(i32, i32), (i32, i32)>,
+) -> Option<(i32, i32)> {
+    if rot60_k == 0 && !mirror {
+        return Some((y, x));
+    }
+    transform_coordinate(y, x, rot60_k, mirror, mirror_first, yx_to_ax, ax_to_yx)
+}
+
 fn transform_state_cached(
     spatial_state: &ArrayView3<f32>,
     config: &BoardConfig,
@@ -268,6 +309,7 @@ fn transform_state_cached(
     mirror_first: bool,
     dy: i32,
     dx: i32,
+    translate_first: bool,
     yx_to_ax: &HashMap<(i32, i32), (i32, i32)>,
     ax_to_yx: &HashMap<(i32, i32), (i32, i32)>,
 ) -> Option<Array3<f32>> {
@@ -299,29 +341,28 @@ fn transform_state_cached(
                 }
             }
 
-            // First apply rotation/mirror transformation
-            let (mut dest_y, mut dest_x) = if rot60_k != 0 || mirror {
-                match transform_coordinate(y, x, rot60_k, mirror, mirror_first, yx_to_ax, ax_to_yx) {
-                    Some((ty, tx)) => (ty, tx),
+            // Apply transforms in order based on translate_first flag
+            let (dest_y, dest_x) = if translate_first {
+                // FORWARD TRANSFORM ORDER: Translation FIRST, then rotation/mirror
+                let (ty, tx) = match apply_translation(y, x, dy, dx, width, yx_to_ax) {
+                    Some(coords) => coords,
+                    None => return None,
+                };
+                match apply_rotation_mirror(ty, tx, rot60_k, mirror, mirror_first, yx_to_ax, ax_to_yx) {
+                    Some(coords) => coords,
                     None => continue,
                 }
             } else {
-                (y, x)
+                // INVERSE TRANSFORM ORDER: Rotation/mirror FIRST, then translation
+                let (ry, rx) = match apply_rotation_mirror(y, x, rot60_k, mirror, mirror_first, yx_to_ax, ax_to_yx) {
+                    Some(coords) => coords,
+                    None => continue,
+                };
+                match apply_translation(ry, rx, dy, dx, width, yx_to_ax) {
+                    Some(coords) => coords,
+                    None => return None,
+                }
             };
-
-            // Then apply translation
-            dest_y += dy;
-            dest_x += dx;
-
-            // Check bounds after translation
-            if dest_y < 0 || dest_x < 0 || dest_y >= width || dest_x >= width {
-                return None;
-            }
-
-            // Check if destination is valid on layout
-            if !yx_to_ax.contains_key(&(dest_y, dest_x)) {
-                return None;
-            }
 
             // Copy all board layers
             for layer in board_start..board_end {
@@ -393,6 +434,7 @@ pub fn canonicalize_internal(
             false,  // mirror_first
             *dy,
             *dx,
+            true,  // translate_first - forward transform
             &yx_to_ax,
             &ax_to_yx,
         ) {
@@ -410,6 +452,7 @@ pub fn canonicalize_internal(
                 *mirror_first,
                 0,  // dy - no additional translation
                 0,  // dx
+                true,  // translate_first - forward transform
                 &yx_to_ax,
                 &ax_to_yx,
             ).expect("Rotation/mirror transform should always succeed");
@@ -772,6 +815,7 @@ pub fn transform_state(
     mirror_first: bool,
     dy: i32,
     dx: i32,
+    translate_first: bool,
 ) -> Option<Array3<f32>> {
     let layout = generate_standard_layout_mask(config.rings, config.width)
         .expect("BoardConfig should always have valid rings/width");
@@ -784,6 +828,7 @@ pub fn transform_state(
         mirror_first,
         dy,
         dx,
+        translate_first,
         &yx_to_ax,
         &ax_to_yx,
     )

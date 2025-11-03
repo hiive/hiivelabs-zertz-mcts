@@ -248,7 +248,7 @@ pub fn transform_state<'py>(
 ) -> PyResult<Py<PyArray3<f32>>> {
     let spatial_state = spatial_state.as_array();
     let transformed =
-        canonicalization::transform_state(&spatial_state, config, rot60_k, mirror, mirror_first, 0, 0)
+        canonicalization::transform_state(&spatial_state, config, rot60_k, mirror, mirror_first, 0, 0, true)
             .ok_or_else(|| PyErr::new::<pyo3::exceptions::PyValueError, _>("Transformation failed"))?;
     Ok(PyArray3::from_array(py, &transformed).into())
 }
@@ -290,7 +290,7 @@ pub fn translate_state<'py>(
     )?;
 
     let spatial_state = spatial_state.as_array();
-    Ok(canonicalization::transform_state(&spatial_state, config, 0, false, false, dy, dx)
+    Ok(canonicalization::transform_state(&spatial_state, config, 0, false, false, dy, dx, true)
         .map(|result| PyArray3::from_array(py, &result).into()))
 }
 

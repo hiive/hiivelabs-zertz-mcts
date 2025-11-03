@@ -86,7 +86,7 @@ mod tests {
 
         // Rotate spatial_state state by 60 degrees (same canonical class)
         let rotated =
-            crate::games::zertz::canonicalization::transform_state(&spatial_state.view(), config, 1, false, false, 0, 0)
+            crate::games::zertz::canonicalization::transform_state(&spatial_state.view(), config, 1, false, false, 0, 0, true)
                 .expect("Transformation should succeed");
         let rotated_entry = table.get_or_insert(&rotated.view(), &global_state.view());
         let node_rotated = Arc::new(MCTSNode::new(

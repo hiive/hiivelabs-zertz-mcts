@@ -36,7 +36,7 @@ mod tests {
 
         for (dy, dx) in test_cases {
             // Use transform_state with no rotation/mirror
-            let transformed = transform_state(&spatial_state.view(), &config, 0, false, false, dy, dx);
+            let transformed = transform_state(&spatial_state.view(), &config, 0, false, false, dy, dx, true);
 
             // All test cases should succeed
             assert!(transformed.is_some(),
@@ -77,7 +77,7 @@ mod tests {
         spatial_state[[config.marble_layers.0, 3, 3]] = 1.0;
 
         // Apply rotation and translation together
-        let result = transform_state(&spatial_state.view(), &config, 1, false, false, 1, 0);
+        let result = transform_state(&spatial_state.view(), &config, 1, false, false, 1, 0, true);
 
         // Should succeed
         assert!(result.is_some(), "Rotation + translation should work");
@@ -99,7 +99,7 @@ mod tests {
         spatial_state[[config.ring_layer, 0, 0]] = 1.0;
 
         // Try to translate off the board
-        let result = transform_state(&spatial_state.view(), &config, 0, false, false, -1, 0);
+        let result = transform_state(&spatial_state.view(), &config, 0, false, false, -1, 0, true);
 
         assert!(result.is_none(), "Translation off board should return None");
     }
