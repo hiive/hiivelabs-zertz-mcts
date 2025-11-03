@@ -357,6 +357,173 @@ class ZertzMCTS:
         ...
 
 
+class ZertzAction:
+    """
+    Zertz action representation for creating and manipulating game actions.
+
+    Actions can be one of three types:
+    - Placement: Place a marble and optionally remove a ring
+    - Capture: Jump over a marble to capture it
+    - Pass: No legal moves available
+    """
+
+    @staticmethod
+    def placement(
+        config: BoardConfig,
+        marble_type: int,
+        dst_y: int,
+        dst_x: int,
+        remove_y: Optional[int] = None,
+        remove_x: Optional[int] = None
+    ) -> ZertzAction:
+        """
+        Create a Placement action.
+
+        Args:
+            config: BoardConfig for coordinate conversion
+            marble_type: Marble type (0=white, 1=gray, 2=black)
+            dst_y: Destination row
+            dst_x: Destination column
+            remove_y: Optional row of ring to remove
+            remove_x: Optional column of ring to remove
+
+        Returns:
+            ZertzAction instance representing a placement
+        """
+        ...
+
+    @staticmethod
+    def capture(
+        config: BoardConfig,
+        start_y: int,
+        start_x: int,
+        dest_y: int,
+        dest_x: int
+    ) -> ZertzAction:
+        """
+        Create a Capture action.
+
+        Args:
+            config: BoardConfig for coordinate conversion
+            start_y: Starting row
+            start_x: Starting column
+            dest_y: Destination row (after jumping)
+            dest_x: Destination column (after jumping)
+
+        Returns:
+            ZertzAction instance representing a capture
+        """
+        ...
+
+    @staticmethod
+    def pass_action() -> ZertzAction:
+        """
+        Create a Pass action.
+
+        Returns:
+            ZertzAction instance representing a pass
+        """
+        ...
+
+    def to_tuple(self, width: int) -> Tuple[str, Optional[Tuple[Optional[int], int, int]]]:
+        """
+        Convert action to tuple format for serialization.
+
+        Args:
+            width: Board width for coordinate handling
+
+        Returns:
+            Tuple of (action_type, action_data):
+            - For Placement: ("PUT", Some((marble_type, dst_flat, remove_flat)))
+            - For Capture: ("CAP", Some((None, src_flat, dst_flat)))
+            - For Pass: ("PASS", None)
+
+            Where flat coordinates are calculated as: flat = y * width + x
+        """
+        ...
+
+    def action_type(self) -> str:
+        """
+        Get action type as string.
+
+        Returns:
+            One of: "Placement", "Capture", "Pass"
+        """
+        ...
+
+    def __repr__(self) -> str:
+        """String representation of the action."""
+        ...
+
+    def __eq__(self, other: object) -> bool:
+        """Check equality with another ZertzAction."""
+        ...
+
+    def __hash__(self) -> int:
+        """Compute hash for use in sets/dicts."""
+        ...
+
+
+class TicTacToeMCTS:
+    """
+    Monte Carlo Tree Search implementation for Tic-Tac-Toe.
+
+    A minimal example game demonstrating the MCTS trait implementation.
+    Includes D4 dihedral group canonicalization for 8-fold symmetry reduction.
+    """
+
+    def __init__(
+        self,
+        *,
+        exploration_constant: Optional[float] = None,
+        widening_constant: Optional[float] = None,
+        fpu_reduction: Optional[float] = None,
+        rave_constant: Optional[float] = None,
+        use_transposition_table: bool = True,
+        use_transposition_lookups: bool = True
+    ) -> None:
+        """
+        Create a new MCTS search instance for Tic-Tac-Toe.
+
+        Args:
+            exploration_constant: UCB1 exploration parameter (default: 1.41, √2)
+            widening_constant: Progressive widening constant (default: None, all actions explored)
+            fpu_reduction: First Play Urgency reduction parameter (default: None)
+            rave_constant: RAVE constant for AMAF statistics (default: None)
+            use_transposition_table: Enable transposition table (default: True)
+            use_transposition_lookups: Enable transposition lookups (default: True)
+        """
+        ...
+
+    def search(
+        self,
+        spatial_state: npt.NDArray[np.float32],
+        global_state: npt.NDArray[np.float32],
+        iterations: int,
+        *,
+        max_depth: Optional[int] = None,
+        time_limit: Optional[float] = None,
+        verbose: bool = False,
+        seed: Optional[int] = None
+    ) -> Tuple[int, int]:
+        """
+        Run MCTS search for Tic-Tac-Toe.
+
+        Args:
+            spatial_state: 3D array of shape (2, 3, 3) - layers for X and O positions
+            global_state: 1D array with current player (0=X, 1=O)
+            iterations: Number of MCTS iterations to run
+            max_depth: Maximum simulation depth (default: unlimited)
+            time_limit: Time limit in seconds (default: no limit)
+            verbose: Print search statistics (default: False)
+            seed: Random seed for this search
+
+        Returns:
+            Tuple of (row, col) for the best move
+        """
+        ...
+
+
 # ============================================================================
 # Stateless Game Logic Functions
 # ============================================================================

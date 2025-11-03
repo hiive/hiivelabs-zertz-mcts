@@ -76,6 +76,8 @@ This design enables:
   - `py_mcts.rs` — `ZertzMCTS` Python wrapper
 - `src/games/tictactoe/` — Tic-Tac-Toe implementation
   - `mod.rs` — `TicTacToeGame` implementation (minimal example)
+  - `canonicalization.rs` — D4 dihedral group symmetries (8-fold: 4 rotations + 4 reflections)
+  - `canonicalization_tests.rs` — Comprehensive canonicalization tests (27 tests)
 - `src/games/tictactoe_py.rs` — `TicTacToeMCTS` Python wrapper
 
 **Python Interface:**
@@ -109,8 +111,8 @@ To add support for a new game, implement the `MCTSGame` trait. The repository in
 6. **Write tests** in separate test files (e.g., `yourgame_tests.rs`)
 
 **Examples:**
-- **Simple game:** `src/games/tictactoe/` - minimal (~300 line) single-file implementation
-- **Complex game:** `src/games/zertz/` - full-featured multi-module implementation with canonicalization, Zobrist hashing, and extensive testing
+- **Simple game:** `src/games/tictactoe/` - minimal example with complete D4 canonicalization (~500 lines including tests)
+- **Complex game:** `src/games/zertz/` - full-featured multi-module implementation with hexagonal canonicalization, Zobrist hashing, and extensive testing
 
 The trait requires implementing:
 - `get_valid_actions()` - Return legal moves
