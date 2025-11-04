@@ -1,10 +1,5 @@
 """
-Type stubs for hiivelabs_mcts Rust extension module.
-
-Generic MCTS engine with game-specific implementations.
-Currently supports: Zertz
-
-This file provides type hints for IDE autocomplete and static type checking.
+Type stubs for hiivelabs_mcts.zertz Rust extension bindings.
 """
 
 from typing import Callable, Dict, List, Optional, Tuple, Union
@@ -645,7 +640,7 @@ def build_axial_maps(
 def canonicalize_state(
     config: BoardConfig,
     spatial_state: npt.NDArray[np.float32],
-    flags: Optional[TransformFlags] = None
+    flags: Optional["TransformFlags"] = None
 ) -> Tuple[npt.NDArray[np.float32], str, str]:
     """
     Canonicalize a board state to its standard form.
@@ -956,59 +951,6 @@ def algebraic_to_coordinate(config: BoardConfig, notation: str) -> Tuple[int, in
     ...
 
 
-# ============================================================================
-# Transform Flags
-# ============================================================================
-
-class TransformFlags:
-    """Flags for controlling which symmetry transforms to use in canonicalization.
-
-    TransformFlags uses bit flags to specify which types of symmetries to include:
-    - ROTATION: Include rotational symmetries (0°, 60°, 120°, etc.)
-    - MIRROR: Include reflection symmetries
-    - TRANSLATION: Include translational symmetries
-
-    Common combinations:
-    - ALL: All transforms (rotation + mirror + translation)
-    - ROTATION_MIRROR: Only rotation and mirror (no translation)
-    - NONE: Identity only (no transforms)
-    """
-
-    def __init__(self, bits: int) -> None:
-        """Create TransformFlags from bit flags.
-
-        Args:
-            bits: Bit flags (0-7). Use class constants like TransformFlags.ALL,
-                  TransformFlags.ROTATION_MIRROR, etc.
-
-        Raises:
-            ValueError: If bits > 7
-        """
-        ...
-
-    # Class constants
-    ALL: TransformFlags
-    """All transforms enabled (rotation + mirror + translation)"""
-
-    ROTATION: TransformFlags
-    """Only rotational symmetries"""
-
-    MIRROR: TransformFlags
-    """Only mirror symmetries"""
-
-    TRANSLATION: TransformFlags
-    """Only translation symmetries"""
-
-    ROTATION_MIRROR: TransformFlags
-    """Rotation and mirror only (no translation)"""
-
-    NONE: TransformFlags
-    """No transforms (identity only)"""
-
-    def __repr__(self) -> str: ...
-    def __eq__(self, other: object) -> bool: ...
-
-
 class BoardConfig:
     """Board configuration for stateless game logic.
 
@@ -1175,11 +1117,6 @@ class BoardConfig:
     def cur_player(self) -> int:
         """Current player index in global_state state (9)."""
         ...
-
-
-# Module constants
-PLAYER_1: int  # = 0
-PLAYER_2: int  # = 1
 
 
 # ============================================================================

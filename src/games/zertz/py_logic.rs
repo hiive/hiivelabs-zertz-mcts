@@ -59,7 +59,10 @@ pub fn ax_mirror_q_axis(q: i32, r: i32) -> (i32, i32) {
 pub fn build_axial_maps(
     config: &BoardConfig,
     layout: Vec<Vec<bool>>,
-) -> (HashMap<(i32, i32), (i32, i32)>, HashMap<(i32, i32), (i32, i32)>) {
+) -> (
+    HashMap<(i32, i32), (i32, i32)>,
+    HashMap<(i32, i32), (i32, i32)>,
+) {
     canonicalization::build_axial_maps(config, &layout)
 }
 
@@ -92,7 +95,8 @@ pub fn canonicalize_state<'py>(
 ) -> (Py<PyArray3<f32>>, String, String) {
     let spatial_state = spatial_state.as_array();
     let transform_flags = flags.map(|f| f.inner).unwrap_or(TransformFlags::ALL);
-    let (canonical, transform, inverse) = canonicalization::canonicalize_internal(config, &spatial_state, transform_flags);
+    let (canonical, transform, inverse) =
+        canonicalization::canonicalize_internal(config, &spatial_state, transform_flags);
     (
         PyArray3::from_array(py, &canonical).into(),
         transform,
@@ -124,9 +128,17 @@ pub fn transform_state<'py>(
     mirror_first: bool,
 ) -> PyResult<Py<PyArray3<f32>>> {
     let spatial_state = spatial_state.as_array();
-    let transformed =
-        canonicalization::transform_state(config, &spatial_state, rot60_k, mirror, mirror_first, 0, 0, true)
-            .ok_or_else(|| PyErr::new::<pyo3::exceptions::PyValueError, _>("Transformation failed"))?;
+    let transformed = canonicalization::transform_state(
+        config,
+        &spatial_state,
+        rot60_k,
+        mirror,
+        mirror_first,
+        0,
+        0,
+        true,
+    )
+    .ok_or_else(|| PyErr::new::<pyo3::exceptions::PyValueError, _>("Transformation failed"))?;
     Ok(PyArray3::from_array(py, &transformed).into())
 }
 
@@ -167,8 +179,10 @@ pub fn translate_state<'py>(
     )?;
 
     let spatial_state = spatial_state.as_array();
-    Ok(canonicalization::transform_state(config, &spatial_state, 0, false, false, dy, dx, true)
-        .map(|result| PyArray3::from_array(py, &result).into()))
+    Ok(
+        canonicalization::transform_state(config, &spatial_state, 0, false, false, dy, dx, true)
+            .map(|result| PyArray3::from_array(py, &result).into()),
+    )
 }
 
 /// Get bounding box of all remaining rings
@@ -427,7 +441,10 @@ pub fn get_valid_actions<'py>(
     let spatial_state = spatial_state.as_array();
     let global_state = global_state.as_array();
     let (placement, capture) = logic::get_valid_actions(config, &spatial_state, &global_state);
-    (PyArray5::from_array(py, &placement).into(), PyArray3::from_array(py, &capture).into())
+    (
+        PyArray5::from_array(py, &placement).into(),
+        PyArray3::from_array(py, &capture).into(),
+    )
 }
 
 #[pyfunction]
@@ -437,10 +454,13 @@ pub fn apply_action<'py>(
     spatial_state: &Bound<'py, PyArray3<f32>>,
     global_state: &Bound<'py, PyArray1<f32>>,
     action: &PyZertzAction,
-) -> PyResult<PyZertzActionResult>
-{
+) -> PyResult<PyZertzActionResult> {
     let result = match &action.inner {
-        ZertzAction::Placement { marble_type, dst_flat, remove_flat} => {
+        ZertzAction::Placement {
+            marble_type,
+            dst_flat,
+            remove_flat,
+        } => {
             let isolation_captures = unsafe {
                 let mut spatial_state_arr = spatial_state.as_array_mut();
                 let mut global_state_arr = global_state.as_array_mut();
@@ -455,7 +475,8 @@ pub fn apply_action<'py>(
                     dst_x,
                     rem_y,
                     rem_x,
-                ).map_err(pyo3::exceptions::PyValueError::new_err)?
+                )
+                .map_err(pyo3::exceptions::PyValueError::new_err)?
             };
             super::action_result::ZertzActionResult::placement(isolation_captures)
         }
@@ -475,9 +496,10 @@ pub fn apply_action<'py>(
                 (1..=3)
                     .position(|layer| spatial_state_arr[[layer, cap_y, cap_x]] > 0.5)
                     .ok_or_else(|| {
-                        pyo3::exceptions::PyValueError::new_err(
-                            format!("No marble found at capture position ({}, {})", cap_y, cap_x)
-                        )
+                        pyo3::exceptions::PyValueError::new_err(format!(
+                            "No marble found at capture position ({}, {})",
+                            cap_y, cap_x
+                        ))
                     })?
             };
 
@@ -498,9 +520,7 @@ pub fn apply_action<'py>(
 
             super::action_result::ZertzActionResult::capture(marble_type, cap_y, cap_x)
         }
-        ZertzAction::Pass => {
-            super::action_result::ZertzActionResult::pass()
-        }
+        ZertzAction::Pass => super::action_result::ZertzActionResult::pass(),
     };
 
     Ok(PyZertzActionResult { inner: result })
@@ -531,7 +551,8 @@ pub fn apply_placement_action<'py>(
             dst_x,
             remove_y,
             remove_x,
-        ).map_err(pyo3::exceptions::PyValueError::new_err)?
+        )
+        .map_err(pyo3::exceptions::PyValueError::new_err)?
     };
     Ok(captured_marbles)
 }
@@ -597,7 +618,11 @@ pub fn check_for_isolation_capture<'py>(
     config: &BoardConfig,
     spatial_state: PyReadonlyArray3<'py, f32>,
     global_state: PyReadonlyArray1<'py, f32>,
-) -> (Py<PyArray3<f32>>, Py<PyArray1<f32>>, Vec<(usize, usize, usize)>) {
+) -> (
+    Py<PyArray3<f32>>,
+    Py<PyArray1<f32>>,
+    Vec<(usize, usize, usize)>,
+) {
     let spatial_state = spatial_state.as_array();
     let global_state = global_state.as_array();
     let (spatial_state_out, global_state_out, captured_marbles) =
@@ -672,7 +697,9 @@ pub fn generate_standard_layout_mask<'py>(
 
     // Convert Vec<Vec<bool>> to numpy array
     Ok(numpy::PyArray2::from_vec2(py, &layout)
-        .map_err(|e| pyo3::exceptions::PyValueError::new_err(format!("Failed to create numpy array: {}", e)))?
+        .map_err(|e| {
+            pyo3::exceptions::PyValueError::new_err(format!("Failed to create numpy array: {}", e))
+        })?
         .into())
 }
 
@@ -717,9 +744,10 @@ pub fn transform_action(
     let action = match action_type {
         "PUT" => {
             if action_data.len() != 5 {
-                return Err(pyo3::exceptions::PyValueError::new_err(
-                    format!("PUT action requires 5 elements, got {}", action_data.len())
-                ));
+                return Err(pyo3::exceptions::PyValueError::new_err(format!(
+                    "PUT action requires 5 elements, got {}",
+                    action_data.len()
+                )));
             }
             let marble_type: usize = action_data.get_item(0)?.extract()?;
             let dst_y: usize = action_data.get_item(1)?.extract()?;
@@ -728,7 +756,6 @@ pub fn transform_action(
             let rem_x: usize = action_data.get_item(4)?.extract()?;
 
             let dst_flat = config.yx_to_flat(dst_y, dst_x);
-
 
             // Convert sentinel to None
             let remove_flat = if (rem_y, rem_x) == (dst_y, dst_x) {
@@ -745,9 +772,10 @@ pub fn transform_action(
         }
         "CAP" => {
             if action_data.len() != 3 {
-                return Err(pyo3::exceptions::PyValueError::new_err(
-                    format!("CAP action requires 3 elements, got {}", action_data.len())
-                ));
+                return Err(pyo3::exceptions::PyValueError::new_err(format!(
+                    "CAP action requires 3 elements, got {}",
+                    action_data.len()
+                )));
             }
             let direction_idx: usize = action_data.get_item(0)?.extract()?;
             let y: usize = action_data.get_item(1)?.extract()?;
@@ -757,9 +785,10 @@ pub fn transform_action(
             // Get direction vector from config
             let directions = config.get_directions();
             if direction_idx >= directions.len() {
-                return Err(pyo3::exceptions::PyValueError::new_err(
-                    format!("Invalid direction index: {}", direction_idx)
-                ));
+                return Err(pyo3::exceptions::PyValueError::new_err(format!(
+                    "Invalid direction index: {}",
+                    direction_idx
+                )));
             }
             let (dy, dx) = directions[direction_idx];
 
@@ -770,23 +799,21 @@ pub fn transform_action(
 
             if dst_y < 0 || dst_x < 0 {
                 return Err(pyo3::exceptions::PyValueError::new_err(
-                    "Jump destination out of bounds"
+                    "Jump destination out of bounds",
                 ));
             }
 
             let src_flat = y * width + x;
             let dst_flat = (dst_y as usize) * width + (dst_x as usize);
 
-            ZertzAction::Capture {
-                src_flat,
-                dst_flat,
-            }
+            ZertzAction::Capture { src_flat, dst_flat }
         }
         "PASS" => ZertzAction::Pass,
         _ => {
-            return Err(pyo3::exceptions::PyValueError::new_err(
-                format!("Invalid action type: {}", action_type)
-            ));
+            return Err(pyo3::exceptions::PyValueError::new_err(format!(
+                "Invalid action type: {}",
+                action_type
+            )));
         }
     };
 
@@ -799,19 +826,13 @@ pub fn transform_action(
             marble_type,
             dst_flat,
             remove_flat,
-        } => {
-            match transformed.to_placement_action(config)
-            {
-                Some(p) => Ok(p),
-                _ => Err(pyo3::exceptions::PyValueError::new_err(
-                        "Invalid placement action conversion"
-                    ))
-            }
-        }
-        ZertzAction::Capture {
-            src_flat,
-            dst_flat,
-        } => {
+        } => match transformed.to_placement_action(config) {
+            Some(p) => Ok(p),
+            _ => Err(pyo3::exceptions::PyValueError::new_err(
+                "Invalid placement action conversion",
+            )),
+        },
+        ZertzAction::Capture { src_flat, dst_flat } => {
             // Convert start/dest flat indices back to direction + coordinates
             let start_y = src_flat / width;
             let start_x = src_flat % width;
@@ -832,12 +853,16 @@ pub fn transform_action(
                 .iter()
                 .position(|&(dy, dx)| dy == dir_dy && dx == dir_dx)
                 .ok_or_else(|| {
-                    pyo3::exceptions::PyValueError::new_err(
-                        format!("Could not find direction for ({}, {})", dir_dy, dir_dx)
-                    )
+                    pyo3::exceptions::PyValueError::new_err(format!(
+                        "Could not find direction for ({}, {})",
+                        dir_dy, dir_dx
+                    ))
                 })?;
 
-            Ok(("CAP".to_string(), vec![Some(direction_idx), Some(start_y), Some(start_x)]))
+            Ok((
+                "CAP".to_string(),
+                vec![Some(direction_idx), Some(start_y), Some(start_x)],
+            ))
         }
         ZertzAction::Pass => Ok(("PASS".to_string(), vec![])),
     }

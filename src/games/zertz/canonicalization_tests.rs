@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests {
-    use super::super::canonicalization::*;
     use super::super::board::BoardConfig;
+    use super::super::canonicalization::*;
     use ndarray::Array3;
 
     // ============================================================================
@@ -230,10 +230,10 @@ mod tests {
 
         // Test various transforms
         let test_cases = vec![
-            (1, false, false, 0, 0),  // R60
-            (2, false, false, 0, 0),  // R120
-            (3, true, false, 0, 0),   // MR180
-            (1, true, true, 0, 0),    // R60M
+            (1, false, false, 0, 0), // R60
+            (2, false, false, 0, 0), // R120
+            (3, true, false, 0, 0),  // MR180
+            (1, true, true, 0, 0),   // R60M
         ];
 
         for (rot60_k, mirror, mirror_first, dy, dx) in test_cases {
@@ -254,12 +254,12 @@ mod tests {
             let restored = transform_state(
                 &config,
                 &transformed.view(),
-                -rot60_k,  // Inverse rotation
+                -rot60_k, // Inverse rotation
                 mirror,
-                !mirror_first,  // Swap mirror order for inverse
-                -dy,  // Inverse translation
+                !mirror_first, // Swap mirror order for inverse
+                -dy,           // Inverse translation
                 -dx,
-                false,  // Inverse order
+                false, // Inverse order
             )
             .expect("Inverse transform should succeed");
 
@@ -349,14 +349,19 @@ mod tests {
 
         // Get new bounding box
         let bbox_after = bounding_box(&config, &spatial_state.view());
-        assert!(bbox_after.is_some(), "Board with removed edges should have bounding box");
+        assert!(
+            bbox_after.is_some(),
+            "Board with removed edges should have bounding box"
+        );
 
         let (min_y_after, max_y_after, min_x_after, max_x_after) = bbox_after.unwrap();
 
         // Bounding box should be reduced (min_x should have increased)
         assert!(
-            min_x_after > min_x_before || max_x_after < max_x_before ||
-            min_y_after > min_y_before || max_y_after < max_y_before,
+            min_x_after > min_x_before
+                || max_x_after < max_x_before
+                || min_y_after > min_y_before
+                || max_y_after < max_y_before,
             "Expected reduced bounding box after removing edge rings"
         );
     }
@@ -372,7 +377,10 @@ mod tests {
         ));
 
         let bbox = bounding_box(&config, &spatial_state.view());
-        assert!(bbox.is_none(), "Empty board should return None for bounding box");
+        assert!(
+            bbox.is_none(),
+            "Empty board should return None for bounding box"
+        );
     }
 
     // ============================================================================
@@ -440,15 +448,19 @@ mod tests {
             let translated = transform_state(
                 &config,
                 &spatial_state.view(),
-                0,      // no rotation
-                false,  // no mirror
-                false,  // mirror_first (irrelevant)
+                0,     // no rotation
+                false, // no mirror
+                false, // mirror_first (irrelevant)
                 *dy,
                 *dx,
-                true,   // translate_first
+                true, // translate_first
             );
-            assert!(translated.is_some(),
-                "Translation ({}, {}) should succeed", dy, dx);
+            assert!(
+                translated.is_some(),
+                "Translation ({}, {}) should succeed",
+                dy,
+                dx
+            );
         }
     }
 
@@ -470,9 +482,12 @@ mod tests {
         let translations = get_translations(&config, &spatial_state.view());
 
         // Should include identity
-        assert!(translations.iter().any(|(name, dy, dx)| {
-            name == "T0,0" && *dy == 0 && *dx == 0
-        }), "Should include identity translation");
+        assert!(
+            translations
+                .iter()
+                .any(|(name, dy, dx)| { name == "T0,0" && *dy == 0 && *dx == 0 }),
+            "Should include identity translation"
+        );
     }
 
     #[test]
@@ -498,13 +513,20 @@ mod tests {
             let translated = transform_state(
                 &config,
                 &spatial_state.view(),
-                0, false, false,
-                *dy, *dx,
+                0,
+                false,
+                false,
+                *dy,
+                *dx,
                 true,
             );
-            assert!(translated.is_some(),
+            assert!(
+                translated.is_some(),
                 "Translation {} ({}, {}) should succeed for multi-ring pattern",
-                name, dy, dx);
+                name,
+                dy,
+                dx
+            );
         }
     }
 
@@ -518,7 +540,11 @@ mod tests {
         // correctly performs translations
 
         let config = BoardConfig::standard(37, 1).unwrap();
-        let mut spatial_state = Array3::zeros((config.layers_per_timestep * config.t + 1, config.width, config.width));
+        let mut spatial_state = Array3::zeros((
+            config.layers_per_timestep * config.t + 1,
+            config.width,
+            config.width,
+        ));
 
         // Create a simple board with a few rings and marbles
         // Place rings in a pattern
@@ -529,31 +555,49 @@ mod tests {
         spatial_state[[config.ring_layer, 4, 3]] = 1.0;
 
         // Place some marbles
-        spatial_state[[config.marble_layers.0, 2, 2]] = 1.0;  // white marble
-        spatial_state[[config.marble_layers.0 + 1, 3, 3]] = 1.0;  // gray marble
+        spatial_state[[config.marble_layers.0, 2, 2]] = 1.0; // white marble
+        spatial_state[[config.marble_layers.0 + 1, 3, 3]] = 1.0; // gray marble
 
         // Test various translations
         let test_cases = vec![
-            (0, 0),   // Identity - should succeed
-            (1, 0),   // Move down - should succeed
-            (0, 1),   // Move right - should succeed
-            (1, 1),   // Move diagonal - should succeed
-            (-1, 0),  // Move up - should succeed
-            (0, -1),  // Move left - should succeed
+            (0, 0),  // Identity - should succeed
+            (1, 0),  // Move down - should succeed
+            (0, 1),  // Move right - should succeed
+            (1, 1),  // Move diagonal - should succeed
+            (-1, 0), // Move up - should succeed
+            (0, -1), // Move left - should succeed
         ];
 
         for (dy, dx) in test_cases {
             // Use transform_state with no rotation/mirror
-            let transformed = transform_state(&config, &spatial_state.view(),  0, false, false, dy, dx, true);
+            let transformed = transform_state(
+                &config,
+                &spatial_state.view(),
+                0,
+                false,
+                false,
+                dy,
+                dx,
+                true,
+            );
 
             // All test cases should succeed
-            assert!(transformed.is_some(),
-                "Translation should succeed for dy={}, dx={}", dy, dx);
+            assert!(
+                transformed.is_some(),
+                "Translation should succeed for dy={}, dx={}",
+                dy,
+                dx
+            );
 
             if let Some(result) = transformed {
                 // Verify the result has the right shape
-                assert_eq!(result.shape(), spatial_state.shape(),
-                    "Shapes should match for translation dy={}, dx={}", dy, dx);
+                assert_eq!(
+                    result.shape(),
+                    spatial_state.shape(),
+                    "Shapes should match for translation dy={}, dx={}",
+                    dy,
+                    dx
+                );
 
                 // For identity transform, result should match original
                 if dy == 0 && dx == 0 {
@@ -561,7 +605,8 @@ mod tests {
                         for y in 0..result.shape()[1] {
                             for x in 0..result.shape()[2] {
                                 assert!(
-                                    (result[[layer, y, x]] - spatial_state[[layer, y, x]]).abs() < 1e-6,
+                                    (result[[layer, y, x]] - spatial_state[[layer, y, x]]).abs()
+                                        < 1e-6,
                                     "Identity transform should preserve state"
                                 );
                             }
@@ -577,7 +622,11 @@ mod tests {
         // Test that transform_state can handle both rotation and translation together
 
         let config = BoardConfig::standard(37, 1).unwrap();
-        let mut spatial_state = Array3::zeros((config.layers_per_timestep * config.t + 1, config.width, config.width));
+        let mut spatial_state = Array3::zeros((
+            config.layers_per_timestep * config.t + 1,
+            config.width,
+            config.width,
+        ));
 
         // Create a simple pattern
         spatial_state[[config.ring_layer, 3, 3]] = 1.0;
@@ -585,7 +634,7 @@ mod tests {
         spatial_state[[config.marble_layers.0, 3, 3]] = 1.0;
 
         // Apply rotation and translation together
-        let result = transform_state(&config, &spatial_state.view(),  1, false, false, 1, 0, true);
+        let result = transform_state(&config, &spatial_state.view(), 1, false, false, 1, 0, true);
 
         // Should succeed
         assert!(result.is_some(), "Rotation + translation should work");
@@ -601,13 +650,17 @@ mod tests {
         // Test that transform_state returns None for invalid translations
 
         let config = BoardConfig::standard(37, 1).unwrap();
-        let mut spatial_state = Array3::zeros((config.layers_per_timestep * config.t + 1, config.width, config.width));
+        let mut spatial_state = Array3::zeros((
+            config.layers_per_timestep * config.t + 1,
+            config.width,
+            config.width,
+        ));
 
         // Place a ring at the edge
         spatial_state[[config.ring_layer, 0, 0]] = 1.0;
 
         // Try to translate off the board
-        let result = transform_state(&config, &spatial_state.view(),  0, false, false, -1, 0, true);
+        let result = transform_state(&config, &spatial_state.view(), 0, false, false, -1, 0, true);
 
         assert!(result.is_none(), "Translation off board should return None");
     }

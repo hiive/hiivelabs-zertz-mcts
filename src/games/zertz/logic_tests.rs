@@ -32,7 +32,11 @@ mod tests {
         // Full 360° rotation should return to origin
         let (q, r) = (2, 3);
         let result = ax_rot60(q, r, 6);
-        assert_eq!(result, (q, r), "Full 360° rotation should return to original");
+        assert_eq!(
+            result,
+            (q, r),
+            "Full 360° rotation should return to original"
+        );
     }
 
     #[test]
@@ -104,7 +108,8 @@ mod tests {
         global_state[config.supply_w] = 1.0; // 1 white marble in supply
         global_state[config.cur_player] = config.player_1 as f32;
 
-        let placement_mask = get_placement_actions(&config, &spatial_state.view(), &global_state.view());
+        let placement_mask =
+            get_placement_actions(&config, &spatial_state.view(), &global_state.view());
 
         // Should have exactly one valid placement (white marble at 3,3 with no removal)
         // Format: (marble_type, dst_y, dst_x, rem_y, rem_x)
@@ -131,7 +136,8 @@ mod tests {
         global_state[config.p1_cap_w] = 2.0;
         global_state[config.cur_player] = config.player_1 as f32;
 
-        let placement_mask = get_placement_actions(&config, &spatial_state.view(), &global_state.view());
+        let placement_mask =
+            get_placement_actions(&config, &spatial_state.view(), &global_state.view());
 
         // Should be able to place white marble from captured pool (no removal)
         // Sentinel: (dst_y, dst_x) as removal means "no removal"
@@ -149,8 +155,9 @@ mod tests {
         global_state[config.supply_w] = 1.0;
         global_state[config.cur_player] = config.player_1 as f32;
 
-        let placement_mask = get_placement_actions(&config, &spatial_state.view(), &global_state.view());
-        
+        let placement_mask =
+            get_placement_actions(&config, &spatial_state.view(), &global_state.view());
+
         // Should not be able to place on occupied ring (check white marble, no removal)
         // New format: (marble_type, dst_y, dst_x, rem_y, rem_x) with (width, width) = no removal
         assert_eq!(placement_mask[[0, 3, 3, 3, 3]], 0.0);
@@ -215,7 +222,7 @@ mod tests {
         spatial_state[[config.ring_layer, 3, 5]] = 1.0;
         spatial_state[[1, 3, 3]] = 1.0; // Marble that can capture
         spatial_state[[2, 3, 4]] = 1.0; // Marble to capture
-                                  // Ring at 3,5 is empty - could place there
+                                        // Ring at 3,5 is empty - could place there
 
         global_state[config.supply_w] = 1.0;
         global_state[config.cur_player] = config.player_1 as f32;
@@ -254,7 +261,8 @@ mod tests {
             3,
             Some(4),
             Some(4),
-        ).unwrap();
+        )
+        .unwrap();
 
         // Check marble placed
         assert_eq!(spatial_state[[1, 3, 3]], 1.0);
@@ -281,7 +289,17 @@ mod tests {
         global_state[config.cur_player] = config.player_1 as f32;
 
         // Apply placement
-        apply_placement(&config, &mut spatial_state.view_mut(), &mut global_state.view_mut(), 0, 3, 3, None, None).unwrap();
+        apply_placement(
+            &config,
+            &mut spatial_state.view_mut(),
+            &mut global_state.view_mut(),
+            0,
+            3,
+            3,
+            None,
+            None,
+        )
+        .unwrap();
 
         // Check captured pool decremented
         assert_eq!(global_state[config.p1_cap_w], 2.0);
@@ -309,7 +327,15 @@ mod tests {
 
         // Apply capture
         let (dest_y, dest_x) = config.dest_from_direction(3, 3, east_dir);
-        apply_capture(&config, &mut spatial_state.view_mut(), &mut global_state.view_mut(), 3, 3, dest_y, dest_x);
+        apply_capture(
+            &config,
+            &mut spatial_state.view_mut(),
+            &mut global_state.view_mut(),
+            3,
+            3,
+            dest_y,
+            dest_x,
+        );
 
         // Check marble moved
         assert_eq!(spatial_state[[1, 3, 3]], 0.0); // Removed from start
@@ -350,7 +376,15 @@ mod tests {
 
         // Apply first capture
         let (dest_y, dest_x) = config.dest_from_direction(2, 2, east_dir);
-        apply_capture(&config, &mut spatial_state.view_mut(), &mut global_state.view_mut(), 2, 2, dest_y, dest_x);
+        apply_capture(
+            &config,
+            &mut spatial_state.view_mut(),
+            &mut global_state.view_mut(),
+            2,
+            2,
+            dest_y,
+            dest_x,
+        );
 
         // Player should NOT switch (chain available)
         assert_eq!(global_state[config.cur_player] as usize, config.player_1);
@@ -385,7 +419,15 @@ mod tests {
 
         // Apply first capture (east)
         let (dest_y, dest_x) = config.dest_from_direction(3, 3, east_dir);
-        apply_capture(&config, &mut spatial_state.view_mut(), &mut global_state.view_mut(), 3, 3, dest_y, dest_x);
+        apply_capture(
+            &config,
+            &mut spatial_state.view_mut(),
+            &mut global_state.view_mut(),
+            3,
+            3,
+            dest_y,
+            dest_x,
+        );
 
         // Player should still be current because follow-up capture (north) is available
         assert_eq!(global_state[config.cur_player] as usize, config.player_1);
@@ -422,8 +464,16 @@ mod tests {
             .position(|&(dy, dx)| dy == 0 && dx == 1)
             .unwrap();
 
-        assert_eq!(capture_mask_before[[east_dir, 2, 2]], 1.0, "Marble A should be able to capture");
-        assert_eq!(capture_mask_before[[east_dir, 4, 4]], 1.0, "Marble B should be able to capture");
+        assert_eq!(
+            capture_mask_before[[east_dir, 2, 2]],
+            1.0,
+            "Marble A should be able to capture"
+        );
+        assert_eq!(
+            capture_mask_before[[east_dir, 4, 4]],
+            1.0,
+            "Marble B should be able to capture"
+        );
 
         // Now mark A as the marble in chain capture (e.g., A just captured and can continue)
         spatial_state[[config.capture_layer, 2, 2]] = 1.0;
@@ -431,12 +481,23 @@ mod tests {
         // With CAPTURE_LAYER marked, only marble A should be able to capture
         let capture_mask_after = get_capture_actions(&config, &spatial_state.view());
 
-        assert_eq!(capture_mask_after[[east_dir, 2, 2]], 1.0, "Marble A should still be able to capture (chain)");
-        assert_eq!(capture_mask_after[[east_dir, 4, 4]], 0.0, "Marble B should NOT be able to capture (not chain marble)");
+        assert_eq!(
+            capture_mask_after[[east_dir, 2, 2]],
+            1.0,
+            "Marble A should still be able to capture (chain)"
+        );
+        assert_eq!(
+            capture_mask_after[[east_dir, 4, 4]],
+            0.0,
+            "Marble B should NOT be able to capture (not chain marble)"
+        );
 
         // Verify only one capture is available (the chain capture)
         let total_captures: f32 = capture_mask_after.iter().sum();
-        assert_eq!(total_captures, 1.0, "Only the chain marble should have capture moves");
+        assert_eq!(
+            total_captures, 1.0,
+            "Only the chain marble should have capture moves"
+        );
     }
 
     // ========================================================================
@@ -470,11 +531,20 @@ mod tests {
 
         // Apply capture
         let (dest_y, dest_x) = config.dest_from_direction(3, 3, east_dir);
-        apply_capture(&config, &mut spatial_state.view_mut(), &mut global_state.view_mut(), 3, 3, dest_y, dest_x);
+        apply_capture(
+            &config,
+            &mut spatial_state.view_mut(),
+            &mut global_state.view_mut(),
+            3,
+            3,
+            dest_y,
+            dest_x,
+        );
 
         // Verify the stale marker at (1,1) was cleared
         assert_eq!(
-            spatial_state[[config.capture_layer, 1, 1]], 0.0,
+            spatial_state[[config.capture_layer, 1, 1]],
+            0.0,
             "Capture layer at (1,1) should be cleared by apply_capture()"
         );
     }
@@ -506,11 +576,20 @@ mod tests {
 
         // Apply first capture
         let (dest_y, dest_x) = config.dest_from_direction(2, 2, east_dir);
-        apply_capture(&config, &mut spatial_state.view_mut(), &mut global_state.view_mut(), 2, 2, dest_y, dest_x);
+        apply_capture(
+            &config,
+            &mut spatial_state.view_mut(),
+            &mut global_state.view_mut(),
+            2,
+            2,
+            dest_y,
+            dest_x,
+        );
 
         // Verify landing position (2,4) is marked in capture layer
         assert_eq!(
-            spatial_state[[config.capture_layer, 2, 4]], 1.0,
+            spatial_state[[config.capture_layer, 2, 4]],
+            1.0,
             "Landing position (2,4) should be marked in capture layer for chain capture"
         );
 
@@ -534,7 +613,7 @@ mod tests {
         spatial_state[[config.ring_layer, 3, 5]] = 1.0;
         spatial_state[[1, 3, 3]] = 1.0; // White marble
         spatial_state[[2, 3, 4]] = 1.0; // Gray marble to capture
-        // No additional marble to capture from (3,5)
+                                        // No additional marble to capture from (3,5)
         global_state[config.cur_player] = config.player_1 as f32;
 
         let east_dir = config
@@ -545,11 +624,20 @@ mod tests {
 
         // Apply capture
         let (dest_y, dest_x) = config.dest_from_direction(3, 3, east_dir);
-        apply_capture(&config, &mut spatial_state.view_mut(), &mut global_state.view_mut(), 3, 3, dest_y, dest_x);
+        apply_capture(
+            &config,
+            &mut spatial_state.view_mut(),
+            &mut global_state.view_mut(),
+            3,
+            3,
+            dest_y,
+            dest_x,
+        );
 
         // Verify landing position (3,5) is NOT marked in capture layer
         assert_eq!(
-            spatial_state[[config.capture_layer, 3, 5]], 0.0,
+            spatial_state[[config.capture_layer, 3, 5]],
+            0.0,
             "Landing position (3,5) should NOT be marked when no chain capture available"
         );
 
@@ -586,11 +674,13 @@ mod tests {
             3,
             Some(4),
             Some(4),
-        ).unwrap();
+        )
+        .unwrap();
 
         // Verify capture layer was cleared
         assert_eq!(
-            spatial_state[[config.capture_layer, 2, 2]], 0.0,
+            spatial_state[[config.capture_layer, 2, 2]],
+            0.0,
             "Capture layer should be cleared by apply_placement()"
         );
 
@@ -639,7 +729,15 @@ mod tests {
 
         // Step 1: Apply capture from marble A at (2,2)
         let (dest_y, dest_x) = config.dest_from_direction(2, 2, east_dir);
-        apply_capture(&config, &mut spatial_state.view_mut(), &mut global_state.view_mut(), 2, 2, dest_y, dest_x);
+        apply_capture(
+            &config,
+            &mut spatial_state.view_mut(),
+            &mut global_state.view_mut(),
+            2,
+            2,
+            dest_y,
+            dest_x,
+        );
 
         // Now marble A is at (2,4) and a chain capture is available to (2,6)
         // Verify only marble A can capture (marble B at (4,4) should NOT be able to capture)
@@ -648,13 +746,15 @@ mod tests {
 
         // Marble A at (2,4) should be able to capture
         assert_eq!(
-            capture_mask[[east_dir, 2, 4]], 1.0,
+            capture_mask[[east_dir, 2, 4]],
+            1.0,
             "Chain marble at (2,4) should be able to continue capturing"
         );
 
         // Marble B at (4,4) should NOT be able to capture (chain capture in progress)
         assert_eq!(
-            capture_mask[[east_dir, 4, 4]], 0.0,
+            capture_mask[[east_dir, 4, 4]],
+            0.0,
             "Other marbles should NOT be able to capture during chain sequence"
         );
 
@@ -690,11 +790,17 @@ mod tests {
         // Has 3 consecutive OOB neighbors (dirs 1,2,3) so should be removable
 
         let is_removable = is_ring_removable(&config, &spatial_state.view(), 0, 0);
-        assert!(is_removable, "Corner ring (0,0) should be removable with 3 consecutive OOB neighbors");
+        assert!(
+            is_removable,
+            "Corner ring (0,0) should be removable with 3 consecutive OOB neighbors"
+        );
 
         // Test center position (3,3) - should NOT be removable (all neighbors in-bounds with rings)
         let is_removable_center = is_ring_removable(&config, &spatial_state.view(), 3, 3);
-        assert!(!is_removable_center, "Center ring (3,3) should NOT be removable on full board");
+        assert!(
+            !is_removable_center,
+            "Center ring (3,3) should NOT be removable on full board"
+        );
     }
 
     #[test]
@@ -739,7 +845,8 @@ mod tests {
             d4.1,
             Some(f2.0),
             Some(f2.1),
-        ).unwrap();
+        )
+        .unwrap();
 
         // Both D4 and G1 should be captured (2 marbles total)
         assert_eq!(global_state[config.p1_cap_w], 2.0);
@@ -764,10 +871,10 @@ mod tests {
         // All three regions are fully occupied, so all should be captured
 
         // Coordinates
-        let d4 = (3, 3);   // Main board location (where we place)
-        let f2 = (5, 5);   // Ring to be removed
-        let g1 = (6, 5);   // Region B
-        let a1 = (6, 0);   // Region C
+        let d4 = (3, 3); // Main board location (where we place)
+        let f2 = (5, 5); // Ring to be removed
+        let g1 = (6, 5); // Region B
+        let a1 = (6, 0); // Region C
 
         // Set up rings
         spatial_state[[config.ring_layer, d4.0, d4.1]] = 1.0;
@@ -776,14 +883,14 @@ mod tests {
         spatial_state[[config.ring_layer, a1.0, a1.1]] = 1.0;
 
         // Place marbles on G1 and A1 (D4 will get a marble during placement)
-        spatial_state[[1, g1.0, g1.1]] = 1.0;  // white on G1
-        spatial_state[[1, a1.0, a1.1]] = 1.0;  // white on A1
+        spatial_state[[1, g1.0, g1.1]] = 1.0; // white on G1
+        spatial_state[[1, a1.0, a1.1]] = 1.0; // white on A1
 
         // Remove neighbors to prepare isolation
-        spatial_state[[config.ring_layer, 6, 4]] = 0.0;  // F1 (neighbor of G1)
-        spatial_state[[config.ring_layer, 5, 6]] = 0.0;  // G2 (neighbor of G1)
-        spatial_state[[config.ring_layer, 5, 0]] = 0.0;  // A2 (neighbor of A1)
-        spatial_state[[config.ring_layer, 6, 1]] = 0.0;  // B1 (neighbor of A1)
+        spatial_state[[config.ring_layer, 6, 4]] = 0.0; // F1 (neighbor of G1)
+        spatial_state[[config.ring_layer, 5, 6]] = 0.0; // G2 (neighbor of G1)
+        spatial_state[[config.ring_layer, 5, 0]] = 0.0; // A2 (neighbor of A1)
+        spatial_state[[config.ring_layer, 6, 1]] = 0.0; // B1 (neighbor of A1)
 
         // Set up game state
         global_state[config.supply_w] = 5.0;
@@ -799,25 +906,53 @@ mod tests {
             &config,
             &mut spatial_state.view_mut(),
             &mut global_state.view_mut(),
-            0,  // white marble
+            0, // white marble
             d4.0,
             d4.1,
             Some(f2.0),
             Some(f2.1),
-        ).unwrap();
+        )
+        .unwrap();
 
         // Verify ALL three regions were captured
-        assert_eq!(spatial_state[[1, d4.0, d4.1]], 0.0, "D4 marble should be captured");
-        assert_eq!(spatial_state[[config.ring_layer, d4.0, d4.1]], 0.0, "D4 ring should be removed");
+        assert_eq!(
+            spatial_state[[1, d4.0, d4.1]],
+            0.0,
+            "D4 marble should be captured"
+        );
+        assert_eq!(
+            spatial_state[[config.ring_layer, d4.0, d4.1]],
+            0.0,
+            "D4 ring should be removed"
+        );
 
-        assert_eq!(spatial_state[[1, g1.0, g1.1]], 0.0, "G1 marble should be captured");
-        assert_eq!(spatial_state[[config.ring_layer, g1.0, g1.1]], 0.0, "G1 ring should be removed");
+        assert_eq!(
+            spatial_state[[1, g1.0, g1.1]],
+            0.0,
+            "G1 marble should be captured"
+        );
+        assert_eq!(
+            spatial_state[[config.ring_layer, g1.0, g1.1]],
+            0.0,
+            "G1 ring should be removed"
+        );
 
-        assert_eq!(spatial_state[[1, a1.0, a1.1]], 0.0, "A1 marble should be captured");
-        assert_eq!(spatial_state[[config.ring_layer, a1.0, a1.1]], 0.0, "A1 ring should be removed");
+        assert_eq!(
+            spatial_state[[1, a1.0, a1.1]],
+            0.0,
+            "A1 marble should be captured"
+        );
+        assert_eq!(
+            spatial_state[[config.ring_layer, a1.0, a1.1]],
+            0.0,
+            "A1 ring should be removed"
+        );
 
         // Verify all 3 marbles were captured
-        assert_eq!(global_state[config.p1_cap_w], 3.0, "Should capture all 3 marbles");
+        assert_eq!(
+            global_state[config.p1_cap_w], 3.0,
+            "Should capture all 3 marbles"
+        );
     }
 
     #[test]
@@ -847,7 +982,8 @@ mod tests {
             d4.1,
             None,
             None,
-        ).unwrap();
+        )
+        .unwrap();
     }
 }
 
@@ -884,7 +1020,11 @@ mod termination_tests {
         global_state[config.p1_cap_g] = 3.0;
         global_state[config.p1_cap_b] = 3.0;
 
-        assert!(is_game_over(&config, &spatial_state.view(), &global_state.view()));
+        assert!(is_game_over(
+            &config,
+            &spatial_state.view(),
+            &global_state.view()
+        ));
     }
 
     #[test]
@@ -897,7 +1037,11 @@ mod termination_tests {
         global_state[config.p2_cap_g] = 3.0;
         global_state[config.p2_cap_b] = 3.0;
 
-        assert!(is_game_over(&config, &spatial_state.view(), &global_state.view()));
+        assert!(is_game_over(
+            &config,
+            &spatial_state.view(),
+            &global_state.view()
+        ));
     }
 
     #[test]
@@ -908,7 +1052,11 @@ mod termination_tests {
         // Player 1 has 4 white
         global_state[config.p1_cap_w] = 4.0;
 
-        assert!(is_game_over(&config, &spatial_state.view(), &global_state.view()));
+        assert!(is_game_over(
+            &config,
+            &spatial_state.view(),
+            &global_state.view()
+        ));
     }
 
     #[test]
@@ -919,7 +1067,11 @@ mod termination_tests {
         // Player 2 has 5 gray
         global_state[config.p2_cap_g] = 5.0;
 
-        assert!(is_game_over(&config, &spatial_state.view(), &global_state.view()));
+        assert!(is_game_over(
+            &config,
+            &spatial_state.view(),
+            &global_state.view()
+        ));
     }
 
     #[test]
@@ -930,7 +1082,11 @@ mod termination_tests {
         // Player 1 has 6 black
         global_state[config.p1_cap_b] = 6.0;
 
-        assert!(is_game_over(&config, &spatial_state.view(), &global_state.view()));
+        assert!(is_game_over(
+            &config,
+            &spatial_state.view(),
+            &global_state.view()
+        ));
     }
 
     #[test]
@@ -942,7 +1098,11 @@ mod termination_tests {
         spatial_state[[config.ring_layer, 3, 3]] = 1.0;
         spatial_state[[1, 3, 3]] = 1.0; // White marble
 
-        assert!(is_game_over(&config, &spatial_state.view(), &global_state.view()));
+        assert!(is_game_over(
+            &config,
+            &spatial_state.view(),
+            &global_state.view()
+        ));
     }
 
     #[test]
@@ -959,7 +1119,11 @@ mod termination_tests {
         global_state[config.p1_cap_g] = 0.0;
         global_state[config.p1_cap_b] = 0.0;
 
-        assert!(is_game_over(&config, &spatial_state.view(), &global_state.view()));
+        assert!(is_game_over(
+            &config,
+            &spatial_state.view(),
+            &global_state.view()
+        ));
     }
 
     #[test]
@@ -978,7 +1142,11 @@ mod termination_tests {
         // Supply has marbles
         global_state[config.supply_w] = 1.0;
 
-        assert!(!is_game_over(&config, &spatial_state.view(), &global_state.view()));
+        assert!(!is_game_over(
+            &config,
+            &spatial_state.view(),
+            &global_state.view()
+        ));
     }
 
     // ========================================================================
@@ -1193,7 +1361,11 @@ mod termination_tests {
         global_state[config.p1_cap_g] = 2.0;
         global_state[config.p1_cap_b] = 2.0;
 
-        assert!(is_game_over(&config, &spatial_state.view(), &global_state.view()));
+        assert!(is_game_over(
+            &config,
+            &spatial_state.view(),
+            &global_state.view()
+        ));
         assert_eq!(
             get_game_outcome(&config, &spatial_state.view(), &global_state.view()),
             PLAYER_1_WIN
@@ -1208,7 +1380,11 @@ mod termination_tests {
         // Player 2 has 3 white (Blitz win condition)
         global_state[config.p2_cap_w] = 3.0;
 
-        assert!(is_game_over(&config, &spatial_state.view(), &global_state.view()));
+        assert!(is_game_over(
+            &config,
+            &spatial_state.view(),
+            &global_state.view()
+        ));
         assert_eq!(
             get_game_outcome(&config, &spatial_state.view(), &global_state.view()),
             PLAYER_2_WIN
@@ -1223,7 +1399,11 @@ mod termination_tests {
         // Player 1 has 4 gray (Blitz win condition)
         global_state[config.p1_cap_g] = 4.0;
 
-        assert!(is_game_over(&config, &spatial_state.view(), &global_state.view()));
+        assert!(is_game_over(
+            &config,
+            &spatial_state.view(),
+            &global_state.view()
+        ));
         assert_eq!(
             get_game_outcome(&config, &spatial_state.view(), &global_state.view()),
             PLAYER_1_WIN
@@ -1238,7 +1418,11 @@ mod termination_tests {
         // Player 2 has 5 black (Blitz win condition)
         global_state[config.p2_cap_b] = 5.0;
 
-        assert!(is_game_over(&config, &spatial_state.view(), &global_state.view()));
+        assert!(is_game_over(
+            &config,
+            &spatial_state.view(),
+            &global_state.view()
+        ));
         assert_eq!(
             get_game_outcome(&config, &spatial_state.view(), &global_state.view()),
             PLAYER_2_WIN
@@ -1262,7 +1446,11 @@ mod termination_tests {
         global_state[config.supply_w] = 1.0;
 
         // Should NOT be game over - needs 2 of EACH (has only 1 black)
-        assert!(!is_game_over(&config, &spatial_state.view(), &global_state.view()));
+        assert!(!is_game_over(
+            &config,
+            &spatial_state.view(),
+            &global_state.view()
+        ));
     }
 
     #[test]
@@ -1283,7 +1471,11 @@ mod termination_tests {
         global_state[config.supply_w] = 1.0;
 
         // Should NOT be game over - needs 3 of each in Standard mode
-        assert!(!is_game_over(&config, &spatial_state.view(), &global_state.view()));
+        assert!(!is_game_over(
+            &config,
+            &spatial_state.view(),
+            &global_state.view()
+        ));
     }
 
     #[test]
@@ -1324,7 +1516,17 @@ mod termination_tests {
         let rings_before = spatial_state.slice(s![config.ring_layer, .., ..]).sum();
 
         // Apply placement with no ring removal (None, None)
-        apply_placement(&config, &mut spatial_state.view_mut(), &mut global_state.view_mut(), 0, 3, 3, None, None).unwrap();
+        apply_placement(
+            &config,
+            &mut spatial_state.view_mut(),
+            &mut global_state.view_mut(),
+            0,
+            3,
+            3,
+            None,
+            None,
+        )
+        .unwrap();
 
         // Check marble placed
         assert_eq!(spatial_state[[1, 3, 3]], 1.0, "Marble should be placed");
@@ -1337,12 +1539,14 @@ mod termination_tests {
         );
 
         // Check supply decremented
-        assert_eq!(global_state[config.supply_w], 4.0, "Supply should be decremented");
+        assert_eq!(
+            global_state[config.supply_w], 4.0,
+            "Supply should be decremented"
+        );
 
         // Check player switched
         assert_eq!(
-            global_state[config.cur_player] as usize,
-            config.player_2,
+            global_state[config.cur_player] as usize, config.player_2,
             "Turn should pass to next player"
         );
     }
@@ -1438,7 +1642,7 @@ mod termination_tests {
 
         // Check no duplicates
         for i in 0..neighbors.len() {
-            for j in (i+1)..neighbors.len() {
+            for j in (i + 1)..neighbors.len() {
                 assert_ne!(neighbors[i], neighbors[j], "Neighbors should be unique");
             }
         }

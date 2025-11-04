@@ -10,8 +10,7 @@
 use super::action::ZertzAction;
 use super::board::BoardConfig;
 use super::canonicalization::{
-    build_axial_maps, build_layout_mask, parse_rot_component, parse_transform,
-    transform_coordinate,
+    build_axial_maps, build_layout_mask, parse_rot_component, parse_transform, transform_coordinate,
 };
 
 /// Transform a Zertz action according to a symmetry operation
@@ -110,10 +109,7 @@ fn translate_action(
                 remove_flat: new_remove_flat,
             }
         }
-        ZertzAction::Capture {
-            src_flat,
-            dst_flat,
-        } => {
+        ZertzAction::Capture { src_flat, dst_flat } => {
             // Convert flat to (y, x)
             let (src_y, src_x) = config.flat_to_yx(*src_flat);
             let (dst_y, dst_x) = config.flat_to_yx(*dst_flat);
@@ -186,10 +182,7 @@ fn apply_orientation(
                 remove_flat: new_remove_flat,
             }
         }
-        ZertzAction::Capture {
-            src_flat,
-            dst_flat,
-        } => {
+        ZertzAction::Capture { src_flat, dst_flat } => {
             // Convert flat to (y, x)
             let (src_y, src_x) = config.flat_to_yx(*src_flat);
             let (dst_y, dst_x) = config.flat_to_yx(*dst_flat);
@@ -225,4 +218,3 @@ fn apply_orientation(
         ZertzAction::Pass => ZertzAction::Pass,
     }
 }
-

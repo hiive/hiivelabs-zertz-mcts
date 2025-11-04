@@ -141,11 +141,7 @@ pub trait MCTSGame: Send + Sync + 'static {
     ///
     /// # Returns
     /// `true` if game is over, `false` otherwise
-    fn is_terminal(
-        &self,
-        spatial_state: &ArrayView3<f32>,
-        global_state: &ArrayView1<f32>,
-    ) -> bool;
+    fn is_terminal(&self, spatial_state: &ArrayView3<f32>, global_state: &ArrayView1<f32>) -> bool;
 
     /// Get the game outcome from Player 1's perspective.
     ///
@@ -160,11 +156,7 @@ pub trait MCTSGame: Send + Sync + 'static {
     ///
     /// # Panics
     /// May panic or return invalid value if called on non-terminal state.
-    fn get_outcome(
-        &self,
-        spatial_state: &ArrayView3<f32>,
-        global_state: &ArrayView1<f32>,
-    ) -> i8;
+    fn get_outcome(&self, spatial_state: &ArrayView3<f32>, global_state: &ArrayView1<f32>) -> i8;
 
     /// Get the current player index.
     ///
@@ -274,11 +266,7 @@ pub trait MCTSGame: Send + Sync + 'static {
     ///     self.zobrist_hasher.hash_state(spatial, global, &self.config)
     /// }
     /// ```
-    fn hash_state(
-        &self,
-        spatial_state: &ArrayView3<f32>,
-        global_state: &ArrayView1<f32>,
-    ) -> u64;
+    fn hash_state(&self, spatial_state: &ArrayView3<f32>, global_state: &ArrayView1<f32>) -> u64;
 
     // ========================================================================
     // DETERMINISTIC SEQUENCE COLLAPSING - Optional optimization

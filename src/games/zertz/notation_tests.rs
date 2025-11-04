@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests {
-    use super::super::notation::*;
     use super::super::board::BoardConfig;
+    use super::super::notation::*;
 
     #[test]
     fn test_coordinate_to_algebraic_37() {
@@ -99,7 +99,14 @@ mod tests {
                 if valid {
                     let algebraic = coordinate_to_algebraic(y, x, 7).unwrap();
                     let (y2, x2) = algebraic_to_coordinate(&algebraic, 7).unwrap();
-                    assert_eq!((y, x), (y2, x2), "Roundtrip failed for ({}, {}) -> {}", y, x, algebraic);
+                    assert_eq!(
+                        (y, x),
+                        (y2, x2),
+                        "Roundtrip failed for ({}, {}) -> {}",
+                        y,
+                        x,
+                        algebraic
+                    );
                 }
             }
         }
@@ -121,7 +128,14 @@ mod tests {
                 if valid {
                     let algebraic = coordinate_to_algebraic(y, x, 8).unwrap();
                     let (y2, x2) = algebraic_to_coordinate(&algebraic, 8).unwrap();
-                    assert_eq!((y, x), (y2, x2), "Roundtrip failed for ({}, {}) -> {}", y, x, algebraic);
+                    assert_eq!(
+                        (y, x),
+                        (y2, x2),
+                        "Roundtrip failed for ({}, {}) -> {}",
+                        y,
+                        x,
+                        algebraic
+                    );
                 }
             }
         }
@@ -143,7 +157,14 @@ mod tests {
                 if valid {
                     let algebraic = coordinate_to_algebraic(y, x, 9).unwrap();
                     let (y2, x2) = algebraic_to_coordinate(&algebraic, 9).unwrap();
-                    assert_eq!((y, x), (y2, x2), "Roundtrip failed for ({}, {}) -> {}", y, x, algebraic);
+                    assert_eq!(
+                        (y, x),
+                        (y2, x2),
+                        "Roundtrip failed for ({}, {}) -> {}",
+                        y,
+                        x,
+                        algebraic
+                    );
                 }
             }
         }

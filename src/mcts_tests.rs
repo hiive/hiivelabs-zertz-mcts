@@ -1,16 +1,16 @@
 #[cfg(test)]
 mod tests {
     use super::super::mcts::*;
+    use crate::game_trait::MCTSGame;
+    use crate::games::zertz::action::ZertzAction;
+    use crate::games::zertz::game::ZertzGame;
     use crate::games::zertz::BoardConfig;
     use crate::node::MCTSNode;
     use crate::transposition::TranspositionTable;
-    use crate::game_trait::MCTSGame;
     use ndarray::{Array1, Array3, ArrayView1, ArrayView3, ArrayViewMut1, ArrayViewMut3};
-    use std::sync::Arc;
     use std::sync::atomic::Ordering;
+    use std::sync::Arc;
     use std::time::Instant;
-    use crate::games::zertz::action::ZertzAction;
-    use crate::games::zertz::game::ZertzGame;
     // Note: Most MCTS testing is done via Python integration tests
     // due to the PyO3 boundary (PyReadonlyArray types can only be created from Python)
 
@@ -26,8 +26,8 @@ mod tests {
         // Test Placement actions with flat coordinates
         let placement1 = ZertzAction::Placement {
             marble_type: 0,
-            dst_flat: 3 * width + 4,  // (y=3, x=4) -> flat
-            remove_flat: Some(1 * width + 2),  // (y=1, x=2) -> flat
+            dst_flat: 3 * width + 4,          // (y=3, x=4) -> flat
+            remove_flat: Some(1 * width + 2), // (y=1, x=2) -> flat
         };
         let placement2 = ZertzAction::Placement {
             marble_type: 0,
@@ -64,7 +64,11 @@ mod tests {
         let config = game.config();
 
         // Create a simple initial state with rings
-        let mut spatial_state = Array3::zeros((config.layers_per_timestep * config.t + 1, config.width, config.width));
+        let mut spatial_state = Array3::zeros((
+            config.layers_per_timestep * config.t + 1,
+            config.width,
+            config.width,
+        ));
         let mut global_state = Array1::zeros(10);
 
         // Add some rings
@@ -82,7 +86,12 @@ mod tests {
 
         // Create MCTS search instance and root node
         let mcts = MCTSSearch::new(Arc::clone(&game), None, None, None, None, None, None);
-        let root = Arc::new(MCTSNode::new(spatial_state, global_state, Arc::clone(&game), None));
+        let root = Arc::new(MCTSNode::new(
+            spatial_state,
+            global_state,
+            Arc::clone(&game),
+            None,
+        ));
 
         // Simulate the select→expand→backprop flow:
         // 1. Add virtual loss to root (what select() does)
@@ -96,7 +105,12 @@ mod tests {
 
         // 4. Verify child has virtual loss (visits should be VIRTUAL_LOSS)
         #[cfg(debug_assertions)]
-        assert_eq!(child.virtual_loss_count.load(std::sync::atomic::Ordering::Relaxed), 1);
+        assert_eq!(
+            child
+                .virtual_loss_count
+                .load(std::sync::atomic::Ordering::Relaxed),
+            1
+        );
 
         // 5. Now simulate backpropagation - should work correctly
         child.remove_virtual_loss();
@@ -180,7 +194,11 @@ mod tests {
 
         let game = Arc::new(ZertzGame::new(37, 1, false).unwrap());
         let config = game.config();
-        let mut spatial_state = Array3::zeros((config.layers_per_timestep * config.t + 1, config.width, config.width));
+        let mut spatial_state = Array3::zeros((
+            config.layers_per_timestep * config.t + 1,
+            config.width,
+            config.width,
+        ));
         let mut global_state = Array1::zeros(10);
 
         // Setup initial board state
@@ -199,19 +217,22 @@ mod tests {
         // Create MCTS with transposition table enabled
         let mut mcts = MCTSSearch::new(
             Arc::clone(&game),
-            Some(1.41),  // exploration_constant
-            None,        // widening_constant
-            None,        // fpu_reduction
-            None,        // rave_constant
-            Some(true),  // use_transposition_table
-            Some(true),  // use_transposition_lookups
+            Some(1.41), // exploration_constant
+            None,       // widening_constant
+            None,       // fpu_reduction
+            None,       // rave_constant
+            Some(true), // use_transposition_table
+            Some(true), // use_transposition_lookups
         );
 
         // Initialize transposition table
         mcts.transposition_table = Some(Arc::new(TranspositionTable::new(Arc::clone(&game))));
 
         // Create root node with transposition lookup
-        let shared_entry = mcts.transposition_table.as_ref().unwrap()
+        let shared_entry = mcts
+            .transposition_table
+            .as_ref()
+            .unwrap()
             .get_or_insert(&spatial_state.view(), &global_state.view());
 
         let root = Arc::new(MCTSNode::new(
@@ -261,7 +282,10 @@ mod tests {
             "Transposition table should have entries after search"
         );
 
-        println!("Transposition table size after 100 iterations: {} entries", table_size);
+        println!(
+            "Transposition table size after 100 iterations: {} entries",
+            table_size
+        );
     }
 
     #[test]
@@ -273,7 +297,11 @@ mod tests {
         let game = Arc::new(ZertzGame::new(37, 1, false).unwrap());
         let config = game.config();
 
-        let mut spatial_state = Array3::zeros((config.layers_per_timestep * config.t + 1, config.width, config.width));
+        let mut spatial_state = Array3::zeros((
+            config.layers_per_timestep * config.t + 1,
+            config.width,
+            config.width,
+        ));
         let mut global_state = Array1::zeros(10);
 
         // Setup minimal valid state
@@ -288,17 +316,33 @@ mod tests {
         global_state[config.cur_player] = config.player_1 as f32;
 
         let _mcts = MCTSSearch::new(Arc::clone(&game), None, None, None, None, None, None);
-        let node = Arc::new(MCTSNode::new(spatial_state, global_state, Arc::clone(&game), None));
+        let node = Arc::new(MCTSNode::new(
+            spatial_state,
+            global_state,
+            Arc::clone(&game),
+            None,
+        ));
 
         // Create a temporary game that disables collapse for testing
         struct TestGame(Arc<ZertzGame>);
         impl MCTSGame for TestGame {
             type Action = ZertzAction;
-            fn enable_deterministic_collapse(&self) -> bool { false }
-            fn get_valid_actions(&self, s: &ArrayView3<f32>, g: &ArrayView1<f32>) -> Vec<Self::Action> {
+            fn enable_deterministic_collapse(&self) -> bool {
+                false
+            }
+            fn get_valid_actions(
+                &self,
+                s: &ArrayView3<f32>,
+                g: &ArrayView1<f32>,
+            ) -> Vec<Self::Action> {
                 self.0.get_valid_actions(s, g)
             }
-            fn apply_action(&self, s: &mut ArrayViewMut3<f32>, g: &mut ArrayViewMut1<f32>, a: &Self::Action) -> Result<(), String> {
+            fn apply_action(
+                &self,
+                s: &mut ArrayViewMut3<f32>,
+                g: &mut ArrayViewMut1<f32>,
+                a: &Self::Action,
+            ) -> Result<(), String> {
                 self.0.apply_action(s, g, a)
             }
             fn is_terminal(&self, s: &ArrayView3<f32>, g: &ArrayView1<f32>) -> bool {
@@ -316,10 +360,19 @@ mod tests {
             fn global_size(&self) -> usize {
                 self.0.global_size()
             }
-            fn evaluate_heuristic(&self, s: &ArrayView3<f32>, g: &ArrayView1<f32>, p: usize) -> f32 {
+            fn evaluate_heuristic(
+                &self,
+                s: &ArrayView3<f32>,
+                g: &ArrayView1<f32>,
+                p: usize,
+            ) -> f32 {
                 self.0.evaluate_heuristic(s, g, p)
             }
-            fn canonicalize_state(&self, s: &ArrayView3<f32>, g: &ArrayView1<f32>) -> (Array3<f32>, Array1<f32>) {
+            fn canonicalize_state(
+                &self,
+                s: &ArrayView3<f32>,
+                g: &ArrayView1<f32>,
+            ) -> (Array3<f32>, Array1<f32>) {
                 self.0.canonicalize_state(s, g)
             }
             fn hash_state(&self, s: &ArrayView3<f32>, g: &ArrayView1<f32>) -> u64 {
@@ -338,7 +391,15 @@ mod tests {
             None,
         ));
 
-        let test_mcts = MCTSSearch::new(Arc::clone(&test_node.game), None, None, None, None, None, None);
+        let test_mcts = MCTSSearch::new(
+            Arc::clone(&test_node.game),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        );
 
         // collapse should return immediately without traversing
         let result = test_mcts.collapse_deterministic_sequence(Arc::clone(&test_node));
@@ -355,7 +416,11 @@ mod tests {
         let game = Arc::new(ZertzGame::new(37, 1, false).unwrap());
         let config = game.config();
 
-        let spatial_state = Array3::zeros((config.layers_per_timestep * config.t + 1, config.width, config.width));
+        let spatial_state = Array3::zeros((
+            config.layers_per_timestep * config.t + 1,
+            config.width,
+            config.width,
+        ));
         let mut global_state = Array1::zeros(10);
 
         // Create terminal state (no rings left, game over)
@@ -366,7 +431,12 @@ mod tests {
         global_state[config.cur_player] = config.player_1 as f32;
 
         let mcts = MCTSSearch::new(Arc::clone(&game), None, None, None, None, None, None);
-        let node = Arc::new(MCTSNode::new(spatial_state, global_state, Arc::clone(&game), None));
+        let node = Arc::new(MCTSNode::new(
+            spatial_state,
+            global_state,
+            Arc::clone(&game),
+            None,
+        ));
 
         // Verify it's actually terminal
         assert!(game.is_terminal(&node.spatial_state.view(), &node.global_state.view()));
@@ -386,7 +456,11 @@ mod tests {
         let game = Arc::new(ZertzGame::new(37, 1, false).unwrap());
         let config = game.config();
 
-        let mut spatial_state = Array3::zeros((config.layers_per_timestep * config.t + 1, config.width, config.width));
+        let mut spatial_state = Array3::zeros((
+            config.layers_per_timestep * config.t + 1,
+            config.width,
+            config.width,
+        ));
         let mut global_state = Array1::zeros(10);
 
         // Setup initial board state with many possible moves
@@ -401,7 +475,12 @@ mod tests {
         global_state[config.cur_player] = config.player_1 as f32;
 
         let mcts = MCTSSearch::new(Arc::clone(&game), None, None, None, None, None, None);
-        let node = Arc::new(MCTSNode::new(spatial_state, global_state, Arc::clone(&game), None));
+        let node = Arc::new(MCTSNode::new(
+            spatial_state,
+            global_state,
+            Arc::clone(&game),
+            None,
+        ));
 
         // Verify there are multiple actions available
         let actions = game.get_valid_actions(&node.spatial_state.view(), &node.global_state.view());
@@ -422,7 +501,11 @@ mod tests {
         let game = Arc::new(ZertzGame::new(37, 1, false).unwrap());
         let config = game.config();
 
-        let mut spatial_state = Array3::zeros((config.layers_per_timestep * config.t + 1, config.width, config.width));
+        let mut spatial_state = Array3::zeros((
+            config.layers_per_timestep * config.t + 1,
+            config.width,
+            config.width,
+        ));
         let mut global_state = Array1::zeros(10);
 
         // Create a state with exactly one legal action:
@@ -438,7 +521,12 @@ mod tests {
         global_state[config.cur_player] = config.player_1 as f32;
 
         let mcts = MCTSSearch::new(Arc::clone(&game), None, None, None, None, None, None);
-        let node = Arc::new(MCTSNode::new(spatial_state, global_state, Arc::clone(&game), None));
+        let node = Arc::new(MCTSNode::new(
+            spatial_state,
+            global_state,
+            Arc::clone(&game),
+            None,
+        ));
 
         // Verify there's exactly one action
         let actions = game.get_valid_actions(&node.spatial_state.view(), &node.global_state.view());
@@ -452,7 +540,11 @@ mod tests {
 
         // Verify the node has one child now
         let children = node.children.read().unwrap();
-        assert_eq!(children.len(), 1, "Parent should have exactly one child after collapse");
+        assert_eq!(
+            children.len(),
+            1,
+            "Parent should have exactly one child after collapse"
+        );
     }
 
     #[test]
@@ -463,7 +555,11 @@ mod tests {
         let game = Arc::new(ZertzGame::new(37, 1, false).unwrap());
         let config = game.config();
 
-        let mut spatial_state = Array3::zeros((config.layers_per_timestep * config.t + 1, config.width, config.width));
+        let mut spatial_state = Array3::zeros((
+            config.layers_per_timestep * config.t + 1,
+            config.width,
+            config.width,
+        ));
         let mut global_state = Array1::zeros(10);
 
         // Create forced move state
@@ -476,7 +572,12 @@ mod tests {
         global_state[config.cur_player] = config.player_1 as f32;
 
         let mcts = MCTSSearch::new(Arc::clone(&game), None, None, None, None, None, None);
-        let node = Arc::new(MCTSNode::new(spatial_state, global_state, Arc::clone(&game), None));
+        let node = Arc::new(MCTSNode::new(
+            spatial_state,
+            global_state,
+            Arc::clone(&game),
+            None,
+        ));
 
         // First collapse - creates child
         let result1 = mcts.collapse_deterministic_sequence(Arc::clone(&node));
@@ -487,7 +588,10 @@ mod tests {
         let child2_ptr = Arc::as_ptr(&result2);
 
         // Should return the same child (pointer equality)
-        assert_eq!(child1_ptr, child2_ptr, "Collapse should reuse existing child");
+        assert_eq!(
+            child1_ptr, child2_ptr,
+            "Collapse should reuse existing child"
+        );
 
         // Verify still only one child
         let children = node.children.read().unwrap();
@@ -520,11 +624,20 @@ mod tests {
                 Some(ZertzAction::Pass)
             }
 
-            fn get_valid_actions(&self, _s: &ArrayView3<f32>, _g: &ArrayView1<f32>) -> Vec<Self::Action> {
+            fn get_valid_actions(
+                &self,
+                _s: &ArrayView3<f32>,
+                _g: &ArrayView1<f32>,
+            ) -> Vec<Self::Action> {
                 vec![ZertzAction::Pass]
             }
 
-            fn apply_action(&self, _s: &mut ArrayViewMut3<f32>, g: &mut ArrayViewMut1<f32>, _a: &Self::Action) -> Result<(), String> {
+            fn apply_action(
+                &self,
+                _s: &mut ArrayViewMut3<f32>,
+                g: &mut ArrayViewMut1<f32>,
+                _a: &Self::Action,
+            ) -> Result<(), String> {
                 // Just flip player to simulate state change
                 let cur = g[0] as usize;
                 g[0] = if cur == 0 { 1.0 } else { 0.0 };
@@ -551,11 +664,20 @@ mod tests {
                 10
             }
 
-            fn evaluate_heuristic(&self, _s: &ArrayView3<f32>, _g: &ArrayView1<f32>, _p: usize) -> f32 {
+            fn evaluate_heuristic(
+                &self,
+                _s: &ArrayView3<f32>,
+                _g: &ArrayView1<f32>,
+                _p: usize,
+            ) -> f32 {
                 0.0
             }
 
-            fn canonicalize_state(&self, s: &ArrayView3<f32>, g: &ArrayView1<f32>) -> (Array3<f32>, Array1<f32>) {
+            fn canonicalize_state(
+                &self,
+                s: &ArrayView3<f32>,
+                g: &ArrayView1<f32>,
+            ) -> (Array3<f32>, Array1<f32>) {
                 (s.to_owned(), g.to_owned())
             }
 
@@ -579,7 +701,10 @@ mod tests {
         let result = mcts.collapse_deterministic_sequence(Arc::clone(&node));
 
         // Should have stopped due to depth limit
-        assert!(!Arc::ptr_eq(&result, &node), "Should have moved at least one step");
+        assert!(
+            !Arc::ptr_eq(&result, &node),
+            "Should have moved at least one step"
+        );
 
         // Count depth by traversing children
         let mut depth = 0;
@@ -590,7 +715,11 @@ mod tests {
                 if children.is_empty() {
                     break;
                 }
-                assert_eq!(children.len(), 1, "Should have exactly one child at each level");
+                assert_eq!(
+                    children.len(),
+                    1,
+                    "Should have exactly one child at each level"
+                );
                 Arc::clone(children.values().next().unwrap())
             };
             current = next_child;

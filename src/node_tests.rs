@@ -1,11 +1,11 @@
 #[cfg(test)]
 mod tests {
     use super::super::node::*;
+    use crate::games::zertz::game::ZertzGame;
     use crate::games::zertz::BoardConfig;
     use crate::transposition::TranspositionTable;
     use ndarray::{Array1, Array3};
     use std::sync::Arc;
-    use crate::games::zertz::game::ZertzGame;
 
     fn empty_state(config: &BoardConfig) -> (Array3<f32>, Array1<f32>) {
         let layers = config.layers_per_timestep * config.t + 1;
@@ -85,9 +85,17 @@ mod tests {
         node_canonical.update(0.75);
 
         // Rotate spatial_state state by 60 degrees (same canonical class)
-        let rotated =
-            crate::games::zertz::canonicalization::transform_state(&config, &spatial_state.view(), 1, false, false, 0, 0, true)
-                .expect("Transformation should succeed");
+        let rotated = crate::games::zertz::canonicalization::transform_state(
+            &config,
+            &spatial_state.view(),
+            1,
+            false,
+            false,
+            0,
+            0,
+            true,
+        )
+        .expect("Transformation should succeed");
         let rotated_entry = table.get_or_insert(&rotated.view(), &global_state.view());
         let node_rotated = Arc::new(MCTSNode::new(
             rotated.to_owned(),
@@ -187,7 +195,12 @@ mod tests {
         let exploration_constant = 1.41;
         let fpu_reduction = Some(0.2);
 
-        let score = node.ucb1_score(parent_visits, parent_value, exploration_constant, fpu_reduction);
+        let score = node.ucb1_score(
+            parent_visits,
+            parent_value,
+            exploration_constant,
+            fpu_reduction,
+        );
 
         // Expected: -(parent_value - fpu_reduction) + c * sqrt(parent_visits)
         // = -(0.5 - 0.2) + 1.41 * sqrt(10)
@@ -197,7 +210,12 @@ mod tests {
         let expected_u = exploration_constant * (parent_visits as f32).sqrt();
         let expected = expected_q + expected_u;
 
-        assert!((score - expected).abs() < 1e-6, "FPU score mismatch: got {}, expected {}", score, expected);
+        assert!(
+            (score - expected).abs() < 1e-6,
+            "FPU score mismatch: got {}, expected {}",
+            score,
+            expected
+        );
     }
 
     #[test]
@@ -212,10 +230,19 @@ mod tests {
         let exploration_constant = 1.41;
         let fpu_reduction = None;
 
-        let score = node.ucb1_score(parent_visits, parent_value, exploration_constant, fpu_reduction);
+        let score = node.ucb1_score(
+            parent_visits,
+            parent_value,
+            exploration_constant,
+            fpu_reduction,
+        );
 
         // Should return infinity for standard UCB1
-        assert_eq!(score, f32::INFINITY, "Without FPU, unvisited nodes should have infinite score");
+        assert_eq!(
+            score,
+            f32::INFINITY,
+            "Without FPU, unvisited nodes should have infinite score"
+        );
     }
 
     #[test]
@@ -232,20 +259,29 @@ mod tests {
         let exploration_constant = 1.41;
 
         // Compute score with FPU
-        let score_with_fpu = node.ucb1_score(parent_visits, parent_value, exploration_constant, Some(0.2));
+        let score_with_fpu =
+            node.ucb1_score(parent_visits, parent_value, exploration_constant, Some(0.2));
 
         // Compute score without FPU
-        let score_without_fpu = node.ucb1_score(parent_visits, parent_value, exploration_constant, None);
+        let score_without_fpu =
+            node.ucb1_score(parent_visits, parent_value, exploration_constant, None);
 
         // For visited nodes, FPU should have no effect
-        assert_eq!(score_with_fpu, score_without_fpu, "FPU should not affect visited nodes");
+        assert_eq!(
+            score_with_fpu, score_without_fpu,
+            "FPU should not affect visited nodes"
+        );
 
         // Verify it matches standard UCB1 formula
-        let expected_q = -node.get_value();  // -0.6
-        let expected_u = exploration_constant * ((parent_visits as f32).ln() / (node.get_visits() as f32)).sqrt();
+        let expected_q = -node.get_value(); // -0.6
+        let expected_u = exploration_constant
+            * ((parent_visits as f32).ln() / (node.get_visits() as f32)).sqrt();
         let expected = expected_q + expected_u;
 
-        assert!((score_with_fpu - expected).abs() < 1e-6, "Visited node score should match standard UCB1");
+        assert!(
+            (score_with_fpu - expected).abs() < 1e-6,
+            "Visited node score should match standard UCB1"
+        );
     }
 
     #[test]
@@ -260,7 +296,12 @@ mod tests {
         let exploration_constant = 1.41;
         let fpu_reduction = Some(0.2);
 
-        let score = node.ucb1_score(parent_visits, parent_value, exploration_constant, fpu_reduction);
+        let score = node.ucb1_score(
+            parent_visits,
+            parent_value,
+            exploration_constant,
+            fpu_reduction,
+        );
 
         // Expected: -(parent_value - fpu_reduction) + u
         // = -(-0.4 - 0.2) + u
@@ -270,7 +311,13 @@ mod tests {
         let expected_u = exploration_constant * (parent_visits as f32).sqrt();
         let expected = expected_q + expected_u;
 
-        assert!((score - expected).abs() < 1e-6, "FPU with negative parent value");
-        assert!(expected_q > 0.0, "Negative parent value should result in positive estimated Q for child");
+        assert!(
+            (score - expected).abs() < 1e-6,
+            "FPU with negative parent value"
+        );
+        assert!(
+            expected_q > 0.0,
+            "Negative parent value should result in positive estimated Q for child"
+        );
     }
 }

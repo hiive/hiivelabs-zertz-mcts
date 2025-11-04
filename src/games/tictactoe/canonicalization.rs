@@ -269,7 +269,10 @@ mod tests {
         let (canonical, idx) = canonicalize_state(&state.view());
 
         // Empty board should be its own canonical form
-        assert_eq!(idx, 0, "Empty board should be canonical (identity transform)");
+        assert_eq!(
+            idx, 0,
+            "Empty board should be canonical (identity transform)"
+        );
         assert_eq!(canonical, state);
     }
 
@@ -285,7 +288,10 @@ mod tests {
         for k in 1..4 {
             let rotated = rotate_90_clockwise(&state.view(), k);
             let (canonical2, _) = canonicalize_state(&rotated.view());
-            assert_eq!(canonical1, canonical2, "Rotated symmetric position should have same canonical form");
+            assert_eq!(
+                canonical1, canonical2,
+                "Rotated symmetric position should have same canonical form"
+            );
         }
     }
 }

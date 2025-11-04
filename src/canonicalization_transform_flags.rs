@@ -120,42 +120,54 @@ impl PyTransformFlags {
     #[classattr]
     #[allow(non_snake_case)]
     fn ALL() -> Self {
-        PyTransformFlags { inner: TransformFlags::ALL }
+        PyTransformFlags {
+            inner: TransformFlags::ALL,
+        }
     }
 
     /// Only rotational symmetries
     #[classattr]
     #[allow(non_snake_case)]
     fn ROTATION() -> Self {
-        PyTransformFlags { inner: TransformFlags::ROTATION }
+        PyTransformFlags {
+            inner: TransformFlags::ROTATION,
+        }
     }
 
     /// Only mirror symmetries
     #[classattr]
     #[allow(non_snake_case)]
     fn MIRROR() -> Self {
-        PyTransformFlags { inner: TransformFlags::MIRROR }
+        PyTransformFlags {
+            inner: TransformFlags::MIRROR,
+        }
     }
 
     /// Only translation symmetries
     #[classattr]
     #[allow(non_snake_case)]
     fn TRANSLATION() -> Self {
-        PyTransformFlags { inner: TransformFlags::TRANSLATION }
+        PyTransformFlags {
+            inner: TransformFlags::TRANSLATION,
+        }
     }
 
     /// Rotation and mirror only (no translation)
     #[classattr]
     #[allow(non_snake_case)]
     fn ROTATION_MIRROR() -> Self {
-        PyTransformFlags { inner: TransformFlags::ROTATION_MIRROR }
+        PyTransformFlags {
+            inner: TransformFlags::ROTATION_MIRROR,
+        }
     }
 
     /// No transforms (identity only)
     #[classattr]
     #[allow(non_snake_case)]
     fn NONE() -> Self {
-        PyTransformFlags { inner: TransformFlags::NONE }
+        PyTransformFlags {
+            inner: TransformFlags::NONE,
+        }
     }
 
     /// Create TransformFlags from bit flags

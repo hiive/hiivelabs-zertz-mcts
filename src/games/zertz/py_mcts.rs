@@ -3,7 +3,7 @@
 //! This module provides PyO3 bindings for the generic MCTS with ZertzGame.
 //! It wraps `MCTSSearch<ZertzGame>` and provides Python-compatible interfaces.
 
-use super::action::{ZertzAction, PyZertzAction};
+use super::action::{PyZertzAction, ZertzAction};
 use super::game::ZertzGame;
 use crate::mcts::MCTSSearch;
 use crate::node::MCTSNode;
@@ -51,8 +51,7 @@ impl PyZertzMCTS {
     ) -> PyResult<Self> {
         // Create ZertzGame instance
         let game = Arc::new(
-            ZertzGame::new(rings, t, blitz)
-                .map_err(pyo3::exceptions::PyValueError::new_err)?,
+            ZertzGame::new(rings, t, blitz).map_err(pyo3::exceptions::PyValueError::new_err)?,
         );
 
         // Create generic MCTS search
@@ -133,14 +132,11 @@ impl PyZertzMCTS {
                         *score,
                     )
                 }
-                ZertzAction::Capture {
-                    src_flat,
-                    dst_flat,
-                } => {
+                ZertzAction::Capture { src_flat, dst_flat } => {
                     (
-                    "CAP".to_string(),
-                    Some((0, *src_flat, *dst_flat)),  // Note: only 3 values fit in tuple
-                    *score,
+                        "CAP".to_string(),
+                        Some((0, *src_flat, *dst_flat)), // Note: only 3 values fit in tuple
+                        *score,
                     )
                 }
                 ZertzAction::Pass => ("PASS".to_string(), None, *score),
@@ -428,23 +424,26 @@ impl PyZertzMCTS {
     }
 
     /// Select best action from root (most visits)
-    fn select_best_action(
-        &self,
-        root: &MCTSNode<ZertzGame>,
-    ) -> PyResult<PyZertzAction> {
+    fn select_best_action(&self, root: &MCTSNode<ZertzGame>) -> PyResult<PyZertzAction> {
         let children = root.children.read().unwrap();
 
         if children.is_empty() {
-            return Ok(PyZertzAction {inner: ZertzAction::Pass});
+            return Ok(PyZertzAction {
+                inner: ZertzAction::Pass,
+            });
         }
 
         // Select child with most visits
         let best = children.iter().max_by_key(|(_, child)| child.get_visits());
 
         if let Some((action, _)) = best {
-            Ok(PyZertzAction {inner: action.to_owned()})
-    } else {
-            Ok(PyZertzAction {inner: ZertzAction::Pass})
+            Ok(PyZertzAction {
+                inner: action.to_owned(),
+            })
+        } else {
+            Ok(PyZertzAction {
+                inner: ZertzAction::Pass,
+            })
         }
     }
 

@@ -20,7 +20,7 @@ pub struct MCTSMetrics {
 
     // Search depth metrics
     pub max_depth_reached: AtomicUsize,
-    pub total_depth: AtomicU64,     // Sum of all simulation depths
+    pub total_depth: AtomicU64,      // Sum of all simulation depths
     pub simulation_count: AtomicU64, // Number of simulations
 
     // Performance metrics

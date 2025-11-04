@@ -2,10 +2,10 @@ use pyo3::prelude::*;
 
 // Generic MCTS infrastructure
 mod canonicalization_transform_flags; // Flags for canonicalization transforms (game-agnostic)
-mod game_trait;  // Game trait abstraction
-mod mcts;        // Generic MCTS algorithm
-mod metrics;     // Generic metrics
-mod node;        // Generic MCTS node
+mod game_trait; // Game trait abstraction
+mod mcts; // Generic MCTS algorithm
+mod metrics; // Generic metrics
+mod node; // Generic MCTS node
 mod transposition; // Generic transposition table
 
 // Re-export canonicalization flags for public use
@@ -20,9 +20,11 @@ mod node_tests;
 mod transposition_tests;
 
 // Game implementations
-mod games;       // Game implementations module (contains zertz/, tictactoe/)
+mod games; // Game implementations module (contains zertz/, tictactoe/)
 
-use games::{BoardConfig, BoardState, PyZertzMCTS, PyZertzAction, PyZertzActionResult, PyTicTacToeMCTS};
+use games::{
+    BoardConfig, BoardState, PyTicTacToeMCTS, PyZertzAction, PyZertzActionResult, PyZertzMCTS,
+};
 
 /// Generic MCTS engine with game-specific implementations
 ///
@@ -35,16 +37,20 @@ fn hiivelabs_mcts(m: &Bound<'_, PyModule>) -> PyResult<()> {
     // Register generic types
     m.add_class::<PyTransformFlags>()?;
 
-    // Register Zertz game
-    m.add_class::<BoardConfig>()?;
-    m.add_class::<BoardState>()?;
-    m.add_class::<PyZertzMCTS>()?;
-    m.add_class::<PyZertzAction>()?;
-    m.add_class::<PyZertzActionResult>()?;
-    games::zertz::py_logic::register(m)?; // Zertz game logic functions
+    // Register Zertz game under submodule
+    let zertz_mod = PyModule::new(m.py(), "zertz")?;
+    zertz_mod.add_class::<BoardConfig>()?;
+    zertz_mod.add_class::<BoardState>()?;
+    zertz_mod.add_class::<PyZertzMCTS>()?;
+    zertz_mod.add_class::<PyZertzAction>()?;
+    zertz_mod.add_class::<PyZertzActionResult>()?;
+    games::zertz::py_logic::register(&zertz_mod)?; // Zertz game logic functions
+    m.add_submodule(&zertz_mod)?;
 
-    // Register TicTacToe game
-    m.add_class::<PyTicTacToeMCTS>()?;
+    // Register TicTacToe game under submodule
+    let tictactoe_mod = PyModule::new(m.py(), "tictactoe")?;
+    tictactoe_mod.add_class::<PyTicTacToeMCTS>()?;
+    m.add_submodule(&tictactoe_mod)?;
 
     // Player constants
     m.add("PLAYER_1", 0usize)?;

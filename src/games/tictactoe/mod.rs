@@ -154,11 +154,7 @@ impl MCTSGame for TicTacToeGame {
             || Self::is_board_full(spatial_state)
     }
 
-    fn get_outcome(
-        &self,
-        spatial_state: &ArrayView3<f32>,
-        _global_state: &ArrayView1<f32>,
-    ) -> i8 {
+    fn get_outcome(&self, spatial_state: &ArrayView3<f32>, _global_state: &ArrayView1<f32>) -> i8 {
         // Check X (player 0) win
         if Self::check_three_in_row(spatial_state, 0) {
             return 1; // X wins
@@ -243,15 +239,12 @@ impl MCTSGame for TicTacToeGame {
         global_state: &ArrayView1<f32>,
     ) -> (Array3<f32>, Array1<f32>) {
         // Use D4 dihedral group symmetries to find canonical form
-        let (canonical_spatial, _transform_idx) = canonicalization::canonicalize_state(spatial_state);
+        let (canonical_spatial, _transform_idx) =
+            canonicalization::canonicalize_state(spatial_state);
         (canonical_spatial, global_state.to_owned())
     }
 
-    fn hash_state(
-        &self,
-        spatial_state: &ArrayView3<f32>,
-        global_state: &ArrayView1<f32>,
-    ) -> u64 {
+    fn hash_state(&self, spatial_state: &ArrayView3<f32>, global_state: &ArrayView1<f32>) -> u64 {
         // Simple hash: encode board as 18-bit number (2 bits per cell: 00=empty, 01=X, 10=O)
         let mut hash: u64 = 0;
 
@@ -283,4 +276,3 @@ mod tictactoe_tests;
 
 // Re-export Python bindings
 pub use py_mcts::PyTicTacToeMCTS;
-

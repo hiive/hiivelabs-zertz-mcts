@@ -138,10 +138,6 @@ pub fn coordinate_to_algebraic(y: usize, x: usize, width: usize) -> Result<Strin
     let max_row_for_x = width.min(mid_y + x + 1);
     let row = max_row_for_x - y;
 
-
-
-
-
     Ok(format!("{}{}", column, row))
 }
 
@@ -227,9 +223,7 @@ pub fn algebraic_to_coordinate(notation: &str, width: usize) -> Result<(usize, u
     if row > max_row_for_x {
         return Err(format!(
             "Row {} is out of bounds for column {} (max row is {})",
-            row,
-            column_char,
-            max_row_for_x
+            row, column_char, max_row_for_x
         ));
     }
 

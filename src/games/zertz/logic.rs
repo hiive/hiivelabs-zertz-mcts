@@ -61,7 +61,7 @@ pub const BOTH_LOSE: i8 = -2; // Tournament rule: both lose (collaboration detec
 /// # Returns
 /// Rotated (q, r) coordinates
 // Re-export from canonicalization module (single source of truth)
-pub use super::canonicalization::{ax_rot60, ax_mirror_q_axis};
+pub use super::canonicalization::{ax_mirror_q_axis, ax_rot60};
 
 // ============================================================================
 
@@ -107,7 +107,10 @@ pub fn get_neighbors(config: &BoardConfig, y: usize, x: usize) -> NeighborList {
 }
 
 /// Find all connected regions on the board
-pub fn get_regions(config: &BoardConfig, spatial_state: &ArrayView3<f32>) -> Vec<Vec<(usize, usize)>> {
+pub fn get_regions(
+    config: &BoardConfig,
+    spatial_state: &ArrayView3<f32>,
+) -> Vec<Vec<(usize, usize)>> {
     let mut regions = Vec::new();
     let mut not_visited: HashSet<(usize, usize)> = (0..config.width)
         .flat_map(|y| (0..config.width).map(move |x| (y, x)))
@@ -140,7 +143,10 @@ pub fn get_regions(config: &BoardConfig, spatial_state: &ArrayView3<f32>) -> Vec
 }
 
 /// Get list of empty ring indices across the board
-pub fn get_open_rings(config: &BoardConfig, spatial_state: &ArrayView3<f32>) -> Vec<(usize, usize)> {
+pub fn get_open_rings(
+    config: &BoardConfig,
+    spatial_state: &ArrayView3<f32>,
+) -> Vec<(usize, usize)> {
     // Get all vacant rings (ring present, no marble)
     let all_open: Vec<(usize, usize)> = (0..config.width)
         .flat_map(|y| (0..config.width).map(move |x| (y, x)))
@@ -205,7 +211,10 @@ pub fn is_ring_removable(
 }
 
 /// Get removable rings (rings that can be removed without disconnecting board)
-pub fn get_removable_rings(config: &BoardConfig, spatial_state: &ArrayView3<f32>) -> Vec<(usize, usize)> {
+pub fn get_removable_rings(
+    config: &BoardConfig,
+    spatial_state: &ArrayView3<f32>,
+) -> Vec<(usize, usize)> {
     (0..config.width)
         .flat_map(|y| (0..config.width).map(move |x| (y, x)))
         .filter(|&(y, x)| is_ring_removable(config, spatial_state, y, x))
@@ -267,7 +276,12 @@ pub fn get_supply_index(config: &BoardConfig, marble_type: char) -> usize {
 /// Get marble type at given position
 /// Returns: 'w', 'g', 'b', or '\0' (none)
 /// Used by Python wrapper
-pub fn get_marble_type_at(_config: &BoardConfig, spatial_state: &ArrayView3<f32>, y: usize, x: usize) -> char {
+pub fn get_marble_type_at(
+    _config: &BoardConfig,
+    spatial_state: &ArrayView3<f32>,
+    y: usize,
+    x: usize,
+) -> char {
     if spatial_state[[1, y, x]] == 1.0 {
         'w'
     } else if spatial_state[[2, y, x]] == 1.0 {
@@ -281,7 +295,12 @@ pub fn get_marble_type_at(_config: &BoardConfig, spatial_state: &ArrayView3<f32>
 
 /// Calculate landing position after capturing marble
 /// Used by Python wrapper
-pub fn get_jump_destination(start_y: usize, start_x: usize, cap_y: usize, cap_x: usize) -> (i32, i32) {
+pub fn get_jump_destination(
+    start_y: usize,
+    start_x: usize,
+    cap_y: usize,
+    cap_x: usize,
+) -> (i32, i32) {
     let sy = start_y as i32;
     let sx = start_x as i32;
     let cy = cap_y as i32;
@@ -484,7 +503,8 @@ pub fn get_capture_actions(config: &BoardConfig, spatial_state: &ArrayView3<f32>
                 let cap_x = cap_x as usize;
 
                 // Must have a marble to capture
-                let has_marble_to_cap = (1..4).any(|layer| spatial_state[[layer, cap_y, cap_x]] > 0.0);
+                let has_marble_to_cap =
+                    (1..4).any(|layer| spatial_state[[layer, cap_y, cap_x]] > 0.0);
                 if !has_marble_to_cap {
                     continue;
                 }
@@ -499,7 +519,8 @@ pub fn get_capture_actions(config: &BoardConfig, spatial_state: &ArrayView3<f32>
                     continue;
                 }
 
-                let has_marble_at_land = (1..4).any(|layer| spatial_state[[layer, land_y, land_x]] > 0.0);
+                let has_marble_at_land =
+                    (1..4).any(|layer| spatial_state[[layer, land_y, land_x]] > 0.0);
                 if has_marble_at_land {
                     continue;
                 }
@@ -560,7 +581,9 @@ pub fn apply_placement(
 
     // STEP 1: Reset capture layer (matches Python zertz_board.py behavior)
     // Placements always end any ongoing chain capture sequence
-    spatial_state.slice_mut(s![config.capture_layer, .., ..]).fill(0.0);
+    spatial_state
+        .slice_mut(s![config.capture_layer, .., ..])
+        .fill(0.0);
 
     let cur_player = global_state[config.cur_player] as usize;
 
@@ -633,7 +656,9 @@ pub fn apply_capture(
 ) {
     // STEP 1: Reset capture layer (matches Python zertz_board.py:524)
     // This clears any previous chain capture markers
-    spatial_state.slice_mut(s![config.capture_layer, .., ..]).fill(0.0);
+    spatial_state
+        .slice_mut(s![config.capture_layer, .., ..])
+        .fill(0.0);
 
     let cur_player = global_state[config.cur_player] as usize;
 
@@ -641,13 +666,22 @@ pub fn apply_capture(
     let marble_layer = (1..4)
         .find(|&layer| spatial_state[[layer, start_y, start_x]] > 0.0)
         .unwrap_or_else(|| {
-            eprintln!("ERROR: Invalid capture attempted at ({}, {})", start_y, start_x);
+            eprintln!(
+                "ERROR: Invalid capture attempted at ({}, {})",
+                start_y, start_x
+            );
             eprintln!("  Destination: ({}, {})", dest_y, dest_x);
-            eprintln!("  Ring present: {}", spatial_state[[config.ring_layer, start_y, start_x]] > 0.0);
+            eprintln!(
+                "  Ring present: {}",
+                spatial_state[[config.ring_layer, start_y, start_x]] > 0.0
+            );
             eprintln!("  White marble: {}", spatial_state[[1, start_y, start_x]]);
             eprintln!("  Gray marble: {}", spatial_state[[2, start_y, start_x]]);
             eprintln!("  Black marble: {}", spatial_state[[3, start_y, start_x]]);
-            panic!("Game logic violation: attempted capture from empty position at ({}, {})", start_y, start_x)
+            panic!(
+                "Game logic violation: attempted capture from empty position at ({}, {})",
+                start_y, start_x
+            )
         });
 
     // Compute direction from start and dest
@@ -665,13 +699,22 @@ pub fn apply_capture(
     let captured_marble_layer = (1..4)
         .find(|&layer| spatial_state[[layer, cap_y, cap_x]] > 0.0)
         .unwrap_or_else(|| {
-            eprintln!("ERROR: No marble found at capture position ({}, {})", cap_y, cap_x);
+            eprintln!(
+                "ERROR: No marble found at capture position ({}, {})",
+                cap_y, cap_x
+            );
             eprintln!("  Start position: ({}, {})", start_y, start_x);
             eprintln!("  Dest position: ({}, {})", dest_y, dest_x);
             eprintln!("  Computed offset: ({}, {})", dy, dx);
             eprintln!("  Landing position: ({}, {})", land_y, land_x);
-            eprintln!("  Ring at capture pos: {}", spatial_state[[config.ring_layer, cap_y, cap_x]] > 0.0);
-            panic!("Game logic violation: attempted to capture from empty position at ({}, {})", cap_y, cap_x)
+            eprintln!(
+                "  Ring at capture pos: {}",
+                spatial_state[[config.ring_layer, cap_y, cap_x]] > 0.0
+            );
+            panic!(
+                "Game logic violation: attempted to capture from empty position at ({}, {})",
+                cap_y, cap_x
+            )
         });
 
     // Remove marble from start
@@ -789,7 +832,6 @@ pub fn check_for_isolation_capture(
 
     (spatial_state_out, global_state_out, captured_marbles)
 }
-
 
 // ============================================================================
 // GAME TERMINATION CHECKS
@@ -1033,7 +1075,6 @@ pub fn get_game_outcome(
     // No terminal condition (shouldn't happen if is_game_over returned true)
     TIE
 }
-
 
 #[cfg(test)]
 #[path = "logic_tests.rs"]

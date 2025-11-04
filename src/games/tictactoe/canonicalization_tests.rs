@@ -35,7 +35,10 @@ mod tests {
         let (canonical, idx) = canonicalize_state(&state.view());
 
         assert_eq!(idx, 0, "Empty board should be canonical (identity)");
-        assert!(states_equal(&canonical, &state), "Canonical form should equal original");
+        assert!(
+            states_equal(&canonical, &state),
+            "Canonical form should equal original"
+        );
     }
 
     #[test]
@@ -45,7 +48,10 @@ mod tests {
         let (canonical, _) = canonicalize_state(&state.view());
 
         // Any transform of center should give the same canonical form
-        assert!(states_equal(&canonical, &state), "Center position should be its own canonical form");
+        assert!(
+            states_equal(&canonical, &state),
+            "Center position should be its own canonical form"
+        );
     }
 
     #[test]
@@ -201,7 +207,8 @@ mod tests {
         for i in 1..canonical_forms.len() {
             assert!(
                 states_equal(&canonical_forms[0], &canonical_forms[i]),
-                "L-shape pattern {} should have same canonical form as pattern 0", i
+                "L-shape pattern {} should have same canonical form as pattern 0",
+                i
             );
         }
     }
@@ -264,7 +271,8 @@ mod tests {
         for i in 1..canonical_forms.len() {
             assert!(
                 states_equal(&canonical_forms[0], &canonical_forms[i]),
-                "Corner-edge pattern {} should have same canonical form as pattern 0", i
+                "Corner-edge pattern {} should have same canonical form as pattern 0",
+                i
             );
         }
     }
@@ -310,7 +318,11 @@ mod tests {
         for i in 0..8 {
             let name = transform_name(i);
             assert!(!name.is_empty(), "Transform {} should have a name", i);
-            assert_ne!(name, "unknown", "Transform {} should have a specific name", i);
+            assert_ne!(
+                name, "unknown",
+                "Transform {} should have a specific name",
+                i
+            );
         }
 
         // Unknown index should return "unknown"
@@ -341,7 +353,10 @@ mod tests {
         let state = create_state_x(&[(2, 2)]);
         let (canonical1, _) = canonicalize_state(&state.view());
         let (canonical2, _) = canonicalize_state(&state.view());
-        assert!(states_equal(&canonical1, &canonical2), "Canonicalization should be deterministic");
+        assert!(
+            states_equal(&canonical1, &canonical2),
+            "Canonicalization should be deterministic"
+        );
     }
 
     #[test]
@@ -349,19 +364,29 @@ mod tests {
         // A realistic game state partway through a game
         let state = create_state(
             &[(1, 1), (0, 0), (2, 1)], // X: center, top-left, bottom-middle
-            &[(0, 1), (1, 0)],          // O: top-middle, middle-left
+            &[(0, 1), (1, 0)],         // O: top-middle, middle-left
         );
 
         let (canonical, transform_idx) = canonicalize_state(&state.view());
 
         // Just verify it produces a valid result
         assert!(transform_idx < 8, "Transform index should be 0-7");
-        assert_eq!(canonical.shape(), &[2, 3, 3], "Canonical form should have correct shape");
+        assert_eq!(
+            canonical.shape(),
+            &[2, 3, 3],
+            "Canonical form should have correct shape"
+        );
 
         // Verify the transformation is deterministic
         let (canonical2, transform_idx2) = canonicalize_state(&state.view());
-        assert_eq!(transform_idx, transform_idx2, "Same state should give same transform");
-        assert!(states_equal(&canonical, &canonical2), "Same state should give same canonical form");
+        assert_eq!(
+            transform_idx, transform_idx2,
+            "Same state should give same transform"
+        );
+        assert!(
+            states_equal(&canonical, &canonical2),
+            "Same state should give same canonical form"
+        );
     }
 
     #[test]
@@ -401,7 +426,8 @@ mod tests {
             let (canonical, _) = canonicalize_state(&equiv_state.view());
             assert!(
                 states_equal(&canonical_original, &canonical),
-                "Equivalent position {} should have same canonical form", i
+                "Equivalent position {} should have same canonical form",
+                i
             );
         }
     }

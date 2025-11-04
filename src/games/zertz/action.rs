@@ -12,15 +12,12 @@ use std::hash::{Hash, Hasher};
 pub enum ZertzAction {
     /// Place a marble and optionally remove a ring
     Placement {
-        marble_type: usize,     // 0=white, 1=gray, 2=black
+        marble_type: usize, // 0=white, 1=gray, 2=black
         dst_flat: usize,
         remove_flat: Option<usize>,
     },
     /// Capture by jumping from start to dest
-    Capture {
-        src_flat: usize,
-        dst_flat: usize,
-    },
+    Capture { src_flat: usize, dst_flat: usize },
     /// Pass (no legal moves)
     Pass,
 }
@@ -53,21 +50,33 @@ impl ZertzAction {
             } => {
                 let (dst_y, dst_x) = config.flat_to_yx(*dst_flat);
                 let (rem_y, rem_x) = config.flat_to_optional_yx(*remove_flat);
-                ("PUT".to_string(), Option::from(vec![Some(*marble_type), Some(dst_y), Some(dst_x), rem_y, rem_x]))
+                (
+                    "PUT".to_string(),
+                    Option::from(vec![
+                        Some(*marble_type),
+                        Some(dst_y),
+                        Some(dst_x),
+                        rem_y,
+                        rem_x,
+                    ]),
+                )
             }
-            ZertzAction::Capture {
-                src_flat,
-                dst_flat,
-            } => {
+            ZertzAction::Capture { src_flat, dst_flat } => {
                 let (src_y, src_x) = config.flat_to_yx(*src_flat);
                 let (dst_y, dst_x) = config.flat_to_yx(*dst_flat);
-                (self.action_type(), Option::from(vec![Some(src_y), Some(src_x), Some(dst_y), Some(dst_x)]))
+                (
+                    self.action_type(),
+                    Option::from(vec![Some(src_y), Some(src_x), Some(dst_y), Some(dst_x)]),
+                )
             }
-            ZertzAction::Pass => (self.action_type(), None)
+            ZertzAction::Pass => (self.action_type(), None),
         }
     }
 
-    pub fn to_placement_action(&self, config: &BoardConfig) -> Option<(String, Vec<Option<usize>>)> {
+    pub fn to_placement_action(
+        &self,
+        config: &BoardConfig,
+    ) -> Option<(String, Vec<Option<usize>>)> {
         // Returns ((dst_y, dst_x), optional (rem_y, rem_x))
         match self {
             ZertzAction::Placement {
@@ -78,24 +87,19 @@ impl ZertzAction {
                 let (dst_y, dst_x) = config.flat_to_yx(*dst_flat);
                 let (rem_y, rem_x) = config.flat_to_optional_yx(*remove_flat);
 
-                Some((self.action_type(), vec![Some(*marble_type),
-                                              Some(dst_y), Some(dst_x),
-                                              rem_y, rem_x]))
+                Some((
+                    self.action_type(),
+                    vec![Some(*marble_type), Some(dst_y), Some(dst_x), rem_y, rem_x],
+                ))
             }
-            _ => {
-                None
-            }
+            _ => None,
         }
     }
 
-    pub fn to_capture_action(&self, config: &BoardConfig)
-      -> Option<(String, Vec<usize>)> {
-      // Returns ((start_y, start_x), (dst_y, dst_x))
+    pub fn to_capture_action(&self, config: &BoardConfig) -> Option<(String, Vec<usize>)> {
+        // Returns ((start_y, start_x), (dst_y, dst_x))
         match self {
-            ZertzAction::Capture {
-                src_flat,
-                dst_flat,
-            } => {
+            ZertzAction::Capture { src_flat, dst_flat } => {
                 // Return (None, src_flat, dst_flat)
                 // None distinguishes captures from placements (which have Some(marble_type))
                 // Python will unflatten both coordinates and calculate cap_index as midpoint
@@ -103,9 +107,7 @@ impl ZertzAction {
                 let (dst_y, dst_x) = config.flat_to_yx(*dst_flat);
                 Some((self.action_type(), vec![src_y, src_x, dst_y, dst_x]))
             }
-            _ => {
-                None
-            }
+            _ => None,
         }
     }
 }
@@ -147,7 +149,6 @@ impl PyZertzAction {
                 marble_type,
                 dst_flat,
                 remove_flat,
-
             },
         }
     }
@@ -160,7 +161,13 @@ impl PyZertzAction {
     ///     dst_y: Destination row
     ///     dst_x: Destination column
     #[staticmethod]
-    pub fn capture(config: &BoardConfig, src_y: usize, src_x: usize, dst_y: usize, dst_x: usize) -> Self {
+    pub fn capture(
+        config: &BoardConfig,
+        src_y: usize,
+        src_x: usize,
+        dst_y: usize,
+        dst_x: usize,
+    ) -> Self {
         PyZertzAction {
             inner: ZertzAction::Capture {
                 src_flat: config.yx_to_flat(src_y, src_x),
@@ -215,13 +222,9 @@ impl PyZertzAction {
                     format!("ZertzAction.Placement({}, {})", marble_name, dst_flat)
                 }
             }
-            ZertzAction::Capture {
-                src_flat,
-                dst_flat,
-            } => format!(
-                "ZertzAction.Capture({} -> {})",
-                src_flat, dst_flat
-            ),
+            ZertzAction::Capture { src_flat, dst_flat } => {
+                format!("ZertzAction.Capture({} -> {})", src_flat, dst_flat)
+            }
             ZertzAction::Pass => "ZertzAction.Pass".to_string(),
         }
     }

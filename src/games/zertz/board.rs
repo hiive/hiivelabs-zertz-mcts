@@ -175,7 +175,7 @@ impl BoardConfig {
 
     #[inline]
     pub fn flat_to_yx(&self, flat: usize) -> (usize, usize) {
-      (flat / self.width, flat % self.width)
+        (flat / self.width, flat % self.width)
     }
 
     /// Convert optional flat coordinate to optional (y, x) coordinates
@@ -186,21 +186,21 @@ impl BoardConfig {
                 let (y, x) = self.flat_to_yx(f);
                 (Some(y), Some(x))
             }
-            None => (None, None)
+            None => (None, None),
         }
     }
 
     #[inline]
     pub fn yx_to_flat(&self, y: usize, x: usize) -> usize {
-      y * self.width + x
+        y * self.width + x
     }
 
     #[inline]
     pub fn yx_to_optional_flat(&self, y: Option<usize>, x: Option<usize>) -> Option<usize> {
-      match (y, x) {
-        (Some(sy), Some(sx)) => Some(sy * self.width + sx),
-        _ => None
-      }
+        match (y, x) {
+            (Some(sy), Some(sx)) => Some(sy * self.width + sx),
+            _ => None,
+        }
     }
 }
 
@@ -364,7 +364,8 @@ impl BoardState {
             dst_x,
             remove_y,
             remove_x,
-        ).map_err(pyo3::exceptions::PyValueError::new_err)?;
+        )
+        .map_err(pyo3::exceptions::PyValueError::new_err)?;
 
         // Update stored arrays
         self.spatial_state = PyArray3::from_array(py, &spatial_state).into();

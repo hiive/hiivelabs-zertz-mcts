@@ -98,7 +98,8 @@ impl TranspositionEntry {
     pub fn matches(&self, spatial_state: &Array3<f32>, global_state: &ArrayView1<f32>) -> bool {
         // Compare both spatial_state and global_state state for exact match
         // Note: ndarray implements efficient element-wise equality
-        self.canonical_spatial_state.as_ref() == spatial_state && self.canonical_global_state.as_ref() == global_state
+        self.canonical_spatial_state.as_ref() == spatial_state
+            && self.canonical_global_state.as_ref() == global_state
     }
 
     /// Get current visit count (thread-safe)
@@ -184,7 +185,7 @@ impl TranspositionEntry {
 /// Thread-safe transposition table using DashMap + game-specific hashing.
 /// Uses chaining to handle hash collisions - each hash maps to a vector of entries.
 pub struct TranspositionTable<G: MCTSGame> {
-    game: Arc<G>,  // Game instance for hashing and canonicalization
+    game: Arc<G>, // Game instance for hashing and canonicalization
     table: Arc<DashMap<u64, Vec<Arc<TranspositionEntry>>>>,
     collisions: AtomicU32, // Track number of hash collisions
 }
@@ -239,10 +240,14 @@ impl<G: MCTSGame> TranspositionTable<G> {
         global_state: &ArrayView1<f32>,
     ) -> Arc<TranspositionEntry> {
         // Step 1: Canonicalize (normalize to standard orientation) using game trait
-        let (canonical_spatial_state, canonical_global_state) = self.game.canonicalize_state(spatial_state, global_state);
+        let (canonical_spatial_state, canonical_global_state) =
+            self.game.canonicalize_state(spatial_state, global_state);
 
         // Step 2: Hash the canonical state using game trait
-        let hash = self.game.hash_state(&canonical_spatial_state.view(), &canonical_global_state.view());
+        let hash = self.game.hash_state(
+            &canonical_spatial_state.view(),
+            &canonical_global_state.view(),
+        );
 
         // Step 3-6: DashMap entry API (lock-free for different hash buckets)
         match self.table.entry(hash) {
@@ -289,15 +294,21 @@ impl<G: MCTSGame> TranspositionTable<G> {
         spatial_state: &ArrayView3<f32>,
         global_state: &ArrayView1<f32>,
     ) -> Option<Arc<TranspositionEntry>> {
-        let (canonical_spatial_state, canonical_global_state) = self.game.canonicalize_state(spatial_state, global_state);
-        let hash = self.game.hash_state(&canonical_spatial_state.view(), &canonical_global_state.view());
+        let (canonical_spatial_state, canonical_global_state) =
+            self.game.canonicalize_state(spatial_state, global_state);
+        let hash = self.game.hash_state(
+            &canonical_spatial_state.view(),
+            &canonical_global_state.view(),
+        );
 
         // Search chain for exact match
         self.table.get(&hash).and_then(|chain_ref| {
             chain_ref
                 .value()
                 .iter()
-                .find(|entry| entry.matches(&canonical_spatial_state, &canonical_global_state.view()))
+                .find(|entry| {
+                    entry.matches(&canonical_spatial_state, &canonical_global_state.view())
+                })
                 .map(Arc::clone)
         })
     }
@@ -327,4 +338,3 @@ impl<G: MCTSGame> TranspositionTable<G> {
 }
 
 // NOTE: Default trait removed since TranspositionTable now requires a game instance
-

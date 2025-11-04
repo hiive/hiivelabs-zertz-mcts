@@ -193,7 +193,10 @@ pub fn bounding_box(
 ///
 /// # Returns
 /// Vector of (name, dy, dx) tuples for all valid translations
-pub fn get_translations(config: &BoardConfig, spatial_state: &ArrayView3<f32>) -> Vec<(String, i32, i32)> {
+pub fn get_translations(
+    config: &BoardConfig,
+    spatial_state: &ArrayView3<f32>,
+) -> Vec<(String, i32, i32)> {
     if let Some((min_y, max_y, min_x, max_x)) = bounding_box(config, spatial_state) {
         let mut translations = Vec::new();
         let width = config.width as i32;
@@ -212,12 +215,12 @@ pub fn get_translations(config: &BoardConfig, spatial_state: &ArrayView3<f32>) -
                 let translated = transform_state_with_maps(
                     config,
                     spatial_state,
-                    0,      // rot60_k - no rotation
-                    false,  // mirror
-                    false,  // mirror_first
+                    0,     // rot60_k - no rotation
+                    false, // mirror
+                    false, // mirror_first
                     dy,
                     dx,
-                    true,   // translate_first - forward transform
+                    true, // translate_first - forward transform
                     &yx_to_ax,
                     &ax_to_yx,
                 );
@@ -326,13 +329,29 @@ fn transform_state_with_maps(
                     Some(coords) => coords,
                     None => return None,
                 };
-                match apply_rotation_mirror(ty, tx, rot60_k, mirror, mirror_first, yx_to_ax, ax_to_yx) {
+                match apply_rotation_mirror(
+                    ty,
+                    tx,
+                    rot60_k,
+                    mirror,
+                    mirror_first,
+                    yx_to_ax,
+                    ax_to_yx,
+                ) {
                     Some(coords) => coords,
                     None => continue,
                 }
             } else {
                 // INVERSE TRANSFORM ORDER: Rotation/mirror FIRST, then translation
-                let (ry, rx) = match apply_rotation_mirror(y, x, rot60_k, mirror, mirror_first, yx_to_ax, ax_to_yx) {
+                let (ry, rx) = match apply_rotation_mirror(
+                    y,
+                    x,
+                    rot60_k,
+                    mirror,
+                    mirror_first,
+                    yx_to_ax,
+                    ax_to_yx,
+                ) {
                     Some(coords) => coords,
                     None => continue,
                 };
@@ -407,12 +426,12 @@ pub fn canonicalize_internal(
         let translated_state = if let Some(state) = transform_state_with_maps(
             config,
             spatial_state,
-            0,  // rot60_k - no rotation for pure translation
-            false,  // mirror
-            false,  // mirror_first
+            0,     // rot60_k - no rotation for pure translation
+            false, // mirror
+            false, // mirror_first
             *dy,
             *dx,
-            true,  // translate_first - forward transform
+            true, // translate_first - forward transform
             &yx_to_ax,
             &ax_to_yx,
         ) {
@@ -428,12 +447,13 @@ pub fn canonicalize_internal(
                 *rot60_k,
                 *mirror,
                 *mirror_first,
-                0,  // dy - no additional translation
-                0,  // dx
-                true,  // translate_first - forward transform
+                0,    // dy - no additional translation
+                0,    // dx
+                true, // translate_first - forward transform
                 &yx_to_ax,
                 &ax_to_yx,
-            ).expect("Rotation/mirror transform should always succeed");
+            )
+            .expect("Rotation/mirror transform should always succeed");
             let transformed_view = transformed.view();
             let key = canonical_key(&transformed_view, &layout, board_layers.clone());
             if key < best_key {
@@ -524,7 +544,12 @@ pub fn generate_standard_layout_mask(rings: usize, width: usize) -> Result<Vec<V
         37 => "ABCDEFG",
         48 => "ABCDEFGH",
         61 => "ABCDEFGHJ",
-        _ => return Err(format!("Unsupported ring count: {} (supported: 37, 48, 61)", rings)),
+        _ => {
+            return Err(format!(
+                "Unsupported ring count: {} (supported: 37, 48, 61)",
+                rings
+            ))
+        }
     };
     let letters: Vec<char> = letters.chars().collect();
     let r_max = letters.len();

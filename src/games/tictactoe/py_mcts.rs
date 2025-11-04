@@ -122,12 +122,7 @@ impl PyTicTacToeMCTS {
         }
 
         // Create root node
-        let root = Arc::new(MCTSNode::new(
-            spatial,
-            global,
-            Arc::clone(&self.game),
-            None,
-        ));
+        let root = Arc::new(MCTSNode::new(spatial, global, Arc::clone(&self.game), None));
 
         // Create search options
         let options = crate::mcts::SearchOptions::new(
@@ -183,7 +178,9 @@ impl PyTicTacToeMCTS {
         child_stats
             .iter()
             .max_by(|(_, score1), (_, score2)| {
-                score1.partial_cmp(score2).unwrap_or(std::cmp::Ordering::Equal)
+                score1
+                    .partial_cmp(score2)
+                    .unwrap_or(std::cmp::Ordering::Equal)
             })
             .map(|(action, _)| (action.row, action.col))
     }

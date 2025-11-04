@@ -6,7 +6,8 @@ use super::action::ZertzAction;
 use super::board::BoardConfig;
 use super::canonicalization;
 use super::logic::{
-    apply_capture, apply_placement, get_capture_destination, get_game_outcome, get_valid_actions, is_game_over,
+    apply_capture, apply_placement, get_capture_destination, get_game_outcome, get_valid_actions,
+    is_game_over,
 };
 use super::zobrist::ZobristHasher;
 use crate::game_trait::MCTSGame;
@@ -37,13 +38,11 @@ impl ZertzGame {
     /// let game = ZertzGame::new(37, 1, false)?;
     /// ```
     pub fn new(rings: usize, t: usize, blitz: bool) -> Result<Self, String> {
-        let config = Arc::new(
-            if blitz {
-                BoardConfig::blitz(rings, t)?
-            } else {
-                BoardConfig::standard(rings, t)?
-            }
-        );
+        let config = Arc::new(if blitz {
+            BoardConfig::blitz(rings, t)?
+        } else {
+            BoardConfig::standard(rings, t)?
+        });
 
         let zobrist = ZobristHasher::new(config.width, None);
 
@@ -104,7 +103,9 @@ impl MCTSGame for ZertzGame {
                 for x in 0..width {
                     if capture_mask[[dir, y, x]] > 0.0 {
                         // Compute destination (landing position after jump)
-                        if let Some((dest_y, dest_x)) = get_capture_destination(&self.config, y, x, dir) {
+                        if let Some((dest_y, dest_x)) =
+                            get_capture_destination(&self.config, y, x, dir)
+                        {
                             actions.push(ZertzAction::Capture {
                                 src_flat: self.config.yx_to_flat(y, x),
                                 dst_flat: self.config.yx_to_flat(dest_y, dest_x),
@@ -148,10 +149,7 @@ impl MCTSGame for ZertzGame {
                     remove_x,
                 )?;
             }
-            ZertzAction::Capture {
-                src_flat,
-                dst_flat,
-            } => {
+            ZertzAction::Capture { src_flat, dst_flat } => {
                 let (src_y, src_x) = self.config.flat_to_yx(*src_flat);
                 let (dst_y, dst_x) = self.config.flat_to_yx(*dst_flat);
                 apply_capture(
@@ -177,19 +175,11 @@ impl MCTSGame for ZertzGame {
         Ok(())
     }
 
-    fn is_terminal(
-        &self,
-        spatial_state: &ArrayView3<f32>,
-        global_state: &ArrayView1<f32>,
-    ) -> bool {
+    fn is_terminal(&self, spatial_state: &ArrayView3<f32>, global_state: &ArrayView1<f32>) -> bool {
         is_game_over(&self.config, spatial_state, global_state)
     }
 
-    fn get_outcome(
-        &self,
-        spatial_state: &ArrayView3<f32>,
-        global_state: &ArrayView1<f32>,
-    ) -> i8 {
+    fn get_outcome(&self, spatial_state: &ArrayView3<f32>, global_state: &ArrayView1<f32>) -> i8 {
         get_game_outcome(&self.config, spatial_state, global_state)
     }
 
@@ -240,12 +230,9 @@ impl MCTSGame for ZertzGame {
         (canonical_spatial, global_state.to_owned())
     }
 
-    fn hash_state(
-        &self,
-        spatial_state: &ArrayView3<f32>,
-        global_state: &ArrayView1<f32>,
-    ) -> u64 {
-        self.zobrist.hash_state(spatial_state, global_state, &self.config)
+    fn hash_state(&self, spatial_state: &ArrayView3<f32>, global_state: &ArrayView1<f32>) -> u64 {
+        self.zobrist
+            .hash_state(spatial_state, global_state, &self.config)
     }
 
     fn enable_deterministic_collapse(&self) -> bool {

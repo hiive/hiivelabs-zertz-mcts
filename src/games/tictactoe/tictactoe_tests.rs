@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests {
-    use crate::games::tictactoe::{TicTacToeGame, TicTacToeAction};
     use crate::game_trait::MCTSGame;
+    use crate::games::tictactoe::{TicTacToeAction, TicTacToeGame};
     use ndarray::{Array1, Array3};
 
     #[test]

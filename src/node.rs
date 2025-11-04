@@ -294,7 +294,13 @@ impl<G: MCTSGame> MCTSNode<G> {
     ///
     /// Note: child.value is from child's player perspective (due to value flipping in backprop).
     /// We negate to convert to parent's player perspective (opponent of child's player).
-    pub fn ucb1_score(&self, parent_visits: u32, parent_value: f32, exploration_constant: f32, fpu_reduction: Option<f32>) -> f32 {
+    pub fn ucb1_score(
+        &self,
+        parent_visits: u32,
+        parent_value: f32,
+        exploration_constant: f32,
+        fpu_reduction: Option<f32>,
+    ) -> f32 {
         let visits = self.get_visits();
         if visits == 0 {
             if let Some(reduction) = fpu_reduction {
@@ -343,7 +349,14 @@ impl<G: MCTSGame> MCTSNode<G> {
     ) -> f32 {
         // If RAVE is disabled, use standard UCB1
         let rave_k = match rave_constant {
-            None => return self.ucb1_score(parent_visits, parent_value, exploration_constant, fpu_reduction),
+            None => {
+                return self.ucb1_score(
+                    parent_visits,
+                    parent_value,
+                    exploration_constant,
+                    fpu_reduction,
+                )
+            }
             Some(k) => k,
         };
 
@@ -415,11 +428,9 @@ impl<G: MCTSGame> MCTSNode<G> {
 
     /// Count legal actions using game trait
     fn count_legal_actions(&self) -> usize {
-        let actions = self.game.get_valid_actions(
-            &self.spatial_state.view(),
-            &self.global_state.view(),
-        );
+        let actions = self
+            .game
+            .get_valid_actions(&self.spatial_state.view(), &self.global_state.view());
         actions.len()
     }
 }
-

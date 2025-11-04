@@ -46,7 +46,7 @@ use rand::{Rng, RngCore, SeedableRng};
 use std::cell::RefCell;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::{Instant};
+use std::time::Instant;
 
 use crate::game_trait::MCTSGame;
 use crate::node::MCTSNode;
@@ -87,7 +87,8 @@ impl<G: MCTSGame> MCTSSearch<G> {
         if !enabled {
             self.transposition_table = None;
         } else if self.transposition_table.is_none() {
-            self.transposition_table = Some(Arc::new(TranspositionTable::new(Arc::clone(&self.game))));
+            self.transposition_table =
+                Some(Arc::new(TranspositionTable::new(Arc::clone(&self.game))));
         }
     }
 
@@ -119,7 +120,7 @@ impl<G: MCTSGame> MCTSSearch<G> {
         #[cfg(debug_assertions)]
         {
             #[allow(unused_mut)]
-            let mut features:Vec<&str> = Vec::new();
+            let mut features: Vec<&str> = Vec::new();
             #[cfg(feature = "metrics")]
             features.push("metrics");
 
@@ -559,8 +560,8 @@ impl<G: MCTSGame> MCTSSearch<G> {
 
             // Check if we need to (re)initialize the RNG
             let needs_init = match *rng_opt {
-                None => true,  // No cached RNG
-                Some((_, cached_generation)) => cached_generation != current_generation,  // Generation mismatch
+                None => true, // No cached RNG
+                Some((_, cached_generation)) => cached_generation != current_generation, // Generation mismatch
             };
 
             if needs_init {
@@ -594,7 +595,9 @@ impl<G: MCTSGame> MCTSSearch<G> {
             self.last_root_children = children.len();
 
             // Capture per-child statistics and normalize visit counts
-            let max_visits = children.values().map(|child| child.get_visits())
+            let max_visits = children
+                .values()
+                .map(|child| child.get_visits())
                 .max()
                 .unwrap_or(1) as f32;
 
@@ -756,15 +759,17 @@ impl<G: MCTSGame> MCTSSearch<G> {
             depth += 1;
 
             // Check if terminal - forced sequences end at game over
-            if node.game.is_terminal(&node.spatial_state.view(), &node.global_state.view()) {
+            if node
+                .game
+                .is_terminal(&node.spatial_state.view(), &node.global_state.view())
+            {
                 return node;
             }
 
             // Get all valid actions from the game
-            let valid_actions = node.game.get_valid_actions(
-                &node.spatial_state.view(),
-                &node.global_state.view(),
-            );
+            let valid_actions = node
+                .game
+                .get_valid_actions(&node.spatial_state.view(), &node.global_state.view());
 
             // Ask the game if there's a forced/deterministic action
             let forced_action = node.game.get_forced_action(
@@ -804,7 +809,7 @@ impl<G: MCTSGame> MCTSSearch<G> {
                             child_global,
                             Arc::clone(&node.game),
                             &node,
-                            None,  // No transposition table entry for deterministic sequences
+                            None, // No transposition table entry for deterministic sequences
                         ));
 
                         // Add child to parent's children map
@@ -862,7 +867,10 @@ impl<G: MCTSGame> MCTSSearch<G> {
             }
 
             // Check if terminal (game over)
-            if node.game.is_terminal(&node.spatial_state.view(), &node.global_state.view()) {
+            if node
+                .game
+                .is_terminal(&node.spatial_state.view(), &node.global_state.view())
+            {
                 return node;
             }
 
@@ -879,14 +887,14 @@ impl<G: MCTSGame> MCTSSearch<G> {
                     parent_value,
                     self.exploration_constant,
                     self.rave_constant,
-                    self.fpu_reduction
+                    self.fpu_reduction,
                 );
                 let score_b = child_b.rave_ucb_score(
                     parent_visits,
                     parent_value,
                     self.exploration_constant,
                     self.rave_constant,
-                    self.fpu_reduction
+                    self.fpu_reduction,
                 );
                 // Handle NaN gracefully (treat equal if either is NaN)
                 // This can happen with division by zero or invalid values
@@ -907,7 +915,6 @@ impl<G: MCTSGame> MCTSSearch<G> {
         }
     }
 
-
     /// Expansion phase: add a new child node
     pub(crate) fn expand(
         &self,
@@ -916,7 +923,9 @@ impl<G: MCTSGame> MCTSSearch<G> {
         use_lookups: bool,
     ) -> Arc<MCTSNode<G>> {
         // Get all valid actions from the game trait
-        let mut untried_actions = node.game.get_valid_actions(&node.spatial_state.view(), &node.global_state.view());
+        let mut untried_actions = node
+            .game
+            .get_valid_actions(&node.spatial_state.view(), &node.global_state.view());
 
         // Filter out already tried actions
         {
@@ -944,12 +953,7 @@ impl<G: MCTSGame> MCTSSearch<G> {
 
         // Create child node with parent pointer
         let shared_entry = if use_lookups {
-            table.map(|t| {
-                t.get_or_insert(
-                    &child_spatial_state.view(),
-                    &child_global_state.view(),
-                )
-            })
+            table.map(|t| t.get_or_insert(&child_spatial_state.view(), &child_global_state.view()))
         } else {
             None
         };
@@ -987,9 +991,14 @@ impl<G: MCTSGame> MCTSSearch<G> {
         let leaf_player = node.game.get_current_player(&node.global_state.view());
         let mut simulation_actions = Vec::new();
 
-        if node.game.is_terminal(&node.spatial_state.view(), &node.global_state.view()) {
+        if node
+            .game
+            .is_terminal(&node.spatial_state.view(), &node.global_state.view())
+        {
             // Evaluate from the perspective of the leaf player (player at this node)
-            let outcome = node.game.get_outcome(&node.spatial_state.view(), &node.global_state.view());
+            let outcome = node
+                .game
+                .get_outcome(&node.spatial_state.view(), &node.global_state.view());
             let value = self.outcome_to_value(outcome, leaf_player);
             return (value, simulation_actions);
         }
@@ -1012,14 +1021,21 @@ impl<G: MCTSGame> MCTSSearch<G> {
             }
 
             // Check if terminal
-            if node.game.is_terminal(&sim_spatial_state.view(), &sim_global_state.view()) {
-                let outcome = node.game.get_outcome(&sim_spatial_state.view(), &sim_global_state.view());
+            if node
+                .game
+                .is_terminal(&sim_spatial_state.view(), &sim_global_state.view())
+            {
+                let outcome = node
+                    .game
+                    .get_outcome(&sim_spatial_state.view(), &sim_global_state.view());
                 let value = self.outcome_to_value(outcome, leaf_player);
                 return (value, simulation_actions);
             }
 
             // Get valid actions and pick one randomly
-            let actions = node.game.get_valid_actions(&sim_spatial_state.view(), &sim_global_state.view());
+            let actions = node
+                .game
+                .get_valid_actions(&sim_spatial_state.view(), &sim_global_state.view());
 
             if actions.is_empty() {
                 // No valid actions - game should be terminal, but handle gracefully
@@ -1041,7 +1057,11 @@ impl<G: MCTSGame> MCTSSearch<G> {
         }
 
         // Depth limit reached - use heuristic evaluation
-        let value = node.game.evaluate_heuristic(&sim_spatial_state.view(), &sim_global_state.view(), leaf_player);
+        let value = node.game.evaluate_heuristic(
+            &sim_spatial_state.view(),
+            &sim_global_state.view(),
+            leaf_player,
+        );
         (value, simulation_actions)
     }
 
@@ -1051,13 +1071,13 @@ impl<G: MCTSGame> MCTSSearch<G> {
     /// Returns: +1.0 if player won, -1.0 if lost, 0.0 for draw, -2.0 for both lose
     fn outcome_to_value(&self, outcome: i8, player: usize) -> f32 {
         match outcome {
-            -2 => -2.0,  // Both lose
-            0 => 0.0,    // Draw
-            1 if player == 0 => 1.0,   // Player 0 wins and we are player 0
-            1 => -1.0,   // Player 0 wins but we are player 1
-            -1 if player == 1 => 1.0,  // Player 1 wins and we are player 1
-            -1 => -1.0,  // Player 1 wins but we are player 0
-            _ => 0.0,    // Unknown outcome
+            -2 => -2.0,               // Both lose
+            0 => 0.0,                 // Draw
+            1 if player == 0 => 1.0,  // Player 0 wins and we are player 0
+            1 => -1.0,                // Player 0 wins but we are player 1
+            -1 if player == 1 => 1.0, // Player 1 wins and we are player 1
+            -1 => -1.0,               // Player 1 wins but we are player 0
+            _ => 0.0,                 // Unknown outcome
         }
     }
 
@@ -1086,7 +1106,9 @@ impl<G: MCTSGame> MCTSSearch<G> {
 
             // RAVE/AMAF updates: Update RAVE stats for sibling actions that appeared in simulation
             if self.rave_constant.is_some() {
-                if let Some(parent_ref) = current_node.parent.as_ref().and_then(|weak| weak.upgrade()) {
+                if let Some(parent_ref) =
+                    current_node.parent.as_ref().and_then(|weak| weak.upgrade())
+                {
                     // Lock parent's children to access siblings
                     if let Ok(siblings) = parent_ref.children.read() {
                         // For each sibling, check if its action matches any simulation action
@@ -1348,7 +1370,8 @@ impl<G: MCTSGame> SearchOptions<G> {
         if let Some(flag) = use_table_override {
             search.set_transposition_table_enabled(flag);
         } else if search.use_transposition_table && search.transposition_table.is_none() {
-            search.transposition_table = Some(Arc::new(TranspositionTable::new(Arc::clone(&search.game))));
+            search.transposition_table =
+                Some(Arc::new(TranspositionTable::new(Arc::clone(&search.game))));
         }
 
         if let Some(flag) = use_lookups_override {
@@ -1377,4 +1400,3 @@ impl<G: MCTSGame> SearchOptions<G> {
 }
 
 // NOTE: Tests updated to use generic version with ZertzGame.
-

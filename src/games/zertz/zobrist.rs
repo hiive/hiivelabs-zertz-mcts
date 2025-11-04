@@ -98,11 +98,11 @@ fn make_matrix(rng: &mut Pcg64, width: usize) -> Vec<Vec<u64>> {
 #[derive(Clone)]
 pub struct ZobristHasher {
     width: usize,
-    pub(crate) ring: Vec<Vec<u64>>,            // [y][x]
-    marble: [Vec<Vec<u64>>; 3],     // [marble_type][y][x]
+    pub(crate) ring: Vec<Vec<u64>>,           // [y][x]
+    marble: [Vec<Vec<u64>>; 3],               // [marble_type][y][x]
     captured: [[[u64; CAPTURE_LIMIT]; 3]; 2], // [player][marble_type][count]
-    supply: [[u64; CAPTURE_LIMIT]; 3], // [marble_type][count]
-    player: u64,                    // Hash bit for player 2
+    supply: [[u64; CAPTURE_LIMIT]; 3],        // [marble_type][count]
+    player: u64,                              // Hash bit for player 2
 }
 
 impl ZobristHasher {
@@ -229,7 +229,11 @@ impl ZobristHasher {
     /// - **Current player**: XOR player bit if player 2's turn
     ///
     /// **Bounds checking**: Only hash counts < CAPTURE_LIMIT (defensive programming)
-    fn hash_supply_and_captures(&self, config: &BoardConfig, global_state: &ArrayView1<f32>) -> u64 {
+    fn hash_supply_and_captures(
+        &self,
+        config: &BoardConfig,
+        global_state: &ArrayView1<f32>,
+    ) -> u64 {
         let mut h = 0u64;
 
         // Hash supply counts for each marble type
@@ -286,7 +290,11 @@ impl ZobristHasher {
     }
 
     #[allow(dead_code)]
-    pub fn hash_canonical_spatial_state(&self, config: &BoardConfig, spatial_state: &ArrayView3<f32>) -> u64 {
+    pub fn hash_canonical_spatial_state(
+        &self,
+        config: &BoardConfig,
+        spatial_state: &ArrayView3<f32>,
+    ) -> u64 {
         self.hash_spatial_state(config, spatial_state)
     }
 
@@ -295,4 +303,3 @@ impl ZobristHasher {
         self.width
     }
 }
-

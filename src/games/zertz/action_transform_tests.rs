@@ -1,12 +1,12 @@
 #[cfg(test)]
 mod tests {
+    use super::super::action::ZertzAction;
     use super::super::action_transform::*;
     use super::super::board::BoardConfig;
-    use super::super::action::ZertzAction;
 
     fn placement_action(config: &BoardConfig) -> ZertzAction {
-        let dst_flat = 3 * config.width + 2;  // (3, 2) -> flat
-        let remove_flat = Some(2 * config.width + 4);  // (2, 4) -> flat
+        let dst_flat = 3 * config.width + 2; // (3, 2) -> flat
+        let remove_flat = Some(2 * config.width + 4); // (2, 4) -> flat
         ZertzAction::Placement {
             marble_type: 0,
             dst_flat,
@@ -16,12 +16,9 @@ mod tests {
 
     fn capture_action(config: &BoardConfig) -> ZertzAction {
         // Start at (3,3), direction 0 is typically (-1, 0) in hexagonal, so dest is (1,3)
-        let src_flat = 3 * config.width + 3;  // (3, 3) -> flat
-        let dst_flat = 1 * config.width + 3;  // (1, 3) -> flat
-        ZertzAction::Capture {
-            src_flat,
-            dst_flat,
-        }
+        let src_flat = 3 * config.width + 3; // (3, 3) -> flat
+        let dst_flat = 1 * config.width + 3; // (1, 3) -> flat
+        ZertzAction::Capture { src_flat, dst_flat }
     }
 
     #[test]
@@ -31,9 +28,9 @@ mod tests {
 
         let test_cases = vec![
             ("MR60", (3, 2), (4, 5)),
-            ("R60M", (2, 3), (4, 2)),   // Different from MR60 - respects mirror_first
+            ("R60M", (2, 3), (4, 2)), // Different from MR60 - respects mirror_first
             ("MR120", (4, 3), (2, 4)),
-            ("R120M", (3, 4), (2, 1)),  // Different from MR120 - respects mirror_first
+            ("R120M", (3, 4), (2, 1)), // Different from MR120 - respects mirror_first
             ("R180", (3, 4), (4, 2)),
         ];
 
@@ -82,7 +79,7 @@ mod tests {
                 remove_flat,
                 ..
             } => {
-            let (dst_y, dst_x) = config.flat_to_yx(dst_flat);
+                let (dst_y, dst_x) = config.flat_to_yx(dst_flat);
                 assert_eq!((dst_y, dst_x), (4, 2));
 
                 if let Some(rf) = remove_flat {
@@ -104,17 +101,14 @@ mod tests {
         // Test cases: (transform_name, (expected_src_y, expected_src_x, expected_dst_y, expected_dst_x))
         // Note: Expected values verified by running actual transformations
         let test_cases = vec![
-            ("R60", (3, 3, 3, 5)),   // Test basic rotation
-            ("R180", (3, 3, 5, 3)),  // Test 180 rotation
+            ("R60", (3, 3, 3, 5)),  // Test basic rotation
+            ("R180", (3, 3, 5, 3)), // Test 180 rotation
         ];
 
         for (transform, (exp_src_y, exp_src_x, exp_dst_y, exp_dst_x)) in test_cases {
             let transformed = transform_action(&action, transform, &config);
             match transformed {
-                ZertzAction::Capture {
-                    src_flat,
-                    dst_flat,
-                } => {
+                ZertzAction::Capture { src_flat, dst_flat } => {
                     let (src_y, src_x) = config.flat_to_yx(src_flat);
                     let (dst_y, dst_x) = config.flat_to_yx(dst_flat);
                     assert_eq!(
@@ -136,10 +130,7 @@ mod tests {
 
         let transformed = transform_action(&action, "T2,-1", &config);
         match transformed {
-            ZertzAction::Capture {
-                src_flat,
-                dst_flat,
-            } => {
+            ZertzAction::Capture { src_flat, dst_flat } => {
                 let (src_y, src_x) = config.flat_to_yx(src_flat);
                 let (dst_y, dst_x) = config.flat_to_yx(dst_flat);
                 // Original: start (3,3), dest (1,3)
@@ -186,7 +177,11 @@ mod tests {
         let transforms = vec!["R60", "MR120", "T1,0"];
         for transform in transforms {
             let transformed = transform_action(&action, transform, &config);
-            assert!(matches!(transformed, ZertzAction::Pass), "Pass should remain Pass for {}", transform);
+            assert!(
+                matches!(transformed, ZertzAction::Pass),
+                "Pass should remain Pass for {}",
+                transform
+            );
         }
     }
 }

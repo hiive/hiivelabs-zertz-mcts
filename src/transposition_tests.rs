@@ -1,10 +1,10 @@
 #[cfg(test)]
 mod tests {
     use super::super::transposition::*;
+    use crate::games::zertz::game::ZertzGame;
     use crate::games::zertz::BoardConfig;
     use ndarray::{Array1, Array3};
     use std::sync::Arc;
-    use crate::games::zertz::game::ZertzGame;
 
     fn empty_state(config: &BoardConfig) -> (Array3<f32>, Array1<f32>) {
         let layers = config.layers_per_timestep * config.t + 1;
@@ -231,16 +231,26 @@ mod tests {
 
         // Lookup 10 nonexistent states (enough to verify no pollution)
         for i in 0..10 {
-            let mut spatial = Array3::zeros((config.layers_per_timestep * config.t + 1, config.width, config.width));
-            spatial[[0, 0, 0]] = i as f32;  // Make each unique
+            let mut spatial = Array3::zeros((
+                config.layers_per_timestep * config.t + 1,
+                config.width,
+                config.width,
+            ));
+            spatial[[0, 0, 0]] = i as f32; // Make each unique
             let global = Array1::zeros(10);
 
             let result = table.lookup(&spatial.view(), &global.view());
-            assert!(result.is_none(), "Lookup should return None for nonexistent entry");
+            assert!(
+                result.is_none(),
+                "Lookup should return None for nonexistent entry"
+            );
         }
 
         let final_size = table.len();
-        assert_eq!(initial_size, final_size, "Lookup should not insert entries (table size should not change)");
+        assert_eq!(
+            initial_size, final_size,
+            "Lookup should not insert entries (table size should not change)"
+        );
         assert_eq!(final_size, 0, "Table should still be empty after lookups");
     }
 }

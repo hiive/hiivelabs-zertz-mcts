@@ -15,9 +15,9 @@
 //! - **TicTacToe**: Classic 3x3 game (minimal example)
 
 // Game implementations
-pub mod zertz;      // Zertz game (all Zertz code in submodules)
-pub mod tictactoe;  // TicTacToe game (all TicTacToe code in submodules)
+pub mod tictactoe;
+pub mod zertz; // Zertz game (all Zertz code in submodules) // TicTacToe game (all TicTacToe code in submodules)
 
 // Re-export game types for convenience
-pub use zertz::{PyZertzMCTS, PyZertzAction, PyZertzActionResult, BoardConfig, BoardState};
 pub use tictactoe::PyTicTacToeMCTS;
+pub use zertz::{BoardConfig, BoardState, PyZertzAction, PyZertzActionResult, PyZertzMCTS};
