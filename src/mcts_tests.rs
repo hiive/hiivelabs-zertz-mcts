@@ -2,7 +2,6 @@
 mod tests {
     use super::super::mcts::*;
     use crate::games::zertz::BoardConfig;
-    use crate::games::{ZertzGame, zertz::ZertzAction};
     use crate::node::MCTSNode;
     use crate::transposition::TranspositionTable;
     use crate::game_trait::MCTSGame;
@@ -10,7 +9,8 @@ mod tests {
     use std::sync::Arc;
     use std::sync::atomic::Ordering;
     use std::time::Instant;
-    use rand::Rng;
+    use crate::games::zertz::action::ZertzAction;
+    use crate::games::zertz::game::ZertzGame;
     // Note: Most MCTS testing is done via Python integration tests
     // due to the PyO3 boundary (PyReadonlyArray types can only be created from Python)
 
@@ -176,7 +176,6 @@ mod tests {
     fn test_transposition_table_not_polluted_during_search() {
         // Verify that running MCTS doesn't pollute the transposition table
         // with empty entries for every legal action checked
-        use crate::games::zertz::BoardConfig;
         use ndarray::{Array1, Array3};
 
         let game = Arc::new(ZertzGame::new(37, 1, false).unwrap());
@@ -268,7 +267,6 @@ mod tests {
     #[test]
     fn test_collapse_deterministic_sequence_disabled() {
         // Test that collapse returns immediately when enable_deterministic_collapse() is false
-        use crate::games::zertz::BoardConfig;
         use ndarray::{Array1, Array3};
 
         // Create a simple test game
@@ -289,7 +287,7 @@ mod tests {
         global_state[config.supply_b] = 7.0;
         global_state[config.cur_player] = config.player_1 as f32;
 
-        let mcts = MCTSSearch::new(Arc::clone(&game), None, None, None, None, None, None);
+        let _mcts = MCTSSearch::new(Arc::clone(&game), None, None, None, None, None, None);
         let node = Arc::new(MCTSNode::new(spatial_state, global_state, Arc::clone(&game), None));
 
         // Create a temporary game that disables collapse for testing
@@ -352,13 +350,12 @@ mod tests {
     #[test]
     fn test_collapse_deterministic_sequence_terminal_state() {
         // Test that collapse stops immediately at terminal states
-        use crate::games::zertz::BoardConfig;
         use ndarray::{Array1, Array3};
 
         let game = Arc::new(ZertzGame::new(37, 1, false).unwrap());
         let config = game.config();
 
-        let mut spatial_state = Array3::zeros((config.layers_per_timestep * config.t + 1, config.width, config.width));
+        let spatial_state = Array3::zeros((config.layers_per_timestep * config.t + 1, config.width, config.width));
         let mut global_state = Array1::zeros(10);
 
         // Create terminal state (no rings left, game over)
@@ -384,7 +381,6 @@ mod tests {
     #[test]
     fn test_collapse_deterministic_sequence_choice_point() {
         // Test that collapse stops at nodes with multiple legal actions (choice points)
-        use crate::games::zertz::BoardConfig;
         use ndarray::{Array1, Array3};
 
         let game = Arc::new(ZertzGame::new(37, 1, false).unwrap());
@@ -421,7 +417,6 @@ mod tests {
     #[test]
     fn test_collapse_deterministic_sequence_single_forced_move() {
         // Test that collapse traverses a single forced move
-        use crate::games::zertz::BoardConfig;
         use ndarray::{Array1, Array3};
 
         let game = Arc::new(ZertzGame::new(37, 1, false).unwrap());
@@ -463,7 +458,6 @@ mod tests {
     #[test]
     fn test_collapse_deterministic_sequence_reuses_existing_child() {
         // Test that collapse reuses existing children instead of creating duplicates
-        use crate::games::zertz::BoardConfig;
         use ndarray::{Array1, Array3};
 
         let game = Arc::new(ZertzGame::new(37, 1, false).unwrap());

@@ -3,7 +3,7 @@
 //! Defines the action representation for Zertz game moves and their Python bindings.
 
 use super::board::BoardConfig;
-use pyo3::{pyclass, pymethods, PyResult};
+use pyo3::{pyclass, pymethods};
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 

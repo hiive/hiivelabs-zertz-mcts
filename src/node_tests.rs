@@ -2,10 +2,10 @@
 mod tests {
     use super::super::node::*;
     use crate::games::zertz::BoardConfig;
-    use crate::games::ZertzGame;
     use crate::transposition::TranspositionTable;
     use ndarray::{Array1, Array3};
     use std::sync::Arc;
+    use crate::games::zertz::game::ZertzGame;
 
     fn empty_state(config: &BoardConfig) -> (Array3<f32>, Array1<f32>) {
         let layers = config.layers_per_timestep * config.t + 1;

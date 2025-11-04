@@ -39,10 +39,10 @@
 //! - `max_depth`: Limits rollout depth (None = full game)
 //! - `time_limit`: Max search time in seconds
 
-use pyo3::prelude::*;
+// use pyo3::prelude::*;
 use rand::rngs::StdRng;
 use rand::{Rng, RngCore, SeedableRng};
-use rayon::prelude::*;
+// use rayon::prelude::*;
 use std::cell::RefCell;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};

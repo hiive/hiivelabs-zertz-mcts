@@ -41,8 +41,7 @@ mod notation_tests;
 mod zobrist_tests;
 
 // Re-export key types for convenience
-pub use action::{PyZertzAction, ZertzAction};
-pub use action_result::{PyZertzActionResult, ZertzActionResult};
-pub use board::{BoardConfig, BoardState, GameMode, WinConditions};
-pub use game::ZertzGame;
+pub use action::PyZertzAction;
+pub use action_result::PyZertzActionResult;
+pub use board::{BoardConfig, BoardState};
 pub use py_mcts::PyZertzMCTS;

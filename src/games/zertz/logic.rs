@@ -22,7 +22,7 @@
 
 use super::board::BoardConfig;
 use ndarray::{s, Array1, Array3, Array5, ArrayView1, ArrayView3, ArrayViewMut1, ArrayViewMut3};
-use pyo3::prelude::*;
+// use pyo3::prelude::*;
 use smallvec::SmallVec;
 use std::collections::{HashSet, VecDeque};
 
@@ -652,8 +652,8 @@ pub fn apply_capture(
 
     // Compute direction from start and dest
     // dest = start + 2 * direction_offset, so direction_offset = (dest - start) / 2
-    let dy = ((dest_y as i32 - start_y as i32) / 2);
-    let dx = ((dest_x as i32 - start_x as i32) / 2);
+    let dy = (dest_y as i32 - start_y as i32) / 2;
+    let dx = (dest_x as i32 - start_x as i32) / 2;
 
     // Calculate capture and landing positions
     let cap_y = (start_y as i32 + dy) as usize;

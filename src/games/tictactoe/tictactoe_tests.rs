@@ -26,7 +26,7 @@ mod tests {
         let (mut spatial, mut global) = TicTacToeGame::initial_state();
 
         let action = TicTacToeAction { row: 1, col: 1 };
-        game.apply_action(&mut spatial.view_mut(), &mut global.view_mut(), &action);
+        let _ = game.apply_action(&mut spatial.view_mut(), &mut global.view_mut(), &action);
 
         // X should have marked center
         assert_eq!(spatial[[0, 1, 1]], 1.0);

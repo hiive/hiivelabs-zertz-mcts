@@ -25,7 +25,6 @@ mod canonicalization_tests;
 
 use crate::game_trait::MCTSGame;
 use ndarray::{Array1, Array3, ArrayView1, ArrayView3, ArrayViewMut1, ArrayViewMut3};
-use crate::games::BoardConfig;
 
 /// Tic-Tac-Toe action: place mark at (row, col)
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]

@@ -15,7 +15,6 @@
 use ndarray::{Array1, Array3, ArrayView1, ArrayView3, ArrayViewMut1, ArrayViewMut3};
 use std::fmt::Debug;
 use std::hash::Hash;
-use crate::games::BoardConfig;
 
 /// Core trait that all MCTS-compatible games must implement.
 ///

@@ -150,9 +150,7 @@ mod tests {
         global_state[config.cur_player] = config.player_1 as f32;
 
         let placement_mask = get_placement_actions(&config, &spatial_state.view(), &global_state.view());
-
-        let width = config.width;
-
+        
         // Should not be able to place on occupied ring (check white marble, no removal)
         // New format: (marble_type, dst_y, dst_x, rem_y, rem_x) with (width, width) = no removal
         assert_eq!(placement_mask[[0, 3, 3, 3, 3]], 0.0);
@@ -447,8 +445,8 @@ mod tests {
 
     #[test]
     fn test_apply_capture_resets_capture_layer() {
-        /// Verify that apply_capture() clears any pre-existing capture layer markers
-        /// at the start of execution (Step 1 of the fix).
+        // Verify that apply_capture() clears any pre-existing capture layer markers
+        // at the start of execution (Step 1 of the fix).
         let config = create_test_config();
         let (mut spatial_state, mut global_state) = create_empty_state(&config);
 

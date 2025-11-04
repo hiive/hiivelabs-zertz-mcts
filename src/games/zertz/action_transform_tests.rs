@@ -2,7 +2,7 @@
 mod tests {
     use super::super::action_transform::*;
     use super::super::board::BoardConfig;
-    use super::super::ZertzAction;
+    use super::super::action::ZertzAction;
 
     fn placement_action(config: &BoardConfig) -> ZertzAction {
         let dst_flat = 3 * config.width + 2;  // (3, 2) -> flat
@@ -28,7 +28,6 @@ mod tests {
     fn test_transform_placement_rotations() {
         let config = BoardConfig::standard(37, 1).unwrap();
         let action = placement_action(&config);
-        let width = config.width;
 
         let test_cases = vec![
             ("MR60", (3, 2), (4, 5)),
@@ -75,7 +74,6 @@ mod tests {
     fn test_transform_placement_translation() {
         let config = BoardConfig::standard(37, 1).unwrap();
         let action = placement_action(&config);
-        let width = config.width;
 
         let transformed = transform_action(&action, "T1,0", &config);
         match transformed {
@@ -102,7 +100,6 @@ mod tests {
     fn test_transform_capture_rotations() {
         let config = BoardConfig::standard(37, 1).unwrap();
         let action = capture_action(&config);
-        let width = config.width;
 
         // Test cases: (transform_name, (expected_src_y, expected_src_x, expected_dst_y, expected_dst_x))
         // Note: Expected values verified by running actual transformations
@@ -136,7 +133,6 @@ mod tests {
     fn test_transform_capture_translation() {
         let config = BoardConfig::standard(37, 1).unwrap();
         let action = capture_action(&config);
-        let width = config.width;
 
         let transformed = transform_action(&action, "T2,-1", &config);
         match transformed {
@@ -159,7 +155,6 @@ mod tests {
     fn test_transform_inverse_roundtrip() {
         let config = BoardConfig::standard(37, 1).unwrap();
         let action = placement_action(&config);
-        let width = config.width;
 
         let forward = transform_action(&action, "MR60", &config);
         let inverse = transform_action(&forward, "MR60", &config); // MR60 is its own inverse
