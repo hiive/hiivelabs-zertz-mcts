@@ -38,6 +38,9 @@ fn hiivelabs_mcts(m: &Bound<'_, PyModule>) -> PyResult<()> {
     // Register generic types
     m.add_class::<PyTransformFlags>()?;
 
+    let sys_modules = m.py().import("sys")?.getattr("modules")?;
+    let mut root_exports = Vec::new();
+
     // Register Zertz game under submodule
     let zertz_mod = PyModule::new(m.py(), "zertz")?;
     zertz_mod.add_class::<BoardConfig>()?;
@@ -47,20 +50,44 @@ fn hiivelabs_mcts(m: &Bound<'_, PyModule>) -> PyResult<()> {
     zertz_mod.add_class::<PyZertzActionResult>()?;
     games::zertz::py_logic::register(&zertz_mod)?; // Zertz game logic functions
     m.add_submodule(&zertz_mod)?;
+    sys_modules.set_item("hiivelabs_mcts.zertz", &zertz_mod)?;
+    root_exports.push("zertz".to_string());
+    if let Ok(zertz_all) = zertz_mod.getattr("__all__") {
+        let names: Vec<String> = zertz_all.extract()?;
+        for name in &names {
+            let attr = zertz_mod.getattr(name)?;
+            m.add(name, attr)?;
+        }
+        root_exports.extend(names);
+    }
 
     // Register TicTacToe game under submodule
     let tictactoe_mod = PyModule::new(m.py(), "tictactoe")?;
     tictactoe_mod.add_class::<PyTicTacToeMCTS>()?;
     m.add_submodule(&tictactoe_mod)?;
+    sys_modules.set_item("hiivelabs_mcts.tictactoe", &tictactoe_mod)?;
+    root_exports.push("tictactoe".to_string());
+    if let Ok(tictactoe_all) = tictactoe_mod.getattr("__all__") {
+        let names: Vec<String> = tictactoe_all.extract()?;
+        for name in &names {
+            let attr = tictactoe_mod.getattr(name)?;
+            m.add(name, attr)?;
+        }
+        root_exports.extend(names);
+    }
 
     // Player constants
     m.add("PLAYER_1", 0usize)?;
     m.add("PLAYER_2", 1usize)?;
 
+    root_exports.push("PLAYER_1".to_string());
+    root_exports.push("PLAYER_2".to_string());
+    root_exports.push("TransformFlags".to_string());
+
     // Mark as package for Python import machinery
     m.add("__path__", PyList::empty(m.py()))?;
-    let submodules = PyList::new(m.py(), ["zertz", "tictactoe"])?;
-    m.add("__all__", submodules)?;
+    let all_list = PyList::new(m.py(), &root_exports)?;
+    m.add("__all__", all_list)?;
 
     Ok(())
 }
