@@ -1,4 +1,5 @@
 use pyo3::prelude::*;
+use pyo3::types::PyList;
 
 // Generic MCTS infrastructure
 mod canonicalization_transform_flags; // Flags for canonicalization transforms (game-agnostic)
@@ -55,6 +56,11 @@ fn hiivelabs_mcts(m: &Bound<'_, PyModule>) -> PyResult<()> {
     // Player constants
     m.add("PLAYER_1", 0usize)?;
     m.add("PLAYER_2", 1usize)?;
+
+    // Mark as package for Python import machinery
+    m.add("__path__", PyList::empty(m.py()))?;
+    let submodules = PyList::new(m.py(), ["zertz", "tictactoe"])?;
+    m.add("__all__", submodules)?;
 
     Ok(())
 }
