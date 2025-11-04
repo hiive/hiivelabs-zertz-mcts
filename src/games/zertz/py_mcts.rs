@@ -3,7 +3,7 @@
 //! This module provides PyO3 bindings for the generic MCTS with ZertzGame.
 //! It wraps `MCTSSearch<ZertzGame>` and provides Python-compatible interfaces.
 
-use super::action::ZertzAction;
+use super::action::{ZertzAction, PyZertzAction};
 use super::game::ZertzGame;
 use crate::mcts::MCTSSearch;
 use crate::node::MCTSNode;
@@ -179,7 +179,7 @@ impl PyZertzMCTS {
         seed: Option<u64>,
         progress_callback: Option<Py<PyAny>>,
         progress_interval_ms: u64,
-    ) -> PyResult<(String, Option<(Option<usize>, usize, usize)>)> {
+    ) -> PyResult<PyZertzAction> {
         // Set seed if provided
         if let Some(s) = seed {
             self.search.set_seed(Some(s));
@@ -310,7 +310,7 @@ impl PyZertzMCTS {
         seed: Option<u64>,
         progress_callback: Option<Py<PyAny>>,
         progress_interval_ms: u64,
-    ) -> PyResult<(String, Option<(Option<usize>, usize, usize)>)> {
+    ) -> PyResult<PyZertzAction> {
         // Set seed if provided
         if let Some(s) = seed {
             self.search.set_seed(Some(s));
@@ -352,7 +352,7 @@ impl PyZertzMCTS {
         );
 
         let start_time = Instant::now();
-        let last_progress = std::sync::Arc::new(std::sync::Mutex::new(Instant::now()));
+        let last_progress = Arc::new(std::sync::Mutex::new(Instant::now()));
 
         // Run MCTS iterations in parallel
         (0..iterations).into_par_iter().for_each(|_i| {
@@ -431,21 +431,20 @@ impl PyZertzMCTS {
     fn select_best_action(
         &self,
         root: &MCTSNode<ZertzGame>,
-    ) -> PyResult<(String, Option<(Option<usize>, usize, usize)>)> {
+    ) -> PyResult<PyZertzAction> {
         let children = root.children.read().unwrap();
 
         if children.is_empty() {
-            return Ok(("PASS".to_string(), None));
+            return Ok(PyZertzAction {inner: ZertzAction::Pass});
         }
 
         // Select child with most visits
         let best = children.iter().max_by_key(|(_, child)| child.get_visits());
 
         if let Some((action, _)) = best {
-            let width = self.game.config().width;
-            action.to_tuple(width)
+            Ok(PyZertzAction {inner: action.to_owned()})
     } else {
-            Ok(("PASS".to_string(), None))
+            Ok(PyZertzAction {inner: ZertzAction::Pass})
         }
     }
 

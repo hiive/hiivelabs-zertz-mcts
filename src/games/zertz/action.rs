@@ -29,37 +29,33 @@ impl ZertzAction {
     /// Convert action to tuple format for serialization
     ///
     /// # Arguments
-    /// * `width` - Board width for coordinate flattening
+    /// * `config` - Board config for coordinate flattening
     ///
     /// # Returns
     /// Result containing tuple of (action_type, optional (param1, param2, param3))
     /// - For Placement: ("PUT", Some((marble_type, dst_flat, remove_flat)))
     /// - For Capture: ("CAP", Some((None, src_flat, dst_flat)))
     /// - For Pass: ("PASS", None)
-    // todo - remove?
-    pub fn to_tuple(&self, width: usize) -> PyResult<(String, Option<(Option<usize>, usize, usize)>)> {
-        match self {
+    pub fn to_tuple(&self, config: &BoardConfig) -> (String, Option<Vec<Option<usize>>>) {
+        match &self {
             ZertzAction::Placement {
                 marble_type,
                 dst_flat,
                 remove_flat,
             } => {
-                let rem_flat = match remove_flat {
-                    Some(r_flat) => *r_flat,
-                    _ => width * width
-                };
-                Ok(("PUT".to_string(), Some((Some(*marble_type), *dst_flat, rem_flat))))
+                let (dst_y, dst_x) = config.flat_to_yx(*dst_flat);
+                let (rem_y, rem_x) = config.flat_to_optional_yx(*remove_flat);
+                ("PUT}".to_string(), Option::from(vec![Some(*marble_type), Some(dst_y), Some(dst_x), rem_y, rem_x]))
             }
             ZertzAction::Capture {
                 src_flat,
                 dst_flat,
             } => {
-                // Return (None, src_flat, dst_flat)
-                // None distinguishes captures from placements (which have Some(marble_type))
-                // Python will unflatten both coordinates and calculate cap_index as midpoint
-                Ok(("CAP".to_string(), Some((None, *src_flat, *dst_flat))))
+                let (src_y, src_x) = config.flat_to_yx(*src_flat);
+                let (dst_y, dst_x) = config.flat_to_yx(*dst_flat);
+                ("PUT}".to_string(), Option::from(vec![Some(src_y), Some(src_x), Some(dst_y), Some(dst_x)]))
             }
-            ZertzAction::Pass => Ok(("PASS".to_string(), None)),
+            ZertzAction::Pass => ("PUT}".to_string(), None)
         }
     }
 
@@ -176,12 +172,12 @@ impl PyZertzAction {
     /// Convert action to tuple format
     ///
     /// Args:
-    ///     width: Board width for coordinate handling
+    ///     width: Board config for coordinate handling
     ///
     /// Returns:
     ///     Tuple of (action_type, optional action_data)
-    pub fn to_tuple(&self, width: usize) -> PyResult<(String, Option<(Option<usize>, usize, usize)>)> {
-        self.inner.to_tuple(width)
+    pub fn to_tuple(&self, config: &BoardConfig) -> (String, Option<Vec<Option<usize>>>) {
+        self.inner.to_tuple(config)
     }
 
     /// Get action type as string
