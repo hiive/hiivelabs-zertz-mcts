@@ -3,7 +3,7 @@
 //! This module provides PyO3 bindings for the generic MCTS with TicTacToeGame.
 //! It wraps `MCTSSearch<TicTacToeGame>` and provides Python-compatible interfaces.
 
-use crate::games::tictactoe::TicTacToeGame;
+use super::TicTacToeGame;
 use crate::mcts::MCTSSearch;
 use crate::node::MCTSNode;
 use numpy::{PyReadonlyArray1, PyReadonlyArray3};

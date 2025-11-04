@@ -3,12 +3,13 @@
 //! This module exposes stateless Zertz game logic functions to Python,
 //! allowing Python code to call Rust game logic directly.
 
-use super::{action_transform, board::BoardConfig, canonicalization, logic, notation, ZertzAction};
-use canonicalization::TransformFlags as RustTransformFlags;
+use super::action::{PyZertzAction, ZertzAction};
+use super::action_result::PyZertzActionResult;
+use super::{action_transform, board::BoardConfig, canonicalization, logic, notation};
+use crate::canonicalization_transform_flags::{PyTransformFlags, TransformFlags};
 use numpy::{PyArray1, PyArray3, PyArray5, PyArrayMethods, PyReadonlyArray1, PyReadonlyArray3};
 use pyo3::prelude::*;
 use std::collections::HashMap;
-use crate::games::PyZertzAction;
 // ============================================================================
 // Axial Coordinate Transformations
 // ============================================================================
@@ -63,132 +64,8 @@ pub fn build_axial_maps(
 }
 
 // ============================================================================
-// Transform Flags
+// Canonicalization
 // ============================================================================
-
-/// Flags for controlling which transforms to use in canonicalization.
-///
-/// TransformFlags uses bit flags to specify which types of symmetries to include:
-/// - ROTATION: Include rotational symmetries (0°, 60°, 120°, etc.)
-/// - MIRROR: Include reflection symmetries
-/// - TRANSLATION: Include translational symmetries
-///
-/// Common combinations:
-/// - ALL: rotation + mirror + translation (full canonicalization)
-/// - ROTATION_MIRROR: rotation + mirror only (canonical orientation, no translation)
-/// - NONE: identity only (no transforms)
-#[pyclass]
-#[derive(Clone)]
-pub struct TransformFlags {
-    inner: RustTransformFlags,
-}
-
-
-#[pymethods]
-impl TransformFlags {
-    /// All transforms enabled (rotation + mirror + translation)
-    #[classattr]
-    #[allow(non_snake_case)]
-    fn ALL() -> Self {
-        TransformFlags { inner: RustTransformFlags::ALL }
-    }
-
-    /// Only rotational symmetries
-    #[classattr]
-    #[allow(non_snake_case)]
-    fn ROTATION() -> Self {
-        TransformFlags { inner: RustTransformFlags::ROTATION }
-    }
-
-    /// Only mirror symmetries
-    #[classattr]
-    #[allow(non_snake_case)]
-    fn MIRROR() -> Self {
-        TransformFlags { inner: RustTransformFlags::MIRROR }
-    }
-
-    /// Only translation symmetries
-    #[classattr]
-    #[allow(non_snake_case)]
-    fn TRANSLATION() -> Self {
-        TransformFlags { inner: RustTransformFlags::TRANSLATION }
-    }
-
-    /// Rotation and mirror only (no translation)
-    #[classattr]
-    #[allow(non_snake_case)]
-    fn ROTATION_MIRROR() -> Self {
-        TransformFlags { inner: RustTransformFlags::ROTATION_MIRROR }
-    }
-
-    /// No transforms (identity only)
-    #[classattr]
-    #[allow(non_snake_case)]
-    fn NONE() -> Self {
-        TransformFlags { inner: RustTransformFlags::NONE }
-    }
-
-    /// Create TransformFlags from bit flags
-    ///
-    /// Args:
-    ///     bits: Bit flags (0-7). Use constants like TransformFlags.ALL,
-    ///           TransformFlags.ROTATION_MIRROR, etc.
-    ///
-    /// Returns:
-    ///     TransformFlags instance
-    ///
-    /// Raises:
-    ///     ValueError: If bits > 7
-    #[new]
-    pub fn new(bits: u8) -> PyResult<Self> {
-        RustTransformFlags::from_bits(bits)
-            .map(|inner| TransformFlags { inner })
-            .ok_or_else(|| {
-                pyo3::exceptions::PyValueError::new_err(format!(
-                    "Invalid transform flags bits: {} (must be 0-7)",
-                    bits
-                ))
-            })
-    }
-
-    /// Get the raw bit flags
-    pub fn bits(&self) -> u8 {
-        self.inner.bits()
-    }
-
-    /// Check if rotation flag is set
-    pub fn has_rotation(&self) -> bool {
-        self.inner.has_rotation()
-    }
-
-    /// Check if mirror flag is set
-    pub fn has_mirror(&self) -> bool {
-        self.inner.has_mirror()
-    }
-
-    /// Check if translation flag is set
-    pub fn has_translation(&self) -> bool {
-        self.inner.has_translation()
-    }
-
-    fn __repr__(&self) -> String {
-        let bits = self.inner.bits();
-        let names = match bits {
-            0b111 => "ALL",
-            0b011 => "ROTATION_MIRROR",
-            0b001 => "ROTATION",
-            0b010 => "MIRROR",
-            0b100 => "TRANSLATION",
-            0b000 => "NONE",
-            _ => return format!("TransformFlags({})", bits),
-        };
-        format!("TransformFlags.{}", names)
-    }
-
-    fn __eq__(&self, other: &TransformFlags) -> bool {
-        self.inner == other.inner
-    }
-}
 
 /// Canonicalize a board state to its standard form
 ///
@@ -211,10 +88,10 @@ pub fn canonicalize_state<'py>(
     py: Python<'py>,
     spatial_state: PyReadonlyArray3<'py, f32>,
     config: &BoardConfig,
-    flags: Option<&TransformFlags>,
+    flags: Option<&PyTransformFlags>,
 ) -> (Py<PyArray3<f32>>, String, String) {
     let spatial_state = spatial_state.as_array();
-    let transform_flags = flags.map(|f| f.inner).unwrap_or(RustTransformFlags::ALL);
+    let transform_flags = flags.map(|f| f.inner).unwrap_or(TransformFlags::ALL);
     let (canonical, transform, inverse) = canonicalization::canonicalize_internal(&spatial_state, config, transform_flags);
     (
         PyArray3::from_array(py, &canonical).into(),
@@ -541,7 +418,7 @@ pub fn apply_action<'py>(
     spatial_state: &Bound<'py, PyArray3<f32>>,
     global_state: &Bound<'py, PyArray1<f32>>,
     action: &PyZertzAction,
-) -> PyResult<super::PyZertzActionResult>
+) -> PyResult<PyZertzActionResult>
 {
     let result = match &action.inner {
         ZertzAction::Placement { marble_type, dst_flat, remove_flat} => {
@@ -561,7 +438,7 @@ pub fn apply_action<'py>(
                     config,
                 ).map_err(pyo3::exceptions::PyValueError::new_err)?
             };
-            super::ZertzActionResult::placement(isolation_captures)
+            super::action_result::ZertzActionResult::placement(isolation_captures)
         }
         ZertzAction::Capture { src_flat, dst_flat } => {
             let (src_y, src_x) = config.flat_to_yx(*src_flat);
@@ -600,14 +477,14 @@ pub fn apply_action<'py>(
                 );
             }
 
-            super::ZertzActionResult::capture(marble_type, cap_y, cap_x)
+            super::action_result::ZertzActionResult::capture(marble_type, cap_y, cap_x)
         }
         ZertzAction::Pass => {
-            super::ZertzActionResult::pass()
+            super::action_result::ZertzActionResult::pass()
         }
     };
 
-    Ok(super::PyZertzActionResult { inner: result })
+    Ok(PyZertzActionResult { inner: result })
 }
 
 /// Apply a placement action (mutates arrays in-place)
@@ -953,9 +830,6 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(ax_rot60, m)?)?;
     m.add_function(wrap_pyfunction!(ax_mirror_q_axis, m)?)?;
     m.add_function(wrap_pyfunction!(build_axial_maps, m)?)?;
-
-    // Transform flags
-    m.add_class::<TransformFlags>()?;
 
     // Canonicalization
     m.add_function(wrap_pyfunction!(canonicalize_state, m)?)?;

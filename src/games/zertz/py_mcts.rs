@@ -3,7 +3,8 @@
 //! This module provides PyO3 bindings for the generic MCTS with ZertzGame.
 //! It wraps `MCTSSearch<ZertzGame>` and provides Python-compatible interfaces.
 
-use super::{ZertzAction, ZertzGame};
+use super::action::ZertzAction;
+use super::game::ZertzGame;
 use crate::mcts::MCTSSearch;
 use crate::node::MCTSNode;
 use ndarray::{Array1, Array3};

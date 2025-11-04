@@ -437,20 +437,20 @@ class ZertzAction:
     @staticmethod
     def capture(
         config: BoardConfig,
-        start_y: int,
-        start_x: int,
-        dest_y: int,
-        dest_x: int
+        src_y: int,
+        src_x: int,
+        dst_y: int,
+        dst_x: int
     ) -> ZertzAction:
         """
         Create a Capture action.
 
         Args:
             config: BoardConfig for coordinate conversion
-            start_y: Starting row
-            start_x: Starting column
-            dest_y: Destination row (after jumping)
-            dest_x: Destination column (after jumping)
+            src_y: Starting row
+            src_x: Starting column
+            dst_y: Destination row (after jumping)
+            dst_x: Destination column (after jumping)
 
         Returns:
             ZertzAction instance representing a capture

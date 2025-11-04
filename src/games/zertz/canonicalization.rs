@@ -52,68 +52,10 @@ use std::collections::HashMap;
 use std::ops::Range;
 
 use super::board::BoardConfig;
-// NOTE: Action import removed - Action enum no longer exists in node.rs
 use ndarray::{s, Array3, ArrayView3};
 
-// ============================================================================
-// TRANSFORM FLAGS
-// ============================================================================
-
-/// Flags for controlling which transforms to use in canonicalization.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct TransformFlags {
-    bits: u8,
-}
-
-impl TransformFlags {
-    /// Include rotational symmetries
-    pub const ROTATION: Self = Self { bits: 0b001 };
-    /// Include mirror symmetries
-    pub const MIRROR: Self = Self { bits: 0b010 };
-    /// Include translation symmetries
-    pub const TRANSLATION: Self = Self { bits: 0b100 };
-    /// All transforms (rotation + mirror + translation)
-    pub const ALL: Self = Self { bits: 0b111 };
-    /// Rotation and mirror only (no translation)
-    pub const ROTATION_MIRROR: Self = Self { bits: 0b011 };
-    /// No transforms (identity only)
-    pub const NONE: Self = Self { bits: 0b000 };
-
-    /// Check if rotation flag is set
-    pub fn has_rotation(self) -> bool {
-        (self.bits & Self::ROTATION.bits) != 0
-    }
-
-    /// Check if mirror flag is set
-    pub fn has_mirror(self) -> bool {
-        (self.bits & Self::MIRROR.bits) != 0
-    }
-
-    /// Check if translation flag is set
-    pub fn has_translation(self) -> bool {
-        (self.bits & Self::TRANSLATION.bits) != 0
-    }
-
-    /// Create from bits
-    pub fn from_bits(bits: u8) -> Option<Self> {
-        if bits <= 0b111 {
-            Some(Self { bits })
-        } else {
-            None
-        }
-    }
-
-    /// Get the raw bits
-    pub fn bits(self) -> u8 {
-        self.bits
-    }
-}
-
-impl Default for TransformFlags {
-    fn default() -> Self {
-        TransformFlags::ALL
-    }
-}
+// Re-export TransformFlags from the root module
+pub use crate::canonicalization_transform_flags::TransformFlags;
 
 // ============================================================================
 // SYMMETRY TRANSFORMS

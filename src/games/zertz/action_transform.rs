@@ -7,12 +7,12 @@
 //! - Inverse transformations round-trip correctly
 //! - Symmetry operations preserve game semantics
 
+use super::action::ZertzAction;
 use super::board::BoardConfig;
 use super::canonicalization::{
     build_axial_maps, build_layout_mask, parse_rot_component, parse_transform,
     transform_coordinate,
 };
-use super::ZertzAction;
 
 /// Transform a Zertz action according to a symmetry operation
 ///

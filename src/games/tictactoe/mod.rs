@@ -18,6 +18,7 @@
 //! - Draw: Board full, with no winner
 
 mod canonicalization;
+pub mod py_mcts;
 
 #[cfg(test)]
 mod canonicalization_tests;
@@ -280,4 +281,7 @@ impl MCTSGame for TicTacToeGame {
 
 #[cfg(test)]
 mod tictactoe_tests;
+
+// Re-export Python bindings
+pub use py_mcts::PyTicTacToeMCTS;
 
