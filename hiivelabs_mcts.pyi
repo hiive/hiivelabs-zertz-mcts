@@ -263,7 +263,7 @@ class zertz:
             seed: Optional[int] = None,
             progress_callback: Optional[Callable[[dict], None]] = None,
             progress_interval_ms: int = 100
-        ) -> Tuple[str, Optional[Tuple[int, int, int]]]:
+        ) -> ZertzAction:
             """
             Run MCTS search (serial mode).
 
@@ -286,12 +286,7 @@ class zertz:
                 progress_interval_ms: Minimum milliseconds between IterationProgress callbacks (default: 100)
 
             Returns:
-                Tuple of (action_type, action_tuple):
-                - action_type: "PUT", "CAP", or "PASS"
-                - action_tuple: Depends on action_type:
-                    - PUT: (marble_type, dst_flat, remove_flat)
-                    - CAP: (direction, start_y, start_x)
-                    - PASS: None
+                ZertzAction representing the best move found by MCTS
             """
             ...
 
@@ -310,7 +305,7 @@ class zertz:
             seed: Optional[int] = None,
             progress_callback: Optional[Callable[[dict], None]] = None,
             progress_interval_ms: int = 100
-        ) -> Tuple[str, Optional[Tuple[int, int, int]]]:
+        ) -> ZertzAction:
             """
             Run MCTS search (parallel mode using Rayon).
 
@@ -335,12 +330,7 @@ class zertz:
                 progress_interval_ms: Minimum milliseconds between IterationProgress callbacks (default: 100)
 
             Returns:
-                Tuple of (action_type, action_tuple):
-                - action_type: "PUT", "CAP", or "PASS"
-                - action_tuple: Depends on action_type:
-                    - PUT: (marble_type, dst_flat, remove_flat)
-                    - CAP: (direction, start_y, start_x)
-                    - PASS: None
+                ZertzAction representing the best move found by MCTS
 
             Note:
                 Parallel search uses Rayon for thread management. The number of threads
