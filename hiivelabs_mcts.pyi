@@ -1338,7 +1338,7 @@ def get_marble_type_at(config: BoardConfig, spatial_state: npt.NDArray[np.float3
     ...
 
 
-def get_placement_moves(
+def get_placement_actions(
     config: BoardConfig,
     spatial_state: npt.NDArray[np.float32],
     global_state: npt.NDArray[np.float32],
@@ -1357,7 +1357,7 @@ def get_placement_moves(
     ...
 
 
-def get_capture_moves(
+def get_capture_actions(
     config: BoardConfig,
     spatial_state: npt.NDArray[np.float32],
 ) -> npt.NDArray[np.float32]:
@@ -1373,6 +1373,22 @@ def get_capture_moves(
     """
     ...
 
+def get_capture_destination(
+    config: BoardConfig,
+    src_x,
+    src_y,
+    direction
+    ) -> Tuple[int, int]:
+    """
+    Args:
+        config: BoardConfig
+        src_y: Starting Y coordinate
+        src_x: Starting X coordinate
+        direction: Direction index (0-5 for 6 hexagonal directions)
+    Returns:
+        dest_y, dest_x: Tuple of destination coordinates.
+    """
+    ...
 
 def get_valid_actions(
     config: BoardConfig,
@@ -1459,8 +1475,8 @@ def apply_capture_action(
     config: BoardConfig,
     spatial_state: npt.NDArray[np.float32],
     global_state: npt.NDArray[np.float32],
-    start_y: int,
-    start_x: int,
+    src_y: int,
+    src_x: int,
     direction: int,
 ) -> None:
     """
@@ -1470,8 +1486,8 @@ def apply_capture_action(
         config: BoardConfig
         spatial_state: (L, H, W) spatial_state state array (MUTATED IN-PLACE)
         global_state: (10,) global_state state array (MUTATED IN-PLACE)
-        start_y: Starting Y coordinate
-        start_x: Starting X coordinate
+        src_y: Starting Y coordinate
+        src_x: Starting X coordinate
         direction: Direction index (0-5 for 6 hexagonal directions)
     """
     ...
