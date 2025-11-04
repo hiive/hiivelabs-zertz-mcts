@@ -285,6 +285,29 @@ pub fn get_jump_destination(
     logic::get_jump_destination(start_y, start_x, cap_y, cap_x)
 }
 
+/// Compute capture destination from source position and direction
+///
+/// Given a source position and direction index, computes the landing position
+/// after a jump capture (2 steps in the given direction).
+///
+/// Args:
+///     src_y: Source row
+///     src_x: Source column
+///     dir_idx: Direction index (0-5 for hexagonal directions)
+///     config: Board configuration
+///
+/// Returns:
+///     Tuple of (dest_y, dest_x) if destination is in bounds, or None
+#[pyfunction]
+pub fn get_capture_destination(
+    src_y: usize,
+    src_x: usize,
+    dir_idx: usize,
+    config: &BoardConfig,
+) -> Option<(usize, usize)> {
+    logic::get_capture_destination(src_y, src_x, dir_idx, config)
+}
+
 /// Find all connected regions on the board
 /// Returns list of regions, where each region is a list of (y, x) tuples
 #[pyfunction]
@@ -845,6 +868,7 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(is_inbounds, m)?)?;
     m.add_function(wrap_pyfunction!(get_neighbors, m)?)?;
     m.add_function(wrap_pyfunction!(get_jump_destination, m)?)?;
+    m.add_function(wrap_pyfunction!(get_capture_destination, m)?)?;
     m.add_function(wrap_pyfunction!(get_regions, m)?)?;
     m.add_function(wrap_pyfunction!(get_open_rings, m)?)?;
     m.add_function(wrap_pyfunction!(is_ring_removable, m)?)?;

@@ -212,6 +212,37 @@ pub fn get_removable_rings(spatial_state: &ArrayView3<f32>, config: &BoardConfig
         .collect()
 }
 
+/// Compute capture destination from source position and direction
+///
+/// Given a source position and direction index, computes the landing position
+/// after a jump capture (2 steps in the given direction).
+///
+/// # Arguments
+/// * `src_y` - Source row
+/// * `src_x` - Source column
+/// * `dir_idx` - Direction index (0-5 for hexagonal directions)
+/// * `config` - Board configuration
+///
+/// # Returns
+/// Some((dest_y, dest_x)) if destination is in bounds, None otherwise
+#[inline]
+pub fn get_capture_destination(
+    src_y: usize,
+    src_x: usize,
+    dir_idx: usize,
+    config: &BoardConfig,
+) -> Option<(usize, usize)> {
+    let (dy, dx) = config.directions[dir_idx];
+    let dest_y = src_y as i32 + 2 * dy;
+    let dest_x = src_x as i32 + 2 * dx;
+
+    if is_inbounds(dest_y, dest_x, config.width) {
+        Some((dest_y as usize, dest_x as usize))
+    } else {
+        None
+    }
+}
+
 /// Get global_state index for captured marble by player and marble index
 /// Used by internal logic and tests
 pub fn get_captured_index(config: &BoardConfig, player: usize, marble_idx: usize) -> usize {
@@ -458,16 +489,10 @@ pub fn get_capture_actions(spatial_state: &ArrayView3<f32>, config: &BoardConfig
                     continue;
                 }
 
-                // Check landing position
-                let land_y = cap_y as i32 + dy;
-                let land_x = cap_x as i32 + dx;
-
-                if !is_inbounds(land_y, land_x, config.width) {
+                // Check landing position (destination after jump)
+                let Some((land_y, land_x)) = get_capture_destination(y, x, dir_idx, config) else {
                     continue;
-                }
-
-                let land_y = land_y as usize;
-                let land_x = land_x as usize;
+                };
 
                 // Landing position must have ring and no marble
                 if spatial_state[[config.ring_layer, land_y, land_x]] == 0.0 {

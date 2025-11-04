@@ -6,7 +6,7 @@ use super::action::ZertzAction;
 use super::board::BoardConfig;
 use super::canonicalization;
 use super::logic::{
-    apply_capture, apply_placement, get_game_outcome, get_valid_actions, is_game_over,
+    apply_capture, apply_placement, get_capture_destination, get_game_outcome, get_valid_actions, is_game_over,
 };
 use super::zobrist::ZobristHasher;
 use crate::game_trait::MCTSGame;
@@ -100,18 +100,16 @@ impl MCTSGame for ZertzGame {
 
         // Extract captures from mask
         for dir in 0..6 {
-            let (dy, dx) = self.config.directions[dir];
             for y in 0..width {
                 for x in 0..width {
                     if capture_mask[[dir, y, x]] > 0.0 {
                         // Compute destination (landing position after jump)
-                        let dest_y = ((y as i32) + 2 * dy) as usize;
-                        let dest_x = ((x as i32) + 2 * dx) as usize;
-
-                        actions.push(ZertzAction::Capture {
-                            src_flat: y * width + x,
-                            dst_flat: dest_y * width + dest_x,
-                        });
+                        if let Some((dest_y, dest_x)) = get_capture_destination(y, x, dir, &self.config) {
+                            actions.push(ZertzAction::Capture {
+                                src_flat: self.config.yx_to_flat(y, x),
+                                dst_flat: self.config.yx_to_flat(dest_y, dest_x),
+                            });
+                        }
                     }
                 }
             }
