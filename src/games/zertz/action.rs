@@ -26,6 +26,14 @@ pub enum ZertzAction {
 }
 
 impl ZertzAction {
+    pub fn action_type(&self) -> String {
+        match &self {
+            ZertzAction::Placement { .. } => "PUT".to_string(),
+            ZertzAction::Capture { .. } => "CAP".to_string(),
+            ZertzAction::Pass => "PASS".to_string(),
+        }
+    }
+
     /// Convert action to tuple format for serialization
     ///
     /// # Arguments
@@ -53,9 +61,9 @@ impl ZertzAction {
             } => {
                 let (src_y, src_x) = config.flat_to_yx(*src_flat);
                 let (dst_y, dst_x) = config.flat_to_yx(*dst_flat);
-                ("PUT".to_string(), Option::from(vec![Some(src_y), Some(src_x), Some(dst_y), Some(dst_x)]))
+                (self.action_type(), Option::from(vec![Some(src_y), Some(src_x), Some(dst_y), Some(dst_x)]))
             }
-            ZertzAction::Pass => ("PUT".to_string(), None)
+            ZertzAction::Pass => (self.action_type(), None)
         }
     }
 
@@ -70,7 +78,7 @@ impl ZertzAction {
                 let (dst_y, dst_x) = config.flat_to_yx(*dst_flat);
                 let (rem_y, rem_x) = config.flat_to_optional_yx(*remove_flat);
 
-                Some(("PUT".to_string(), vec![Some(*marble_type),
+                Some((self.action_type(), vec![Some(*marble_type),
                                               Some(dst_y), Some(dst_x),
                                               rem_y, rem_x]))
             }
@@ -93,7 +101,7 @@ impl ZertzAction {
                 // Python will unflatten both coordinates and calculate cap_index as midpoint
                 let (src_y, src_x) = config.flat_to_yx(*src_flat);
                 let (dst_y, dst_x) = config.flat_to_yx(*dst_flat);
-                Some(("CAP".to_string(), vec![src_y, src_x, dst_y, dst_x]))
+                Some((self.action_type(), vec![src_y, src_x, dst_y, dst_x]))
             }
             _ => {
                 None
@@ -182,11 +190,7 @@ impl PyZertzAction {
 
     /// Get action type as string
     pub fn action_type(&self) -> String {
-        match &self.inner {
-            ZertzAction::Placement { .. } => "PUT".to_string(),
-            ZertzAction::Capture { .. } => "CAP".to_string(),
-            ZertzAction::Pass => "PASS".to_string(),
-        }
+        self.inner.action_type()
     }
 
     fn __repr__(&self) -> String {
