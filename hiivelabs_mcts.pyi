@@ -643,8 +643,8 @@ def build_axial_maps(
 
 
 def canonicalize_state(
-    spatial_state: npt.NDArray[np.float32],
     config: BoardConfig,
+    spatial_state: npt.NDArray[np.float32],
     flags: Optional[TransformFlags] = None
 ) -> Tuple[npt.NDArray[np.float32], str, str]:
     """
@@ -655,8 +655,8 @@ def canonicalize_state(
     This is the core function for exploiting board symmetries in transposition tables.
 
     Args:
-        spatial_state: 3D array of shape (L, H, W) containing board layers
         config: BoardConfig specifying board size and symmetry group
+        spatial_state: 3D array of shape (L, H, W) containing board layers
         flags: TransformFlags specifying which transforms to include (default: ALL)
 
     Returns:
@@ -677,8 +677,8 @@ def canonicalize_state(
 
 
 def transform_state(
-    spatial_state: npt.NDArray[np.float32],
     config: BoardConfig,
+    spatial_state: npt.NDArray[np.float32],
     rot60_k: int,
     mirror: bool,
     mirror_first: bool
@@ -690,8 +690,8 @@ def transform_state(
     to a board state using hexagonal axial coordinates.
 
     Args:
-        spatial_state: 3D array of shape (L, H, W) containing board layers
         config: BoardConfig specifying board size
+        spatial_state: 3D array of shape (L, H, W) containing board layers
         rot60_k: Number of 60° rotation steps (0-5)
         mirror: Whether to apply mirror reflection across q-axis
         mirror_first: If True, mirror then rotate; if False, rotate then mirror
@@ -747,8 +747,8 @@ def inverse_transform_name(transform_name: str) -> str:
 
 
 def translate_state(
-    spatial_state: npt.NDArray[np.float32],
     config: BoardConfig,
+    spatial_state: npt.NDArray[np.float32],
     dy: int,
     dx: int
 ) -> Optional[npt.NDArray[np.float32]]:
@@ -763,8 +763,8 @@ def translate_state(
     Returns None if translation would move rings off the board.
 
     Args:
-        spatial_state: 3D array of shape (L, H, W) containing board layers
         config: BoardConfig specifying board size
+        spatial_state: 3D array of shape (L, H, W) containing board layers
         dy: Translation offset in y direction
         dx: Translation offset in x direction
 
@@ -782,8 +782,8 @@ def translate_state(
 
 
 def canonical_key(
-    spatial_state: npt.NDArray[np.float32],
     config: BoardConfig
+    spatial_state: npt.NDArray[np.float32],
 ) -> bytes:
     """
     Compute canonical key for lexicographic comparison.
@@ -792,8 +792,8 @@ def canonical_key(
     This is used for finding the lexicographically minimal state representation.
 
     Args:
-        spatial_state: 3D array of shape (L, H, W) containing board layers
         config: BoardConfig specifying board size
+        spatial_state: 3D array of shape (L, H, W) containing board layers
 
     Returns:
         Bytes object containing the canonical key
@@ -808,8 +808,8 @@ def canonical_key(
 
 
 def get_bounding_box(
-    spatial_state: npt.NDArray[np.float32],
     config: BoardConfig
+    spatial_state: npt.NDArray[np.float32],
 ) -> Optional[Tuple[int, int, int, int]]:
     """
     Get bounding box of all remaining rings.
@@ -818,8 +818,8 @@ def get_bounding_box(
     Returns None if no rings exist on the board.
 
     Args:
-        spatial_state: 3D array of shape (L, H, W) containing board layers
         config: BoardConfig specifying board size
+        spatial_state: 3D array of shape (L, H, W) containing board layers
 
     Returns:
         Optional tuple of (min_y, max_y, min_x, max_x), or None if no rings exist
@@ -864,9 +864,9 @@ def generate_standard_layout_mask(rings: int, width: int) -> npt.NDArray[np.bool
 # ============================================================================
 
 def check_for_isolation_capture(
+    config: BoardConfig
     spatial_state: npt.NDArray[np.float32],
     global_state: npt.NDArray[np.float32],
-    config: BoardConfig
 ) -> Tuple[npt.NDArray[np.float32], npt.NDArray[np.float32], List[Tuple[int, int, int]]]:
     """
     Check for isolated regions and capture marbles (stateless).
@@ -876,9 +876,9 @@ def check_for_isolation_capture(
     then the current player captures all those marbles and removes those rings.
 
     Args:
+        config: BoardConfig with game configuration
         spatial_state: 3D array of shape (L, H, W) containing board layers
         global_state: 1D array containing supply and captured marble counts
-        config: BoardConfig with game configuration
 
     Returns:
         Tuple of (updated_spatial_state, updated_global_state, captured_marbles_list):
@@ -893,7 +893,7 @@ def check_for_isolation_capture(
 # Algebraic Notation
 # ============================================================================
 
-def coordinate_to_algebraic(y: int, x: int, config: BoardConfig) -> str:
+def coordinate_to_algebraic(config: BoardConfig, y: int, x: int) -> str:
     """
     Convert array coordinates (y, x) to algebraic notation (e.g., "D4").
 
@@ -906,9 +906,9 @@ def coordinate_to_algebraic(y: int, x: int, config: BoardConfig) -> str:
     - Formula: row = min(width, width/2 + x + 1) - y
 
     Args:
+        config: BoardConfig specifying board size
         y: Row index (0 = top, increases downward)
         x: Column index (0 = leftmost column)
-        config: BoardConfig specifying board size
 
     Returns:
         Algebraic notation string (e.g., "A1", "D4", "A4")
@@ -927,16 +927,16 @@ def coordinate_to_algebraic(y: int, x: int, config: BoardConfig) -> str:
     """
     ...
 
-def algebraic_to_coordinate(notation: str, config: BoardConfig) -> Tuple[int, int]:
+def algebraic_to_coordinate(config: BoardConfig, notation: str) -> Tuple[int, int]:
     """
     Parse algebraic notation (e.g., "A1") to array coordinates (y, x).
 
     Validates that the notation refers to a valid position within the hexagonal board.
 
     Args:
+        config: BoardConfig specifying board size
         notation: Algebraic notation string (e.g., "D4", "A1")
                   Case-insensitive
-        config: BoardConfig specifying board size
 
     Returns:
         Tuple of (y, x) array coordinates
@@ -1201,14 +1201,14 @@ def is_inbounds(y: int, x: int, width: int) -> bool:
     ...
 
 
-def get_neighbors(y: int, x: int, config: BoardConfig) -> List[Tuple[int, int]]:
+def get_neighbors(config: BoardConfig, y: int, x: int) -> List[Tuple[int, int]]:
     """
     Get list of neighboring indices (filtered to in-bounds only).
 
     Args:
+        config: BoardConfig
         y: Y coordinate
         x: X coordinate
-        config: BoardConfig
 
     Returns:
         List of (y, x) neighbor coordinate tuples
@@ -1232,13 +1232,13 @@ def get_jump_destination(start_y: int, start_x: int, cap_y: int, cap_x: int) -> 
     ...
 
 
-def get_regions(spatial_state: npt.NDArray[np.float32], config: BoardConfig) -> List[List[Tuple[int, int]]]:
+def get_regions(config: BoardConfig, spatial_state: npt.NDArray[np.float32]) -> List[List[Tuple[int, int]]]:
     """
     Find all connected regions on the board.
 
     Args:
-        spatial_state: 3D array of shape (L, H, W) containing board layers
         config: BoardConfig
+        spatial_state: 3D array of shape (L, H, W) containing board layers
 
     Returns:
         List of regions, where each region is a list of (y, x) indices
@@ -1246,13 +1246,13 @@ def get_regions(spatial_state: npt.NDArray[np.float32], config: BoardConfig) -> 
     ...
 
 
-def get_open_rings(spatial_state: npt.NDArray[np.float32], config: BoardConfig) -> List[Tuple[int, int]]:
+def get_open_rings(config: BoardConfig, spatial_state: npt.NDArray[np.float32]) -> List[Tuple[int, int]]:
     """
     Get list of empty ring indices across the entire board.
 
     Args:
-        spatial_state: Board state array
         config: BoardConfig
+        spatial_state: Board state array
 
     Returns:
         List of (y, x) indices of empty rings
@@ -1260,7 +1260,7 @@ def get_open_rings(spatial_state: npt.NDArray[np.float32], config: BoardConfig) 
     ...
 
 
-def is_ring_removable(spatial_state: npt.NDArray[np.float32], y: int, x: int, config: BoardConfig) -> bool:
+def is_ring_removable(config: BoardConfig, spatial_state: npt.NDArray[np.float32], y: int, x: int) -> bool:
     """
     Check if ring at index can be removed.
 
@@ -1269,10 +1269,10 @@ def is_ring_removable(spatial_state: npt.NDArray[np.float32], y: int, x: int, co
     2. Two consecutive neighbors are missing
 
     Args:
+        config: BoardConfig
         spatial_state: Board state array
         y: Y coordinate
         x: X coordinate
-        config: BoardConfig
 
     Returns:
         True if ring can be removed, False otherwise
@@ -1280,13 +1280,13 @@ def is_ring_removable(spatial_state: npt.NDArray[np.float32], y: int, x: int, co
     ...
 
 
-def get_removable_rings(spatial_state: npt.NDArray[np.float32], config: BoardConfig) -> List[Tuple[int, int]]:
+def get_removable_rings(config: BoardConfig, spatial_state: npt.NDArray[np.float32]) -> List[Tuple[int, int]]:
     """
     Get list of removable ring indices.
 
     Args:
-        spatial_state: Board state array
         config: BoardConfig
+        spatial_state: Board state array
 
     Returns:
         List of (y, x) indices of removable rings
@@ -1294,7 +1294,7 @@ def get_removable_rings(spatial_state: npt.NDArray[np.float32], config: BoardCon
     ...
 
 
-def get_supply_index(marble_type: str) -> int:
+def get_supply_index(config: BoardConfig, marble_type: str) -> int:
     """
     Get global_state index for marble in supply.
 
@@ -1337,17 +1337,17 @@ def get_marble_type_at(spatial_state: npt.NDArray[np.float32], y: int, x: int) -
 
 
 def get_placement_moves(
+    config: BoardConfig,
     spatial_state: npt.NDArray[np.float32],
     global_state: npt.NDArray[np.float32],
-    config: BoardConfig
 ) -> npt.NDArray[np.float32]:
     """
     Get valid placement moves as boolean array.
 
     Args:
+        config: BoardConfig
         spatial_state: (L, H, W) spatial_state state array
         global_state: (10,) global_state state array
-        config: BoardConfig
 
     Returns:
         Boolean array of shape (3, width², width² + 1)
@@ -1356,15 +1356,15 @@ def get_placement_moves(
 
 
 def get_capture_moves(
+    config: BoardConfig,
     spatial_state: npt.NDArray[np.float32],
-    config: BoardConfig
 ) -> npt.NDArray[np.float32]:
     """
     Get valid capture moves as boolean array.
 
     Args:
-        spatial_state: (L, H, W) spatial_state state array
         config: BoardConfig
+        spatial_state: (L, H, W) spatial_state state array
 
     Returns:
         Boolean array of shape (6, width, width)
@@ -1373,17 +1373,17 @@ def get_capture_moves(
 
 
 def get_valid_actions(
+    config: BoardConfig,
     spatial_state: npt.NDArray[np.float32],
     global_state: npt.NDArray[np.float32],
-    config: BoardConfig
 ) -> Tuple[npt.NDArray[np.float32], npt.NDArray[np.float32]]:
     """
     Get valid actions for current state.
 
     Args:
+        config: BoardConfig
         spatial_state: (L, H, W) spatial_state state array
         global_state: (10,) global_state state array
-        config: BoardConfig
 
     Returns:
         (placement_mask, capture_mask) tuple
@@ -1424,6 +1424,7 @@ def apply_action(
 
 
 def apply_placement_action(
+    config: BoardConfig,
     spatial_state: npt.NDArray[np.float32],
     global_state: npt.NDArray[np.float32],
     marble_type: int,
@@ -1431,12 +1432,12 @@ def apply_placement_action(
     dst_x: int,
     remove_y: Optional[int],
     remove_x: Optional[int],
-    config: BoardConfig
 ) -> List[Tuple[int, int, int]]:
     """
     Apply placement action to state IN-PLACE.
 
     Args:
+        config: BoardConfig
         spatial_state: (L, H, W) spatial_state state array (MUTATED IN-PLACE)
         global_state: (10,) global_state state array (MUTATED IN-PLACE)
         marble_type: Marble type index (0=white, 1=gray, 2=black)
@@ -1444,7 +1445,6 @@ def apply_placement_action(
         dst_x: Destination X coordinate
         remove_y: Ring to remove Y coordinate (or None)
         remove_x: Ring to remove X coordinate (or None)
-        config: BoardConfig
 
     Returns:
         List of captured marble positions from isolation as (marble_layer, y, x) tuples,
@@ -1454,39 +1454,39 @@ def apply_placement_action(
 
 
 def apply_capture_action(
+    config: BoardConfig,
     spatial_state: npt.NDArray[np.float32],
     global_state: npt.NDArray[np.float32],
     start_y: int,
     start_x: int,
     direction: int,
-    config: BoardConfig
 ) -> None:
     """
     Apply capture action to state IN-PLACE.
 
     Args:
+        config: BoardConfig
         spatial_state: (L, H, W) spatial_state state array (MUTATED IN-PLACE)
         global_state: (10,) global_state state array (MUTATED IN-PLACE)
         start_y: Starting Y coordinate
         start_x: Starting X coordinate
         direction: Direction index (0-5 for 6 hexagonal directions)
-        config: BoardConfig
     """
     ...
 
 
 def is_game_over(
+    config: BoardConfig,
     spatial_state: npt.NDArray[np.float32],
     global_state: npt.NDArray[np.float32],
-    config: BoardConfig
 ) -> bool:
     """
     Check if game has ended (stateless version).
 
     Args:
+        config: BoardConfig
         spatial_state: (L, H, W) spatial_state state array
         global_state: (10,) global_state state array
-        config: BoardConfig
 
     Returns:
         True if game is over, False otherwise
@@ -1495,17 +1495,17 @@ def is_game_over(
 
 
 def get_game_outcome(
+    config: BoardConfig,
     spatial_state: npt.NDArray[np.float32],
     global_state: npt.NDArray[np.float32],
-    config: BoardConfig
 ) -> int:
     """
     Determine game outcome from terminal state (stateless version).
 
     Args:
+        config: BoardConfig
         spatial_state: (L, H, W) spatial_state state array
         global_state: (10,) global_state state array
-        config: BoardConfig
 
     Returns:
         1 if Player 1 wins, -1 if Player 2 wins, 0 for tie, -2 for both lose

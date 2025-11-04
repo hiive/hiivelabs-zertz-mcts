@@ -239,8 +239,8 @@ mod tests {
         for (rot60_k, mirror, mirror_first, dy, dx) in test_cases {
             // Apply forward transform
             let transformed = transform_state(
-                &spatial_state.view(),
                 &config,
+                &spatial_state.view(),
                 rot60_k,
                 mirror,
                 mirror_first,
@@ -252,8 +252,8 @@ mod tests {
 
             // Apply inverse transform
             let restored = transform_state(
-                &transformed.view(),
                 &config,
+                &transformed.view(),
                 -rot60_k,  // Inverse rotation
                 mirror,
                 !mirror_first,  // Swap mirror order for inverse
@@ -294,7 +294,7 @@ mod tests {
         ));
 
         // Fill the board with rings according to the standard layout
-        let layout = super::super::canonicalization::build_layout_mask(&config);
+        let layout = build_layout_mask(&config);
         for y in 0..config.width {
             for x in 0..config.width {
                 if layout[y][x] {
@@ -303,7 +303,7 @@ mod tests {
             }
         }
 
-        let bbox = super::super::canonicalization::bounding_box(&spatial_state.view(), &config);
+        let bbox = bounding_box(&config, &spatial_state.view());
         assert!(bbox.is_some(), "Full board should have bounding box");
 
         let (min_y, max_y, min_x, max_x) = bbox.unwrap();
@@ -327,7 +327,7 @@ mod tests {
         ));
 
         // Fill the board with rings
-        let layout = super::super::canonicalization::build_layout_mask(&config);
+        let layout = build_layout_mask(&config);
         for y in 0..config.width {
             for x in 0..config.width {
                 if layout[y][x] {
@@ -337,7 +337,7 @@ mod tests {
         }
 
         // Get initial bounding box
-        let bbox_before = super::super::canonicalization::bounding_box(&spatial_state.view(), &config);
+        let bbox_before = bounding_box(&config, &spatial_state.view());
         assert!(bbox_before.is_some());
         let (min_y_before, max_y_before, min_x_before, max_x_before) = bbox_before.unwrap();
 
@@ -348,7 +348,7 @@ mod tests {
         }
 
         // Get new bounding box
-        let bbox_after = super::super::canonicalization::bounding_box(&spatial_state.view(), &config);
+        let bbox_after = bounding_box(&config, &spatial_state.view());
         assert!(bbox_after.is_some(), "Board with removed edges should have bounding box");
 
         let (min_y_after, max_y_after, min_x_after, max_x_after) = bbox_after.unwrap();
@@ -371,7 +371,7 @@ mod tests {
             config.width,
         ));
 
-        let bbox = super::super::canonicalization::bounding_box(&spatial_state.view(), &config);
+        let bbox = bounding_box(&config, &spatial_state.view());
         assert!(bbox.is_none(), "Empty board should return None for bounding box");
     }
 
@@ -389,7 +389,7 @@ mod tests {
             config.width,
         ));
 
-        let translations = super::super::canonicalization::get_translations(&spatial_state.view(), &config);
+        let translations = get_translations(&config, &spatial_state.view());
 
         assert_eq!(translations.len(), 1);
         assert_eq!(translations[0], ("T0,0".to_string(), 0, 0));
@@ -408,7 +408,7 @@ mod tests {
         // Place rings in bottom-left corner (position that can't move left or down)
         spatial_state[[config.ring_layer, 0, 0]] = 1.0;
 
-        let translations = super::super::canonicalization::get_translations(&spatial_state.view(), &config);
+        let translations = get_translations(&config, &spatial_state.view());
 
         // Should only include translations that move right/up (not left/down from corner)
         for (_name, dy, dx) in translations.iter() {
@@ -433,13 +433,13 @@ mod tests {
         // Place a ring at valid position
         spatial_state[[config.ring_layer, 3, 3]] = 1.0;
 
-        let translations = super::super::canonicalization::get_translations(&spatial_state.view(), &config);
+        let translations = get_translations(&config, &spatial_state.view());
 
         // All returned translations should actually succeed when applied
         for (_name, dy, dx) in translations.iter() {
             let translated = transform_state(
-                &spatial_state.view(),
                 &config,
+                &spatial_state.view(),
                 0,      // no rotation
                 false,  // no mirror
                 false,  // mirror_first (irrelevant)
@@ -467,7 +467,7 @@ mod tests {
         spatial_state[[config.ring_layer, 2, 3]] = 1.0;
         spatial_state[[config.ring_layer, 3, 2]] = 1.0;
 
-        let translations = super::super::canonicalization::get_translations(&spatial_state.view(), &config);
+        let translations = get_translations(&config, &spatial_state.view());
 
         // Should include identity
         assert!(translations.iter().any(|(name, dy, dx)| {
@@ -491,13 +491,13 @@ mod tests {
         spatial_state[[config.ring_layer, 3, 2]] = 1.0;
         spatial_state[[config.ring_layer, 4, 4]] = 1.0;
 
-        let translations = super::super::canonicalization::get_translations(&spatial_state.view(), &config);
+        let translations = get_translations(&config, &spatial_state.view());
 
         // Verify every translation succeeds
         for (name, dy, dx) in translations.iter() {
             let translated = transform_state(
-                &spatial_state.view(),
                 &config,
+                &spatial_state.view(),
                 0, false, false,
                 *dy, *dx,
                 true,
@@ -544,7 +544,7 @@ mod tests {
 
         for (dy, dx) in test_cases {
             // Use transform_state with no rotation/mirror
-            let transformed = transform_state(&spatial_state.view(), &config, 0, false, false, dy, dx, true);
+            let transformed = transform_state(&config, &spatial_state.view(),  0, false, false, dy, dx, true);
 
             // All test cases should succeed
             assert!(transformed.is_some(),
@@ -585,7 +585,7 @@ mod tests {
         spatial_state[[config.marble_layers.0, 3, 3]] = 1.0;
 
         // Apply rotation and translation together
-        let result = transform_state(&spatial_state.view(), &config, 1, false, false, 1, 0, true);
+        let result = transform_state(&config, &spatial_state.view(),  1, false, false, 1, 0, true);
 
         // Should succeed
         assert!(result.is_some(), "Rotation + translation should work");
@@ -607,7 +607,7 @@ mod tests {
         spatial_state[[config.ring_layer, 0, 0]] = 1.0;
 
         // Try to translate off the board
-        let result = transform_state(&spatial_state.view(), &config, 0, false, false, -1, 0, true);
+        let result = transform_state(&config, &spatial_state.view(),  0, false, false, -1, 0, true);
 
         assert!(result.is_none(), "Translation off board should return None");
     }

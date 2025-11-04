@@ -153,8 +153,8 @@ fn canonical_key(
 }
 
 pub fn bounding_box(
-    spatial_state: &ArrayView3<f32>,
     config: &BoardConfig,
+    spatial_state: &ArrayView3<f32>,
 ) -> Option<(usize, usize, usize, usize)> {
     let mut min_y = config.width;
     let mut max_y = 0usize;
@@ -193,8 +193,8 @@ pub fn bounding_box(
 ///
 /// # Returns
 /// Vector of (name, dy, dx) tuples for all valid translations
-pub fn get_translations(spatial_state: &ArrayView3<f32>, config: &BoardConfig) -> Vec<(String, i32, i32)> {
-    if let Some((min_y, max_y, min_x, max_x)) = bounding_box(spatial_state, config) {
+pub fn get_translations(config: &BoardConfig, spatial_state: &ArrayView3<f32>) -> Vec<(String, i32, i32)> {
+    if let Some((min_y, max_y, min_x, max_x)) = bounding_box(config, spatial_state) {
         let mut translations = Vec::new();
         let width = config.width as i32;
         let min_y = min_y as i32;
@@ -210,8 +210,8 @@ pub fn get_translations(spatial_state: &ArrayView3<f32>, config: &BoardConfig) -
             for dx in -min_x..(width - max_x) {
                 // Test if this translation is valid by attempting to apply it
                 let translated = transform_state_with_maps(
-                    spatial_state,
                     config,
+                    spatial_state,
                     0,      // rot60_k - no rotation
                     false,  // mirror
                     false,  // mirror_first
@@ -280,8 +280,8 @@ fn apply_rotation_mirror(
 /// This version is more efficient when transforming multiple states with the same
 /// board configuration, as the coordinate maps can be built once and reused.
 fn transform_state_with_maps(
-    spatial_state: &ArrayView3<f32>,
     config: &BoardConfig,
+    spatial_state: &ArrayView3<f32>,
     rot60_k: i32,
     mirror: bool,
     mirror_first: bool,
@@ -354,8 +354,8 @@ fn transform_state_with_maps(
 }
 
 pub fn canonicalize_internal(
-    spatial_state: &ArrayView3<f32>,
     config: &BoardConfig,
+    spatial_state: &ArrayView3<f32>,
     flags: TransformFlags,
 ) -> (Array3<f32>, String, String) {
     let layout = build_layout_mask(config);
@@ -368,7 +368,7 @@ pub fn canonicalize_internal(
 
     // Get translations based on flags
     let translations = if flags.has_translation() {
-        get_translations(spatial_state, config)
+        get_translations(config, spatial_state)
     } else {
         vec![("T0,0".to_string(), 0, 0)]
     };
@@ -405,8 +405,8 @@ pub fn canonicalize_internal(
 
     for (trans_name, dy, dx) in translations.iter() {
         let translated_state = if let Some(state) = transform_state_with_maps(
-            spatial_state,
             config,
+            spatial_state,
             0,  // rot60_k - no rotation for pure translation
             false,  // mirror
             false,  // mirror_first
@@ -423,8 +423,8 @@ pub fn canonicalize_internal(
 
         for (sym_name, rot60_k, mirror, mirror_first) in sym_ops.iter() {
             let transformed = transform_state_with_maps(
-                &translated_state.view(),
                 config,
+                &translated_state.view(),
                 *rot60_k,
                 *mirror,
                 *mirror_first,
@@ -494,26 +494,26 @@ pub fn inverse_transform_name(name: &str) -> String {
 
 #[allow(dead_code)]
 pub fn canonicalize_spatial_state(
-    spatial_state: &ArrayView3<f32>,
     config: &BoardConfig,
+    spatial_state: &ArrayView3<f32>,
 ) -> (Array3<f32>, String, String) {
     // Only rotation and mirror (no translation) - finds canonical orientation
-    canonicalize_internal(spatial_state, config, TransformFlags::ROTATION_MIRROR)
+    canonicalize_internal(config, spatial_state, TransformFlags::ROTATION_MIRROR)
 }
 
 pub fn canonicalize_state(
-    spatial_state: &ArrayView3<f32>,
     config: &BoardConfig,
+    spatial_state: &ArrayView3<f32>,
 ) -> (Array3<f32>, String, String) {
     // Full canonicalization with rotation, mirror, and translation
-    canonicalize_internal(spatial_state, config, TransformFlags::ALL)
+    canonicalize_internal(config, spatial_state, TransformFlags::ALL)
 }
 
 /// Compute canonical key for lexicographic comparison
 ///
 /// Returns a byte vector representing the board state over valid positions only.
 /// This is used for finding the lexicographically minimal state representation.
-pub fn compute_canonical_key(spatial_state: &ArrayView3<f32>, config: &BoardConfig) -> Vec<u8> {
+pub fn compute_canonical_key(config: &BoardConfig, spatial_state: &ArrayView3<f32>) -> Vec<u8> {
     let layout = build_layout_mask(config);
     let board_layers = board_layers_range(config);
     canonical_key(spatial_state, &layout, board_layers)
@@ -710,10 +710,10 @@ pub fn transform_coordinate(
 
 #[allow(dead_code)]
 pub fn dir_index_map(
+    config: &BoardConfig,
     rot60_k: i32,
     mirror: bool,
     mirror_first: bool,
-    config: &BoardConfig,
 ) -> HashMap<usize, usize> {
     let mut map = HashMap::new();
     for (idx, (dy, dx)) in config.directions.iter().enumerate() {
@@ -784,8 +784,8 @@ pub fn parse_rot_component(component: &str) -> (i32, bool, bool) {
 /// For batch transformations, consider using `transform_state_with_maps` directly
 /// with pre-computed maps for better performance.
 pub fn transform_state(
-    spatial_state: &ArrayView3<f32>,
     config: &BoardConfig,
+    spatial_state: &ArrayView3<f32>,
     rot60_k: i32,
     mirror: bool,
     mirror_first: bool,
@@ -797,8 +797,8 @@ pub fn transform_state(
         .expect("BoardConfig should always have valid rings/width");
     let (yx_to_ax, ax_to_yx) = build_axial_maps(config, &layout);
     transform_state_with_maps(
-        spatial_state,
         config,
+        spatial_state,
         rot60_k,
         mirror,
         mirror_first,

@@ -66,7 +66,7 @@ impl MCTSGame for ZertzGame {
     ) -> Vec<Self::Action> {
         // Call existing logic.rs function
         let (placement_mask, capture_mask) =
-            get_valid_actions(spatial_state, global_state, &self.config);
+            get_valid_actions(&self.config, spatial_state, global_state);
 
         let mut actions = Vec::new();
         let width = self.config.width;
@@ -104,7 +104,7 @@ impl MCTSGame for ZertzGame {
                 for x in 0..width {
                     if capture_mask[[dir, y, x]] > 0.0 {
                         // Compute destination (landing position after jump)
-                        if let Some((dest_y, dest_x)) = get_capture_destination(y, x, dir, &self.config) {
+                        if let Some((dest_y, dest_x)) = get_capture_destination(&self.config, y, x, dir) {
                             actions.push(ZertzAction::Capture {
                                 src_flat: self.config.yx_to_flat(y, x),
                                 dst_flat: self.config.yx_to_flat(dest_y, dest_x),
@@ -138,6 +138,7 @@ impl MCTSGame for ZertzGame {
                 let (dst_y, dst_x) = self.config.flat_to_yx(*dst_flat);
                 let (remove_y, remove_x) = self.config.flat_to_optional_yx(*remove_flat);
                 apply_placement(
+                    &self.config,
                     spatial_state,
                     global_state,
                     *marble_type,
@@ -145,7 +146,6 @@ impl MCTSGame for ZertzGame {
                     dst_x,
                     remove_y,
                     remove_x,
-                    &self.config,
                 )?;
             }
             ZertzAction::Capture {
@@ -155,13 +155,13 @@ impl MCTSGame for ZertzGame {
                 let (src_y, src_x) = self.config.flat_to_yx(*src_flat);
                 let (dst_y, dst_x) = self.config.flat_to_yx(*dst_flat);
                 apply_capture(
+                    &self.config,
                     spatial_state,
                     global_state,
                     src_y,
                     src_x,
                     dst_y,
                     dst_x,
-                    &self.config,
                 );
             }
             ZertzAction::Pass => {
@@ -182,7 +182,7 @@ impl MCTSGame for ZertzGame {
         spatial_state: &ArrayView3<f32>,
         global_state: &ArrayView1<f32>,
     ) -> bool {
-        is_game_over(spatial_state, global_state, &self.config)
+        is_game_over(&self.config, spatial_state, global_state)
     }
 
     fn get_outcome(
@@ -190,7 +190,7 @@ impl MCTSGame for ZertzGame {
         spatial_state: &ArrayView3<f32>,
         global_state: &ArrayView1<f32>,
     ) -> i8 {
-        get_game_outcome(spatial_state, global_state, &self.config)
+        get_game_outcome(&self.config, spatial_state, global_state)
     }
 
     fn get_current_player(&self, global_state: &ArrayView1<f32>) -> usize {
@@ -236,7 +236,7 @@ impl MCTSGame for ZertzGame {
         global_state: &ArrayView1<f32>,
     ) -> (Array3<f32>, Array1<f32>) {
         let (canonical_spatial, _canonical_global, _transform) =
-            canonicalization::canonicalize_state(spatial_state, &self.config);
+            canonicalization::canonicalize_state(&self.config, spatial_state);
         (canonical_spatial, global_state.to_owned())
     }
 

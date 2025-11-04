@@ -80,7 +80,7 @@ type NeighborListRaw = SmallVec<[(i32, i32); 6]>;
 /// Get list of neighboring indices (including out-of-bounds)
 /// Returns i32 coordinates which may be negative or >= width
 #[inline]
-pub fn get_neighbors_raw(y: usize, x: usize, config: &BoardConfig) -> NeighborListRaw {
+pub fn get_neighbors_raw(config: &BoardConfig, y: usize, x: usize) -> NeighborListRaw {
     config
         .directions
         .iter()
@@ -90,7 +90,7 @@ pub fn get_neighbors_raw(y: usize, x: usize, config: &BoardConfig) -> NeighborLi
 
 /// Get list of neighboring indices (filtered to in-bounds only)
 #[inline]
-pub fn get_neighbors(y: usize, x: usize, config: &BoardConfig) -> NeighborList {
+pub fn get_neighbors(config: &BoardConfig, y: usize, x: usize) -> NeighborList {
     config
         .directions
         .iter()
@@ -107,7 +107,7 @@ pub fn get_neighbors(y: usize, x: usize, config: &BoardConfig) -> NeighborList {
 }
 
 /// Find all connected regions on the board
-pub fn get_regions(spatial_state: &ArrayView3<f32>, config: &BoardConfig) -> Vec<Vec<(usize, usize)>> {
+pub fn get_regions(config: &BoardConfig, spatial_state: &ArrayView3<f32>) -> Vec<Vec<(usize, usize)>> {
     let mut regions = Vec::new();
     let mut not_visited: HashSet<(usize, usize)> = (0..config.width)
         .flat_map(|y| (0..config.width).map(move |x| (y, x)))
@@ -123,7 +123,7 @@ pub fn get_regions(spatial_state: &ArrayView3<f32>, config: &BoardConfig) -> Vec
         while let Some(index) = queue.pop_back() {
             region.push(index);
 
-            for neighbor in get_neighbors(index.0, index.1, config) {
+            for neighbor in get_neighbors(config, index.0, index.1) {
                 if not_visited.contains(&neighbor)
                     && spatial_state[[config.ring_layer, neighbor.0, neighbor.1]] == 1.0
                 {
@@ -140,7 +140,7 @@ pub fn get_regions(spatial_state: &ArrayView3<f32>, config: &BoardConfig) -> Vec
 }
 
 /// Get list of empty ring indices across the board
-pub fn get_open_rings(spatial_state: &ArrayView3<f32>, config: &BoardConfig) -> Vec<(usize, usize)> {
+pub fn get_open_rings(config: &BoardConfig, spatial_state: &ArrayView3<f32>) -> Vec<(usize, usize)> {
     // Get all vacant rings (ring present, no marble)
     let all_open: Vec<(usize, usize)> = (0..config.width)
         .flat_map(|y| (0..config.width).map(move |x| (y, x)))
@@ -157,10 +157,10 @@ pub fn get_open_rings(spatial_state: &ArrayView3<f32>, config: &BoardConfig) -> 
 /// 1. It's empty (no marble)
 /// 2. Two consecutive neighbors are missing (including out-of-bounds)
 pub fn is_ring_removable(
+    config: &BoardConfig,
     spatial_state: &ArrayView3<f32>,
     y: usize,
     x: usize,
-    config: &BoardConfig,
 ) -> bool {
     // Check if empty (only ring, no marble)
     let has_ring = spatial_state[[config.ring_layer, y, x]] > 0.0;
@@ -171,7 +171,7 @@ pub fn is_ring_removable(
     }
 
     // Get neighbors (including out-of-bounds)
-    let neighbors = get_neighbors_raw(y, x, config);
+    let neighbors = get_neighbors_raw(config, y, x);
 
     // Add first neighbor to end for wrap-around check
     let mut neighbors_wrapped = neighbors.clone();
@@ -205,10 +205,10 @@ pub fn is_ring_removable(
 }
 
 /// Get removable rings (rings that can be removed without disconnecting board)
-pub fn get_removable_rings(spatial_state: &ArrayView3<f32>, config: &BoardConfig) -> Vec<(usize, usize)> {
+pub fn get_removable_rings(config: &BoardConfig, spatial_state: &ArrayView3<f32>) -> Vec<(usize, usize)> {
     (0..config.width)
         .flat_map(|y| (0..config.width).map(move |x| (y, x)))
-        .filter(|&(y, x)| is_ring_removable(spatial_state, y, x, config))
+        .filter(|&(y, x)| is_ring_removable(config, spatial_state, y, x))
         .collect()
 }
 
@@ -227,10 +227,10 @@ pub fn get_removable_rings(spatial_state: &ArrayView3<f32>, config: &BoardConfig
 /// Some((dest_y, dest_x)) if destination is in bounds, None otherwise
 #[inline]
 pub fn get_capture_destination(
+    config: &BoardConfig,
     src_y: usize,
     src_x: usize,
     dir_idx: usize,
-    config: &BoardConfig,
 ) -> Option<(usize, usize)> {
     let (dy, dx) = config.directions[dir_idx];
     let dest_y = src_y as i32 + 2 * dy;
@@ -255,7 +255,7 @@ pub fn get_captured_index(config: &BoardConfig, player: usize, marble_idx: usize
 
 /// Get global_state index for marble type in supply
 /// Used by Python wrapper
-pub fn get_supply_index(marble_type: char, config: &BoardConfig) -> usize {
+pub fn get_supply_index(config: &BoardConfig, marble_type: char) -> usize {
     match marble_type {
         'w' => config.supply_w,
         'g' => config.supply_g,
@@ -267,7 +267,7 @@ pub fn get_supply_index(marble_type: char, config: &BoardConfig) -> usize {
 /// Get marble type at given position
 /// Returns: 'w', 'g', 'b', or '\0' (none)
 /// Used by Python wrapper
-pub fn get_marble_type_at(spatial_state: &ArrayView3<f32>, y: usize, x: usize, _config: &BoardConfig) -> char {
+pub fn get_marble_type_at(_config: &BoardConfig, spatial_state: &ArrayView3<f32>, y: usize, x: usize) -> char {
     if spatial_state[[1, y, x]] == 1.0 {
         'w'
     } else if spatial_state[[2, y, x]] == 1.0 {
@@ -300,16 +300,16 @@ pub fn get_jump_destination(start_y: usize, start_x: usize, cap_y: usize, cap_x:
 /// A single region covering the entire board is not considered "isolated".
 /// Returns list of captured marble positions as (marble_layer, y, x) tuples.
 fn apply_isolation_capture(
+    config: &BoardConfig,
     spatial_state: &mut ArrayViewMut3<f32>,
     global_state: &mut ArrayViewMut1<f32>,
-    config: &BoardConfig,
     current_player: usize,
 ) -> Vec<(usize, usize, usize)> {
     let mut captured_marbles = Vec::new();
 
     // Create immutable view from mutable view to pass to get_regions
     let spatial_state_view = spatial_state.view();
-    let regions = get_regions(&spatial_state_view, config);
+    let regions = get_regions(config, &spatial_state_view);
 
     // Only apply isolation capture if there are multiple regions
     let num_regions = regions.len();
@@ -370,9 +370,9 @@ fn apply_isolation_capture(
 /// This is safe because you can never remove the ring you're placing on.
 /// The action extraction code checks: if rem_y == dst_y && rem_x == dst_x → remove_flat = None
 pub fn get_placement_actions(
+    config: &BoardConfig,
     spatial_state: &ArrayView3<f32>,
     global_state: &ArrayView1<f32>,
-    config: &BoardConfig,
 ) -> Array5<f32> {
     let width = config.width;
     let mut placement_mask = Array5::zeros((3, width, width, width, width));
@@ -398,8 +398,8 @@ pub fn get_placement_actions(
     ];
 
     // Get open rings (in main region) and removable rings
-    let open_rings = get_open_rings(spatial_state, config);
-    let removable_rings = get_removable_rings(spatial_state, config);
+    let open_rings = get_open_rings(config, spatial_state);
+    let removable_rings = get_removable_rings(config, spatial_state);
 
     // Determine which marbles can be placed
     let marble_counts = if supply_counts.iter().all(|&x| x == 0.0) {
@@ -446,7 +446,7 @@ pub fn get_placement_actions(
 
 /// Get valid capture actions
 /// Returns Array3<f32> with shape (6, width, width)
-pub fn get_capture_actions(spatial_state: &ArrayView3<f32>, config: &BoardConfig) -> Array3<f32> {
+pub fn get_capture_actions(config: &BoardConfig, spatial_state: &ArrayView3<f32>) -> Array3<f32> {
     let mut capture_mask = Array3::zeros((6, config.width, config.width));
 
     // Check if this is a chain capture (CAPTURE_LAYER has a marble marked)
@@ -490,7 +490,7 @@ pub fn get_capture_actions(spatial_state: &ArrayView3<f32>, config: &BoardConfig
                 }
 
                 // Check landing position (destination after jump)
-                let Some((land_y, land_x)) = get_capture_destination(y, x, dir_idx, config) else {
+                let Some((land_y, land_x)) = get_capture_destination(config, y, x, dir_idx) else {
                     continue;
                 };
 
@@ -515,11 +515,11 @@ pub fn get_capture_actions(spatial_state: &ArrayView3<f32>, config: &BoardConfig
 
 /// Get valid actions (both placement and capture)
 pub fn get_valid_actions(
+    config: &BoardConfig,
     spatial_state: &ArrayView3<f32>,
     global_state: &ArrayView1<f32>,
-    config: &BoardConfig,
 ) -> (Array5<f32>, Array3<f32>) {
-    let capture_mask = get_capture_actions(spatial_state, config);
+    let capture_mask = get_capture_actions(config, spatial_state);
 
     // If any captures available, placement is not allowed
     let has_captures = capture_mask.iter().any(|&x| x > 0.0);
@@ -528,7 +528,7 @@ pub fn get_valid_actions(
     let placement_mask = if has_captures {
         Array5::zeros((3, width, width, width, width))
     } else {
-        get_placement_actions(spatial_state, global_state, config)
+        get_placement_actions(config, spatial_state, global_state)
     };
 
     (placement_mask, capture_mask)
@@ -538,6 +538,7 @@ pub fn get_valid_actions(
 /// Returns list of captured marble positions from isolation as (marble_layer, y, x) tuples
 /// Returns Err if placement position is invalid (not an empty ring)
 pub fn apply_placement(
+    config: &BoardConfig,
     spatial_state: &mut ArrayViewMut3<f32>,
     global_state: &mut ArrayViewMut1<f32>,
     marble_type: usize, // 0=white, 1=gray, 2=black
@@ -545,7 +546,6 @@ pub fn apply_placement(
     dst_x: usize,
     remove_y: Option<usize>,
     remove_x: Option<usize>,
-    config: &BoardConfig,
 ) -> Result<Vec<(usize, usize, usize)>, String> {
     // Validate placement position (must be empty ring)
     let has_ring = spatial_state[[config.ring_layer, dst_y, dst_x]] == 1.0;
@@ -574,7 +574,7 @@ pub fn apply_placement(
     }
 
     // Check for fully-occupied isolated regions and capture them
-    let captured_marbles = apply_isolation_capture(spatial_state, global_state, config, cur_player);
+    let captured_marbles = apply_isolation_capture(config, spatial_state, global_state, cur_player);
 
     // Decrement marble count from supply or captured pool
     let supply_idx = marble_type; // 0, 1, 2
@@ -623,13 +623,13 @@ pub fn apply_placement(
 
 /// Apply a capture action
 pub fn apply_capture(
+    config: &BoardConfig,
     spatial_state: &mut ArrayViewMut3<f32>,
     global_state: &mut ArrayViewMut1<f32>,
     start_y: usize,
     start_x: usize,
     dest_y: usize,
     dest_x: usize,
-    config: &BoardConfig,
 ) {
     // STEP 1: Reset capture layer (matches Python zertz_board.py:524)
     // This clears any previous chain capture markers
@@ -693,7 +693,7 @@ pub fn apply_capture(
     global_state[captured_idx] += 1.0;
 
     // Check for chain capture in any direction from landing position
-    let capture_actions = get_capture_actions(&spatial_state.view(), config);
+    let capture_actions = get_capture_actions(config, &spatial_state.view());
     let can_chain = (0..config.directions.len())
         .any(|dir_idx| capture_actions[[dir_idx, land_y, land_x]] > 0.0);
 
@@ -726,15 +726,15 @@ pub fn apply_capture(
 /// Returns tuple of (updated_spatial_state, updated_global_state, captured_marbles_list)
 /// where captured_marbles_list contains tuples of (marble_layer_idx, y, x)
 pub fn check_for_isolation_capture(
+    config: &BoardConfig,
     spatial_state: &ArrayView3<f32>,
     global_state: &ArrayView1<f32>,
-    config: &BoardConfig,
 ) -> (Array3<f32>, Array1<f32>, Vec<(usize, usize, usize)>) {
     let mut spatial_state_out = spatial_state.to_owned();
     let mut global_state_out = global_state.to_owned();
     let mut captured_marbles = Vec::new();
 
-    let regions = get_regions(spatial_state, config);
+    let regions = get_regions(config, spatial_state);
     let cur_player = global_state[config.cur_player] as usize;
 
     // Only apply isolation capture if there are multiple regions
@@ -804,9 +804,9 @@ pub fn check_for_isolation_capture(
 ///
 /// Returns true if any terminal condition is met.
 pub fn is_game_over(
+    config: &BoardConfig,
     spatial_state: &ArrayView3<f32>,
     global_state: &ArrayView1<f32>,
-    config: &BoardConfig,
 ) -> bool {
     let p1_caps = [
         global_state[config.p1_cap_w],
@@ -913,9 +913,9 @@ pub fn is_game_over(
 /// Note: This returns the outcome from Player 1's perspective.
 /// The caller must convert to their own perspective if needed.
 pub fn get_game_outcome(
+    config: &BoardConfig,
     spatial_state: &ArrayView3<f32>,
     global_state: &ArrayView1<f32>,
-    config: &BoardConfig,
 ) -> i8 {
     let p1_caps = [
         global_state[config.p1_cap_w],

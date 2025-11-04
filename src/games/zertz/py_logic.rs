@@ -83,16 +83,16 @@ pub fn build_axial_maps(
 ///     - transform_name: String describing the applied transform (e.g., "R60", "MR120")
 ///     - inverse_transform_name: String describing the inverse transform
 #[pyfunction]
-#[pyo3(signature = (spatial_state, config, flags=None))]
+#[pyo3(signature = (config, spatial_state, flags=None))]
 pub fn canonicalize_state<'py>(
     py: Python<'py>,
-    spatial_state: PyReadonlyArray3<'py, f32>,
     config: &BoardConfig,
+    spatial_state: PyReadonlyArray3<'py, f32>,
     flags: Option<&PyTransformFlags>,
 ) -> (Py<PyArray3<f32>>, String, String) {
     let spatial_state = spatial_state.as_array();
     let transform_flags = flags.map(|f| f.inner).unwrap_or(TransformFlags::ALL);
-    let (canonical, transform, inverse) = canonicalization::canonicalize_internal(&spatial_state, config, transform_flags);
+    let (canonical, transform, inverse) = canonicalization::canonicalize_internal(config, &spatial_state, transform_flags);
     (
         PyArray3::from_array(py, &canonical).into(),
         transform,
@@ -117,15 +117,15 @@ pub fn canonicalize_state<'py>(
 #[pyfunction]
 pub fn transform_state<'py>(
     py: Python<'py>,
-    spatial_state: PyReadonlyArray3<'py, f32>,
     config: &BoardConfig,
+    spatial_state: PyReadonlyArray3<'py, f32>,
     rot60_k: i32,
     mirror: bool,
     mirror_first: bool,
 ) -> PyResult<Py<PyArray3<f32>>> {
     let spatial_state = spatial_state.as_array();
     let transformed =
-        canonicalization::transform_state(&spatial_state, config, rot60_k, mirror, mirror_first, 0, 0, true)
+        canonicalization::transform_state(config, &spatial_state, rot60_k, mirror, mirror_first, 0, 0, true)
             .ok_or_else(|| PyErr::new::<pyo3::exceptions::PyValueError, _>("Transformation failed"))?;
     Ok(PyArray3::from_array(py, &transformed).into())
 }
@@ -150,8 +150,8 @@ pub fn transform_state<'py>(
 #[pyfunction]
 pub fn translate_state<'py>(
     py: Python<'py>,
-    spatial_state: PyReadonlyArray3<'py, f32>,
     config: &BoardConfig,
+    spatial_state: PyReadonlyArray3<'py, f32>,
     dy: i32,
     dx: i32,
 ) -> PyResult<Option<Py<PyArray3<f32>>>> {
@@ -160,14 +160,14 @@ pub fn translate_state<'py>(
     warnings.call_method1(
         "warn",
         (
-            "translate_state is deprecated. Use transform_state(spatial_state, config, 0, False, False, dy, dx) instead.",
+            "translate_state is deprecated. Use transform_state(config, spatial_state, 0, False, False, dy, dx) instead.",
             py.get_type::<pyo3::exceptions::PyDeprecationWarning>(),
             2, // stacklevel
         ),
     )?;
 
     let spatial_state = spatial_state.as_array();
-    Ok(canonicalization::transform_state(&spatial_state, config, 0, false, false, dy, dx, true)
+    Ok(canonicalization::transform_state(config, &spatial_state, 0, false, false, dy, dx, true)
         .map(|result| PyArray3::from_array(py, &result).into()))
 }
 
@@ -184,11 +184,11 @@ pub fn translate_state<'py>(
 ///     Option containing (min_y, max_y, min_x, max_x) tuple, or None if no rings
 #[pyfunction]
 pub fn get_bounding_box(
-    spatial_state: PyReadonlyArray3<f32>,
     config: &BoardConfig,
+    spatial_state: PyReadonlyArray3<f32>,
 ) -> Option<(usize, usize, usize, usize)> {
     let spatial_state = spatial_state.as_array();
-    canonicalization::bounding_box(&spatial_state, config)
+    canonicalization::bounding_box(config, &spatial_state)
 }
 
 /// Get all valid translation offsets for the current board state.
@@ -211,11 +211,11 @@ pub fn get_bounding_box(
 ///     ('T0,0', 0, 0)
 #[pyfunction]
 pub fn get_translations(
-    spatial_state: PyReadonlyArray3<f32>,
     config: &BoardConfig,
+    spatial_state: PyReadonlyArray3<f32>,
 ) -> Vec<(String, i32, i32)> {
     let spatial_state = spatial_state.as_array();
-    canonicalization::get_translations(&spatial_state, config)
+    canonicalization::get_translations(config, &spatial_state)
 }
 
 /// Compute canonical key for lexicographic comparison
@@ -232,7 +232,7 @@ pub fn get_translations(
 #[pyfunction]
 pub fn canonical_key(spatial_state: PyReadonlyArray3<f32>, config: &BoardConfig) -> Vec<u8> {
     let spatial_state = spatial_state.as_array();
-    canonicalization::compute_canonical_key(&spatial_state, config)
+    canonicalization::compute_canonical_key(config, &spatial_state)
 }
 
 /// Compute the inverse of a transform name
@@ -270,7 +270,7 @@ pub fn is_inbounds(y: i32, x: i32, width: usize) -> bool {
 /// Returns list of (y, x) tuples
 #[pyfunction]
 pub fn get_neighbors(y: usize, x: usize, config: &BoardConfig) -> Vec<(usize, usize)> {
-    logic::get_neighbors(y, x, config).into_iter().collect()
+    logic::get_neighbors(config, y, x).into_iter().collect()
 }
 
 /// Calculate landing position after capturing marble
@@ -300,64 +300,63 @@ pub fn get_jump_destination(
 ///     Tuple of (dest_y, dest_x) if destination is in bounds, or None
 #[pyfunction]
 pub fn get_capture_destination(
+    config: &BoardConfig,
     src_y: usize,
     src_x: usize,
     dir_idx: usize,
-    config: &BoardConfig,
 ) -> Option<(usize, usize)> {
-    logic::get_capture_destination(src_y, src_x, dir_idx, config)
+    logic::get_capture_destination(config, src_y, src_x, dir_idx)
 }
 
 /// Find all connected regions on the board
 /// Returns list of regions, where each region is a list of (y, x) tuples
 #[pyfunction]
 pub fn get_regions<'py>(
-    spatial_state: PyReadonlyArray3<'py, f32>,
     config: &BoardConfig,
+    spatial_state: PyReadonlyArray3<'py, f32>,
 ) -> Vec<Vec<(usize, usize)>> {
     let spatial_state = spatial_state.as_array();
-    logic::get_regions(&spatial_state, config)
+    logic::get_regions(config, &spatial_state)
 }
 
 /// Get list of empty ring indices across the board
 /// Returns list of (y, x) tuples
 #[pyfunction]
 pub fn get_open_rings<'py>(
-    spatial_state: PyReadonlyArray3<'py, f32>,
     config: &BoardConfig,
+    spatial_state: PyReadonlyArray3<'py, f32>,
 ) -> Vec<(usize, usize)> {
     let spatial_state = spatial_state.as_array();
-    logic::get_open_rings(&spatial_state, config)
+    logic::get_open_rings(config, &spatial_state)
 }
 
 /// Check if ring can be removed (geometric rule)
 #[pyfunction]
 pub fn is_ring_removable<'py>(
+    config: &BoardConfig,
     spatial_state: PyReadonlyArray3<'py, f32>,
     y: usize,
     x: usize,
-    config: &BoardConfig,
 ) -> bool {
     let spatial_state = spatial_state.as_array();
-    logic::is_ring_removable(&spatial_state, y, x, config)
+    logic::is_ring_removable(config, &spatial_state, y, x)
 }
 
 /// Get removable rings (rings that can be removed without disconnecting board)
 /// Returns list of (y, x) tuples
 #[pyfunction]
 pub fn get_removable_rings<'py>(
-    spatial_state: PyReadonlyArray3<'py, f32>,
     config: &BoardConfig,
+    spatial_state: PyReadonlyArray3<'py, f32>,
 ) -> Vec<(usize, usize)> {
     let spatial_state = spatial_state.as_array();
-    logic::get_removable_rings(&spatial_state, config)
+    logic::get_removable_rings(&config, &spatial_state)
 }
 
 /// Get global_state index for marble type in supply
 #[pyfunction]
-pub fn get_supply_index(marble_type: char) -> usize {
-    let config = BoardConfig::standard(37, 1).unwrap(); // Default config for Python interface
-    logic::get_supply_index(marble_type, &config)
+pub fn get_supply_index(config: &BoardConfig, marble_type: char) -> usize {
+    logic::get_supply_index(&config, marble_type)
 }
 
 /// Get global_state index for captured marble
@@ -382,40 +381,40 @@ pub fn get_captured_index(player: usize, marble_type: char) -> usize {
 /// Returns: 'w', 'g', 'b', or '\0' (none)
 #[pyfunction]
 pub fn get_marble_type_at<'py>(
+    config: &BoardConfig,
     spatial_state: PyReadonlyArray3<'py, f32>,
     y: usize,
     x: usize,
 ) -> char {
     let spatial_state = spatial_state.as_array();
-    let config = BoardConfig::standard(37, 1).unwrap(); // Default config for Python interface
-    logic::get_marble_type_at(&spatial_state, y, x, &config)
+    logic::get_marble_type_at(config, &spatial_state, y, x)
 }
 
 /// Get valid placement actions
 /// Returns Array5<f32> with shape (3, width, width, width, width)
 #[pyfunction]
-pub fn get_placement_moves<'py>(
+pub fn get_placement_actions<'py>(
     py: Python<'py>,
+    config: &BoardConfig,
     spatial_state: PyReadonlyArray3<'py, f32>,
     global_state: PyReadonlyArray1<'py, f32>,
-    config: &BoardConfig,
 ) -> Py<PyArray5<f32>> {
     let spatial_state = spatial_state.as_array();
     let global_state = global_state.as_array();
-    let result = logic::get_placement_actions(&spatial_state, &global_state, config);
+    let result = logic::get_placement_actions(config, &spatial_state, &global_state);
     PyArray5::from_array(py, &result).into()
 }
 
 /// Get valid capture actions
 /// Returns Array3<f32> with shape (6, width, width)
 #[pyfunction]
-pub fn get_capture_moves<'py>(
+pub fn get_capture_actions<'py>(
     py: Python<'py>,
-    spatial_state: PyReadonlyArray3<'py, f32>,
     config: &BoardConfig,
+    spatial_state: PyReadonlyArray3<'py, f32>,
 ) -> Py<PyArray3<f32>> {
     let spatial_state = spatial_state.as_array();
-    let result = logic::get_capture_actions(&spatial_state, config);
+    let result = logic::get_capture_actions(config, &spatial_state);
     PyArray3::from_array(py, &result).into()
 }
 
@@ -424,13 +423,13 @@ pub fn get_capture_moves<'py>(
 #[pyfunction]
 pub fn get_valid_actions<'py>(
     py: Python<'py>,
+    config: &BoardConfig,
     spatial_state: PyReadonlyArray3<'py, f32>,
     global_state: PyReadonlyArray1<'py, f32>,
-    config: &BoardConfig,
 ) -> (Py<PyArray5<f32>>, Py<PyArray3<f32>>) {
     let spatial_state = spatial_state.as_array();
     let global_state = global_state.as_array();
-    let (placement, capture) = logic::get_valid_actions(&spatial_state, &global_state, config);
+    let (placement, capture) = logic::get_valid_actions(config, &spatial_state, &global_state);
     (PyArray5::from_array(py, &placement).into(), PyArray3::from_array(py, &capture).into())
 }
 
@@ -451,6 +450,7 @@ pub fn apply_action<'py>(
                 let (dst_y, dst_x) = config.flat_to_yx(*dst_flat);
                 let (rem_y, rem_x) = config.flat_to_optional_yx(*remove_flat);
                 logic::apply_placement(
+                    config,
                     &mut spatial_state_arr,
                     &mut global_state_arr,
                     *marble_type,
@@ -458,7 +458,6 @@ pub fn apply_action<'py>(
                     dst_x,
                     rem_y,
                     rem_x,
-                    config,
                 ).map_err(pyo3::exceptions::PyValueError::new_err)?
             };
             super::action_result::ZertzActionResult::placement(isolation_captures)
@@ -490,13 +489,13 @@ pub fn apply_action<'py>(
                 let mut global_state_arr = global_state.as_array_mut();
 
                 logic::apply_capture(
+                    config,
                     &mut spatial_state_arr,
                     &mut global_state_arr,
                     src_y,
                     src_x,
                     dst_y,
                     dst_x,
-                    config,
                 );
             }
 
@@ -514,6 +513,7 @@ pub fn apply_action<'py>(
 /// Returns list of captured marble positions from isolation as (marble_layer, y, x) tuples
 #[pyfunction]
 pub fn apply_placement_action<'py>(
+    config: &BoardConfig,
     spatial_state: &Bound<'py, PyArray3<f32>>,
     global_state: &Bound<'py, PyArray1<f32>>,
     marble_type: usize,
@@ -521,12 +521,12 @@ pub fn apply_placement_action<'py>(
     dst_x: usize,
     remove_y: Option<usize>,
     remove_x: Option<usize>,
-    config: &BoardConfig,
 ) -> PyResult<Vec<(usize, usize, usize)>> {
     let captured_marbles = unsafe {
         let mut spatial_state_arr = spatial_state.as_array_mut();
         let mut global_state_arr = global_state.as_array_mut();
         logic::apply_placement(
+            config,
             &mut spatial_state_arr,
             &mut global_state_arr,
             marble_type,
@@ -534,7 +534,6 @@ pub fn apply_placement_action<'py>(
             dst_x,
             remove_y,
             remove_x,
-            config,
         ).map_err(pyo3::exceptions::PyValueError::new_err)?
     };
     Ok(captured_marbles)
@@ -543,25 +542,25 @@ pub fn apply_placement_action<'py>(
 /// Apply a capture action (mutates arrays in-place)
 #[pyfunction]
 pub fn apply_capture_action<'py>(
+    config: &BoardConfig,
     spatial_state: &Bound<'py, PyArray3<f32>>,
     global_state: &Bound<'py, PyArray1<f32>>,
     start_y: usize,
     start_x: usize,
     dest_y: usize,
     dest_x: usize,
-    config: &BoardConfig,
 ) -> PyResult<()> {
     unsafe {
         let mut spatial_state_arr = spatial_state.as_array_mut();
         let mut global_state_arr = global_state.as_array_mut();
         logic::apply_capture(
+            config,
             &mut spatial_state_arr,
             &mut global_state_arr,
             start_y,
             start_x,
             dest_y,
             dest_x,
-            config,
         );
     }
     Ok(())
@@ -570,26 +569,26 @@ pub fn apply_capture_action<'py>(
 /// Check if game is over (any terminal condition)
 #[pyfunction]
 pub fn is_game_over<'py>(
+    config: &BoardConfig,
     spatial_state: PyReadonlyArray3<'py, f32>,
     global_state: PyReadonlyArray1<'py, f32>,
-    config: &BoardConfig,
 ) -> bool {
     let spatial_state = spatial_state.as_array();
     let global_state = global_state.as_array();
-    logic::is_game_over(&spatial_state, &global_state, config)
+    logic::is_game_over(config, &spatial_state, &global_state)
 }
 
 /// Get game outcome from Player 1's perspective
 /// Returns: 1 (P1 wins), -1 (P2 wins), 0 (tie), -2 (both lose)
 #[pyfunction]
 pub fn get_game_outcome<'py>(
+    config: &BoardConfig,
     spatial_state: PyReadonlyArray3<'py, f32>,
     global_state: PyReadonlyArray1<'py, f32>,
-    config: &BoardConfig,
 ) -> i8 {
     let spatial_state = spatial_state.as_array();
     let global_state = global_state.as_array();
-    logic::get_game_outcome(&spatial_state, &global_state, config)
+    logic::get_game_outcome(config, &spatial_state, &global_state)
 }
 
 /// Check for isolated regions and capture marbles
@@ -598,14 +597,14 @@ pub fn get_game_outcome<'py>(
 #[pyfunction]
 pub fn check_for_isolation_capture<'py>(
     py: Python<'py>,
+    config: &BoardConfig,
     spatial_state: PyReadonlyArray3<'py, f32>,
     global_state: PyReadonlyArray1<'py, f32>,
-    config: &BoardConfig,
 ) -> (Py<PyArray3<f32>>, Py<PyArray1<f32>>, Vec<(usize, usize, usize)>) {
     let spatial_state = spatial_state.as_array();
     let global_state = global_state.as_array();
     let (spatial_state_out, global_state_out, captured_marbles) =
-        logic::check_for_isolation_capture(&spatial_state, &global_state, config);
+        logic::check_for_isolation_capture(config, &spatial_state, &global_state);
     (
         PyArray3::from_array(py, &spatial_state_out).into(),
         PyArray1::from_array(py, &global_state_out).into(),
@@ -878,8 +877,8 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(get_marble_type_at, m)?)?;
 
     // Move generation and action execution
-    m.add_function(wrap_pyfunction!(get_placement_moves, m)?)?;
-    m.add_function(wrap_pyfunction!(get_capture_moves, m)?)?;
+    m.add_function(wrap_pyfunction!(get_placement_actions, m)?)?;
+    m.add_function(wrap_pyfunction!(get_capture_actions, m)?)?;
     m.add_function(wrap_pyfunction!(get_valid_actions, m)?)?;
     m.add_function(wrap_pyfunction!(apply_action, m)?)?;
     m.add_function(wrap_pyfunction!(apply_placement_action, m)?)?;

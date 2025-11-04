@@ -323,7 +323,7 @@ impl BoardState {
         let global = self.global.bind(py).readonly().as_array().to_owned();
 
         let (placement_mask, capture_mask) =
-            super::logic::get_valid_actions(&spatial_state.view(), &global.view(), &self.config);
+            super::logic::get_valid_actions(&self.config, &spatial_state.view(), &global.view());
 
         Ok((
             PyArray5::from_array(py, &placement_mask).into(),
@@ -335,7 +335,7 @@ impl BoardState {
     fn canonicalize_state(&self, py: Python<'_>) -> PyResult<(Py<PyArray3<f32>>, String, String)> {
         let spatial_state = self.spatial_state.bind(py).readonly();
         let (canonical, transform, inverse) =
-            super::canonicalization::canonicalize_state(&spatial_state.as_array(), &self.config);
+            super::canonicalization::canonicalize_state(&self.config, &spatial_state.as_array());
         let canonical_py = PyArray3::from_array(py, &canonical).into();
         Ok((canonical_py, transform, inverse))
     }
@@ -356,6 +356,7 @@ impl BoardState {
         let mut global = self.global.bind(py).readonly().as_array().to_owned();
 
         super::logic::apply_placement(
+            &self.config,
             &mut spatial_state.view_mut(),
             &mut global.view_mut(),
             marble_type,
@@ -363,7 +364,6 @@ impl BoardState {
             dst_x,
             remove_y,
             remove_x,
-            &self.config,
         ).map_err(pyo3::exceptions::PyValueError::new_err)?;
 
         // Update stored arrays
@@ -386,13 +386,13 @@ impl BoardState {
         let mut global = self.global.bind(py).readonly().as_array().to_owned();
 
         super::logic::apply_capture(
+            &self.config,
             &mut spatial_state.view_mut(),
             &mut global.view_mut(),
             start_y,
             start_x,
             dest_y,
             dest_x,
-            &self.config,
         );
 
         // Update stored arrays
