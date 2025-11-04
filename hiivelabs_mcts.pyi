@@ -756,6 +756,33 @@ class zertz:
         ...
 
 
+    def get_translations(
+        config: BoardConfig,
+        spatial_state: npt.NDArray[np.float32],
+    ) -> List[Tuple[str, int, int]]:
+        """
+        Get all valid translation offsets for the current board state.
+
+        Tests each potential translation by attempting to apply it, only including
+        translations that successfully keep all rings within valid board positions.
+
+        Args:
+            config: BoardConfig specifying board size
+            spatial_state: 3D array of shape (L, H, W) containing board state
+
+        Returns:
+            List of (name, dy, dx) tuples for valid translations
+
+        Example:
+            >>> config = BoardConfig.standard_config(37)
+            >>> state = np.zeros((5, 7, 7), dtype=np.float32)
+            >>> translations = get_translations(config, state)
+            >>> translations[0]
+            ('T0,0', 0, 0)
+        """
+        ...
+
+
     def canonical_key(
         config: BoardConfig,
         spatial_state: npt.NDArray[np.float32],
@@ -1444,6 +1471,42 @@ class zertz:
 
         Returns:
             1 if Player 1 wins, -1 if Player 2 wins, 0 for tie, -2 for both lose
+        """
+        ...
+
+
+    def transform_action(
+        config: BoardConfig,
+        action_type: str,
+        action_data: Tuple,
+        transform: str,
+    ) -> Tuple[str, List[Optional[int]]]:
+        """
+        Transform an action using symmetry operations.
+
+        Applies rotation, mirror, and/or translation transforms to an action tuple.
+        This is used for action canonicalization and replay with symmetries.
+
+        Args:
+            config: BoardConfig specifying board size
+            action_type: Action type string ("PUT", "CAP", or "PASS")
+            action_data: Action data tuple:
+                - For PUT: (marble_idx, put_flat, rem_flat) where rem_flat = width² means no removal
+                - For CAP: (direction_idx, y, x)
+                - For PASS: empty tuple ()
+            transform: Transform string (e.g., "R60", "MR120", "T1,0_R180M")
+
+        Returns:
+            Tuple of (action_type, action_data) in same format as input
+
+        Examples:
+            >>> config = BoardConfig.standard_config(37)
+            >>> transform_action(config, "PUT", (0, 10, 15), "R60")
+            ('PUT', [0, 12, 17])
+            >>> transform_action(config, "CAP", (0, 3, 3), "MR120")
+            ('CAP', [2, 4, 2])
+            >>> transform_action(config, "PASS", (), "R60")
+            ('PASS', [])
         """
         ...
 

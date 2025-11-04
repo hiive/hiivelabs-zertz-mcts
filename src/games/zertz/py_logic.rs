@@ -713,30 +713,30 @@ pub fn generate_standard_layout_mask<'py>(
 /// This is used for action canonicalization and replay with symmetries.
 ///
 /// Args:
+///     config: BoardConfig specifying board size
 ///     action_type: Action type string ("PUT", "CAP", or "PASS")
 ///     action_data: Action data tuple:
 ///         - For PUT: (marble_idx, put_flat, rem_flat) where rem_flat = width² means no removal
 ///         - For CAP: (direction_idx, y, x)
 ///         - For PASS: empty tuple ()
 ///     transform: Transform string (e.g., "R60", "MR120", "T1,0_R180M")
-///     config: BoardConfig specifying board size
 ///
 /// Returns:
 ///     Tuple of (action_type, action_data) in same format as input
 ///
 /// Examples:
-///     >>> transform_action("PUT", (0, 10, 15), "R60", config)
+///     >>> transform_action(config, "PUT", (0, 10, 15), "R60")
 ///     ("PUT", (0, 12, 17))
-///     >>> transform_action("CAP", (0, 3, 3), "MR120", config)
+///     >>> transform_action(config, "CAP", (0, 3, 3), "MR120")
 ///     ("CAP", (2, 4, 2))
-///     >>> transform_action("PASS", (), "R60", config)
+///     >>> transform_action(config, "PASS", (), "R60")
 ///     ("PASS", ())
 #[pyfunction]
 pub fn transform_action(
+    config: &BoardConfig,
     action_type: &str,
     action_data: &Bound<'_, pyo3::types::PyTuple>,
     transform: &str,
-    config: &BoardConfig,
 ) -> PyResult<(String, Vec<Option<usize>>)> {
     let width = config.width;
 
