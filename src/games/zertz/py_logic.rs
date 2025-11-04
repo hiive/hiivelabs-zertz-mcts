@@ -361,7 +361,7 @@ pub fn get_supply_index(config: &BoardConfig, marble_type: char) -> usize {
 
 /// Get global_state index for captured marble
 #[pyfunction]
-pub fn get_captured_index(player: usize, marble_type: char) -> usize {
+pub fn get_captured_index(config: &BoardConfig, player: usize, marble_type: char) -> usize {
     // Captured indices: P1: W=3, G=4, B=5; P2: W=6, G=7, B=8
     // Player constants: PLAYER_1 = 0, PLAYER_2 = 1
     let marble_idx = match marble_type {
@@ -370,11 +370,8 @@ pub fn get_captured_index(player: usize, marble_type: char) -> usize {
         'b' => 2,
         _ => panic!("Invalid marble type: {}", marble_type),
     };
-    if player == 0 {
-        3 + marble_idx  // Player 1 (player == 0)
-    } else {
-        6 + marble_idx  // Player 2 (player == 1)
-    }
+
+    logic::get_captured_index(config, player, marble_idx)
 }
 
 /// Get marble type at given position
