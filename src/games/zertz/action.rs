@@ -45,7 +45,7 @@ impl ZertzAction {
             } => {
                 let (dst_y, dst_x) = config.flat_to_yx(*dst_flat);
                 let (rem_y, rem_x) = config.flat_to_optional_yx(*remove_flat);
-                ("PUT}".to_string(), Option::from(vec![Some(*marble_type), Some(dst_y), Some(dst_x), rem_y, rem_x]))
+                ("PUT".to_string(), Option::from(vec![Some(*marble_type), Some(dst_y), Some(dst_x), rem_y, rem_x]))
             }
             ZertzAction::Capture {
                 src_flat,
@@ -53,9 +53,9 @@ impl ZertzAction {
             } => {
                 let (src_y, src_x) = config.flat_to_yx(*src_flat);
                 let (dst_y, dst_x) = config.flat_to_yx(*dst_flat);
-                ("PUT}".to_string(), Option::from(vec![Some(src_y), Some(src_x), Some(dst_y), Some(dst_x)]))
+                ("PUT".to_string(), Option::from(vec![Some(src_y), Some(src_x), Some(dst_y), Some(dst_x)]))
             }
-            ZertzAction::Pass => ("PUT}".to_string(), None)
+            ZertzAction::Pass => ("PUT".to_string(), None)
         }
     }
 
