@@ -224,13 +224,13 @@ pub fn get_translations(
 /// Used for finding the lexicographically minimal state representation.
 ///
 /// Args:
-///     spatial_state: 3D array of shape (L, H, W) containing board layers
 ///     config: BoardConfig specifying board size
+///     spatial_state: 3D array of shape (L, H, W) containing board layers
 ///
 /// Returns:
 ///     Bytes object containing the canonical key
 #[pyfunction]
-pub fn canonical_key(spatial_state: PyReadonlyArray3<f32>, config: &BoardConfig) -> Vec<u8> {
+pub fn canonical_key(config: &BoardConfig, spatial_state: PyReadonlyArray3<f32>) -> Vec<u8> {
     let spatial_state = spatial_state.as_array();
     canonicalization::compute_canonical_key(config, &spatial_state)
 }
@@ -269,7 +269,7 @@ pub fn is_inbounds(y: i32, x: i32, width: usize) -> bool {
 /// Get list of neighboring indices (filtered to in-bounds only)
 /// Returns list of (y, x) tuples
 #[pyfunction]
-pub fn get_neighbors(y: usize, x: usize, config: &BoardConfig) -> Vec<(usize, usize)> {
+pub fn get_neighbors(config: &BoardConfig, y: usize, x: usize) -> Vec<(usize, usize)> {
     logic::get_neighbors(config, y, x).into_iter().collect()
 }
 
@@ -619,9 +619,9 @@ pub fn check_for_isolation_capture<'py>(
 /// Convert array coordinates (y, x) to algebraic notation (e.g., "D4")
 ///
 /// Args:
+///     config: BoardConfig specifying board size
 ///     y: Row index (0 = top, increases downward)
 ///     x: Column index (0 = leftmost column)
-///     config: BoardConfig specifying board size
 ///
 /// Returns:
 ///     Algebraic notation string (e.g., "A1", "D4", "G7")
@@ -635,7 +635,7 @@ pub fn check_for_isolation_capture<'py>(
 ///     >>> coordinate_to_algebraic(3, 3, config)
 ///     'D4'
 #[pyfunction]
-pub fn coordinate_to_algebraic(y: usize, x: usize, config: &BoardConfig) -> PyResult<String> {
+pub fn coordinate_to_algebraic(config: &BoardConfig, y: usize, x: usize) -> PyResult<String> {
     notation::coordinate_to_algebraic_with_config(y, x, config)
         .map_err(pyo3::exceptions::PyValueError::new_err)
 }
@@ -643,9 +643,9 @@ pub fn coordinate_to_algebraic(y: usize, x: usize, config: &BoardConfig) -> PyRe
 /// Parse algebraic notation (e.g., "A1") to array coordinates (y, x)
 ///
 /// Args:
+///     config: BoardConfig specifying board size
 ///     notation: Algebraic notation string (e.g., "D4", "A1")
 ///               Case-insensitive
-///     config: BoardConfig specifying board size
 ///
 /// Returns:
 ///     Tuple of (y, x) array coordinates
@@ -659,7 +659,7 @@ pub fn coordinate_to_algebraic(y: usize, x: usize, config: &BoardConfig) -> PyRe
 ///     >>> algebraic_to_coordinate("d4", config)  # Case-insensitive
 ///     (3, 3)
 #[pyfunction]
-pub fn algebraic_to_coordinate(notation: &str, config: &BoardConfig) -> PyResult<(usize, usize)> {
+pub fn algebraic_to_coordinate(config: &BoardConfig, notation: &str) -> PyResult<(usize, usize)> {
     notation::algebraic_to_coordinate_with_config(notation, config)
         .map_err(pyo3::exceptions::PyValueError::new_err)
 }

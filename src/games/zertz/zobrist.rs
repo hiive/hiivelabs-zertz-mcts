@@ -193,7 +193,7 @@ impl ZobristHasher {
     ///
     /// **Threshold 0.5**: Arrays use f32 (0.0 or 1.0), we check > 0.5 to handle
     /// floating point imprecision.
-    fn hash_spatial_state(&self, spatial_state: &ArrayView3<f32>, config: &BoardConfig) -> u64 {
+    fn hash_spatial_state(&self, config: &BoardConfig, spatial_state: &ArrayView3<f32>) -> u64 {
         let mut h = 0u64;
 
         // Hash rings: XOR random value for each ring position
@@ -229,7 +229,7 @@ impl ZobristHasher {
     /// - **Current player**: XOR player bit if player 2's turn
     ///
     /// **Bounds checking**: Only hash counts < CAPTURE_LIMIT (defensive programming)
-    fn hash_supply_and_captures(&self, global_state: &ArrayView1<f32>, config: &BoardConfig) -> u64 {
+    fn hash_supply_and_captures(&self, config: &BoardConfig, global_state: &ArrayView1<f32>) -> u64 {
         let mut h = 0u64;
 
         // Hash supply counts for each marble type
@@ -280,14 +280,14 @@ impl ZobristHasher {
         global_state: &ArrayView1<f32>,
         config: &BoardConfig,
     ) -> u64 {
-        let mut h = self.hash_spatial_state(spatial_state, config);
-        h ^= self.hash_supply_and_captures(global_state, config);
+        let mut h = self.hash_spatial_state(config, spatial_state);
+        h ^= self.hash_supply_and_captures(config, global_state);
         h
     }
 
     #[allow(dead_code)]
-    pub fn hash_canonical_spatial_state(&self, spatial_state: &ArrayView3<f32>, config: &BoardConfig) -> u64 {
-        self.hash_spatial_state(spatial_state, config)
+    pub fn hash_canonical_spatial_state(&self, config: &BoardConfig, spatial_state: &ArrayView3<f32>) -> u64 {
+        self.hash_spatial_state(config, spatial_state)
     }
 
     #[allow(dead_code)]

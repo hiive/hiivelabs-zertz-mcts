@@ -1307,11 +1307,12 @@ def get_supply_index(config: BoardConfig, marble_type: str) -> int:
     ...
 
 
-def get_captured_index(player: int, marble_type: str) -> int:
+def get_captured_index(config: BoardConfig, player: int, marble_type: str) -> int:
     """
     Get global_state index for captured marble for given player.
 
     Args:
+        config: BoardConfig
         player: Player index (0 or 1)
         marble_type: Marble type ('w', 'g', or 'b')
 
@@ -1321,11 +1322,12 @@ def get_captured_index(player: int, marble_type: str) -> int:
     ...
 
 
-def get_marble_type_at(spatial_state: npt.NDArray[np.float32], y: int, x: int) -> str:
+def get_marble_type_at(config: BoardConfig, spatial_state: npt.NDArray[np.float32], y: int, x: int) -> str:
     """
     Get marble type at given position.
 
     Args:
+        config: BoardConfig
         spatial_state: (L, H, W) spatial_state state array
         y: Y coordinate
         x: X coordinate
