@@ -422,110 +422,45 @@ impl BoardState {
     /// Apply a placement action using ZertzAction
     ///
     /// Returns a ZertzActionResult containing isolation capture information.
+    ///
+    /// This is a thin wrapper over apply_placement_action that works with
+    /// the BoardState's internal arrays.
     fn apply_placement(
         &mut self,
         py: Python<'_>,
         action: &PyZertzAction,
     ) -> PyResult<PyZertzActionResult> {
-        // Extract placement data from action
-        match &action.inner {
-            ZertzAction::Placement {
-                marble_type,
-                dst_flat,
-                remove_flat,
-            } => {
-                let width = self.config.width;
-                let dst_y = dst_flat / width;
-                let dst_x = dst_flat % width;
-                let (remove_y, remove_x) =
-                    remove_flat.map(|flat| (flat / width, flat % width)).unzip();
+        let spatial_bound = self.spatial_state.bind(py);
+        let global_bound = self.global.bind(py);
 
-                let mut spatial_state =
-                    self.spatial_state.bind(py).readonly().as_array().to_owned();
-                let mut global = self.global.bind(py).readonly().as_array().to_owned();
-
-                let isolation_captures = super::logic::apply_placement(
-                    &self.config,
-                    &mut spatial_state.view_mut(),
-                    &mut global.view_mut(),
-                    *marble_type,
-                    dst_y,
-                    dst_x,
-                    remove_y,
-                    remove_x,
-                )
-                .map_err(pyo3::exceptions::PyValueError::new_err)?;
-
-                // Update stored arrays
-                self.spatial_state = PyArray3::from_array(py, &spatial_state).into();
-                self.global = PyArray1::from_array(py, &global).into();
-
-                let result = ZertzActionResult::placement(isolation_captures);
-                Ok(PyZertzActionResult { inner: result })
-            }
-            _ => Err(pyo3::exceptions::PyValueError::new_err(
-                "Action must be a Placement variant for apply_placement",
-            )),
-        }
+        super::py_logic::apply_placement_action(
+            &self.config,
+            &spatial_bound,
+            &global_bound,
+            action,
+        )
     }
 
     /// Apply a capture action using ZertzAction
     ///
     /// Returns a ZertzActionResult containing captured marble information.
+    ///
+    /// This is a thin wrapper over apply_capture_action that works with
+    /// the BoardState's internal arrays.
     fn apply_capture(
         &mut self,
         py: Python<'_>,
         action: &PyZertzAction,
     ) -> PyResult<PyZertzActionResult> {
-        // Extract capture data from action
-        match &action.inner {
-            ZertzAction::Capture { src_flat, dst_flat } => {
-                let width = self.config.width;
-                let start_y = src_flat / width;
-                let start_x = src_flat % width;
-                let dest_y = dst_flat / width;
-                let dest_x = dst_flat % width;
+        let spatial_bound = self.spatial_state.bind(py);
+        let global_bound = self.global.bind(py);
 
-                // Calculate captured marble position (midpoint between start and dest)
-                let cap_y = (start_y + dest_y) / 2;
-                let cap_x = (start_x + dest_x) / 2;
-
-                let mut spatial_state =
-                    self.spatial_state.bind(py).readonly().as_array().to_owned();
-                let mut global = self.global.bind(py).readonly().as_array().to_owned();
-
-                // Extract marble type at captured position before applying the action
-                let captured_marble_type = (1..4)
-                    .find(|&layer| spatial_state[[layer, cap_y, cap_x]] > 0.0)
-                    .map(|layer| layer - 1) // Convert layer to marble type (0=white, 1=gray, 2=black)
-                    .ok_or_else(|| {
-                        pyo3::exceptions::PyValueError::new_err(format!(
-                            "No marble found at capture position ({}, {})",
-                            cap_y, cap_x
-                        ))
-                    })?;
-
-                super::logic::apply_capture(
-                    &self.config,
-                    &mut spatial_state.view_mut(),
-                    &mut global.view_mut(),
-                    start_y,
-                    start_x,
-                    dest_y,
-                    dest_x,
-                );
-
-                // Update stored arrays
-                self.spatial_state = PyArray3::from_array(py, &spatial_state).into();
-                self.global = PyArray1::from_array(py, &global).into();
-
-                let result = ZertzActionResult::capture(captured_marble_type, cap_y, cap_x);
-                Ok(PyZertzActionResult { inner: result })
-            }
-            _ => Err(pyo3::exceptions::PyValueError::new_err(
-                "Action must be a Capture variant for apply_capture",
-            )),
-        }
+        super::py_logic::apply_capture_action(
+            &self.config,
+            &spatial_bound,
+            &global_bound,
+            action,
+        )
     }
 
     /// Get spatial_state state (for testing)
