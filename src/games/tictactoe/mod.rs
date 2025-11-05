@@ -17,7 +17,9 @@
 //! - Win: Three in a row (horizontal, vertical, or diagonal)
 //! - Draw: Board full, with no winner
 
+pub mod action_result;
 mod canonicalization;
+pub mod py_logic;
 pub mod py_mcts;
 
 #[cfg(test)]
@@ -25,6 +27,8 @@ mod canonicalization_tests;
 
 use crate::game_trait::MCTSGame;
 use ndarray::{Array1, Array3, ArrayView1, ArrayView3, ArrayViewMut1, ArrayViewMut3};
+
+pub use action_result::PyTicTacToeActionResult;
 
 /// Tic-Tac-Toe action: place mark at (row, col)
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]

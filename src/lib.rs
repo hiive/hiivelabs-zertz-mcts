@@ -24,7 +24,8 @@ mod transposition_tests;
 mod games; // Game implementations module (contains zertz/, tictactoe/)
 
 use games::{
-    BoardConfig, BoardState, PyTicTacToeMCTS, PyZertzAction, PyZertzActionResult, PyZertzMCTS,
+    BoardConfig, BoardState, PyTicTacToeActionResult, PyTicTacToeMCTS, PyZertzAction,
+    PyZertzActionResult, PyZertzMCTS,
 };
 
 /// Generic MCTS engine with game-specific implementations
@@ -64,6 +65,8 @@ fn hiivelabs_mcts(m: &Bound<'_, PyModule>) -> PyResult<()> {
     // Register TicTacToe game under submodule
     let tictactoe_mod = PyModule::new(m.py(), "tictactoe")?;
     tictactoe_mod.add_class::<PyTicTacToeMCTS>()?;
+    tictactoe_mod.add_class::<PyTicTacToeActionResult>()?;
+    games::tictactoe::py_logic::register(&tictactoe_mod)?; // TicTacToe game logic functions
     m.add_submodule(&tictactoe_mod)?;
     sys_modules.set_item("hiivelabs_mcts.tictactoe", &tictactoe_mod)?;
     root_exports.push("tictactoe".to_string());
