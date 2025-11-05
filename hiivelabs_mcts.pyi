@@ -423,7 +423,7 @@ class zertz:
             """
             ...
 
-        def last_child_statistics(self) -> List[Tuple[str, Optional[Tuple[int, int, int]], float]]:
+        def last_child_statistics(self) -> List[ZertzAction, float]]:
             """
             Get per-child statistics from last search as (action_type, action_data, normalized_score) tuples.
 
@@ -1690,4 +1690,5 @@ class tictactoe:
             clear_table: bool = False,
         ) -> Optional[Tuple[int, int]]: ...
 
+        # todo change to TicTacToeAction
         def last_child_statistics(self) -> List[Tuple[Tuple[int, int], float]]: ...
