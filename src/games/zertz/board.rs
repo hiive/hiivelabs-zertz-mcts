@@ -2,8 +2,8 @@ use numpy::{PyArray1, PyArray3, PyArray5, PyArrayMethods, PyReadonlyArray1, PyRe
 use pyo3::prelude::*;
 use std::collections::HashMap;
 
-use super::action::{PyZertzAction};
-use super::action_result::{PyZertzActionResult};
+use super::action::PyZertzAction;
+use super::action_result::PyZertzActionResult;
 use super::logic::{PLAYER_1, PLAYER_2};
 
 /// Game mode (Standard or Blitz)
@@ -388,10 +388,7 @@ impl BoardState {
     ///
     /// # Deprecated
     /// This method is deprecated. Use `apply_capture()` with a `ZertzAction` instead.
-    #[deprecated(
-        since = "0.6.0",
-        note = "Use apply_capture() with ZertzAction instead"
-    )]
+    #[deprecated(since = "0.6.0", note = "Use apply_capture() with ZertzAction instead")]
     fn apply_capture_old(
         &mut self,
         py: Python<'_>,
@@ -434,12 +431,7 @@ impl BoardState {
         let spatial_bound = self.spatial_state.bind(py);
         let global_bound = self.global.bind(py);
 
-        super::py_logic::apply_placement_action(
-            &self.config,
-            &spatial_bound,
-            &global_bound,
-            action,
-        )
+        super::py_logic::apply_placement_action(&self.config, &spatial_bound, &global_bound, action)
     }
 
     /// Apply a capture action using ZertzAction
@@ -456,12 +448,7 @@ impl BoardState {
         let spatial_bound = self.spatial_state.bind(py);
         let global_bound = self.global.bind(py);
 
-        super::py_logic::apply_capture_action(
-            &self.config,
-            &spatial_bound,
-            &global_bound,
-            action,
-        )
+        super::py_logic::apply_capture_action(&self.config, &spatial_bound, &global_bound, action)
     }
 
     /// Get spatial_state state (for testing)

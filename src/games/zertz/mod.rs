@@ -45,8 +45,7 @@ pub use action::PyZertzAction;
 pub use action_result::PyZertzActionResult;
 pub use board::{BoardConfig, BoardState};
 pub use logic::{
-    PLAYER_1, PLAYER_2, PLAYER_1_WIN, PLAYER_2_WIN, TIE, BOTH_LOSE,
-    STANDARD_MARBLES, BLITZ_MARBLES,
-    STANDARD_WIN_CONDITIONS, BLITZ_WIN_CONDITIONS,
+    BLITZ_MARBLES, BLITZ_WIN_CONDITIONS, BOTH_LOSE, PLAYER_1, PLAYER_1_WIN, PLAYER_2, PLAYER_2_WIN,
+    STANDARD_MARBLES, STANDARD_WIN_CONDITIONS, TIE,
 };
 pub use py_mcts::PyZertzMCTS;

@@ -17,7 +17,9 @@ pub enum TicTacToeActionResult {
 
 impl TicTacToeActionResult {
     /// Create a normal move result
-    pub fn move_result() -> Self { TicTacToeActionResult::Move }
+    pub fn move_result() -> Self {
+        TicTacToeActionResult::Move
+    }
 
     /// Create a winning result
     pub fn win() -> Self {
@@ -31,7 +33,10 @@ impl TicTacToeActionResult {
 
     /// Check if this is a terminal result (win or draw)
     pub fn is_terminal(&self) -> bool {
-        matches!(self, TicTacToeActionResult::Win | TicTacToeActionResult::Draw)
+        matches!(
+            self,
+            TicTacToeActionResult::Win | TicTacToeActionResult::Draw
+        )
     }
 
     /// Check if this is a win

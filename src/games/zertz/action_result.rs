@@ -151,7 +151,7 @@ mod tests {
 
     #[test]
     fn test_action_result_capture_creation() {
-        let result = ZertzActionResult::capture(1, 3, 4);  // gray marble at (3, 4)
+        let result = ZertzActionResult::capture(1, 3, 4); // gray marble at (3, 4)
 
         match result {
             ZertzActionResult::Capture { captured_marble } => {
@@ -170,7 +170,7 @@ mod tests {
     #[test]
     fn test_action_result_isolation_captures_accessor() {
         let result = ZertzActionResult::placement(vec![(0, 1, 2)]);
-        
+
         let captures = result.isolation_captures();
         assert!(captures.is_some());
         assert_eq!(captures.unwrap().len(), 1);
@@ -192,7 +192,7 @@ mod tests {
     #[test]
     fn test_action_result_captured_marble_accessor() {
         let result = ZertzActionResult::capture(2, 5, 6);
-        
+
         let marble = result.captured_marble();
         assert!(marble.is_some());
         assert_eq!(marble.unwrap(), (2, 5, 6));
@@ -217,8 +217,12 @@ mod tests {
 
         match (&result, &cloned) {
             (
-                ZertzActionResult::Capture { captured_marble: cm1 },
-                ZertzActionResult::Capture { captured_marble: cm2 },
+                ZertzActionResult::Capture {
+                    captured_marble: cm1,
+                },
+                ZertzActionResult::Capture {
+                    captured_marble: cm2,
+                },
             ) => {
                 assert_eq!(cm1, cm2);
             }

@@ -945,7 +945,6 @@ pub fn transform_action_old(
     // Call Rust transform_action
     let transformed = action_transform::transform_action(&action, transform, config);
     Ok(transformed.to_tuple(config))
-
 }
 
 /// Transform an action using symmetry operations

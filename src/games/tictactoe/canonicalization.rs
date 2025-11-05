@@ -203,6 +203,4 @@ pub fn transform_name(transform_idx: usize) -> &'static str {
 }
 
 #[cfg(test)]
-mod tests {
-
-}
+mod tests {}

@@ -110,36 +110,17 @@ impl PyZertzMCTS {
     /// - action_type: "PUT", "CAP", or "PASS"
     /// - action_data: Action-specific tuple or None
     /// - normalized_score: Visit count normalized to [0.0, 1.0]
-    pub fn last_child_statistics(&self) -> Vec<(String, Option<(usize, usize, usize)>, f32)> {
+    pub fn last_child_statistics(&self) -> Vec<(PyZertzAction, f32)> {
         let child_stats = self.search.last_child_stats.lock().unwrap();
-        let width = self.game.config().width;
-
         child_stats
             .iter()
-            .map(|(action, score)| match action {
-                ZertzAction::Placement {
-                    marble_type,
-                    dst_flat,
-                    remove_flat,
-                } => {
-                    let rem_flat = match remove_flat {
-                        Some(r) => *r,
-                        _ => width * width,
-                    };
-                    (
-                        "PUT".to_string(),
-                        Some((*marble_type, *dst_flat, rem_flat)),
-                        *score,
-                    )
-                }
-                ZertzAction::Capture { src_flat, dst_flat } => {
-                    (
-                        "CAP".to_string(),
-                        Some((0, *src_flat, *dst_flat)), // Note: only 3 values fit in tuple
-                        *score,
-                    )
-                }
-                ZertzAction::Pass => ("PASS".to_string(), None, *score),
+            .map(|(action, score)| {
+                (
+                    PyZertzAction {
+                        inner: action.clone(),
+                    },
+                    *score,
+                )
             })
             .collect()
     }

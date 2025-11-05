@@ -211,13 +211,17 @@ mod tests {
     fn test_zertz_action_placement_creation() {
         let config = BoardConfig::standard(37, 1).unwrap();
         let action = ZertzAction::Placement {
-            marble_type: 0,  // white
+            marble_type: 0, // white
             dst_flat: 3 * config.width + 2,
             remove_flat: Some(2 * config.width + 4),
         };
 
         match action {
-            ZertzAction::Placement { marble_type, dst_flat, remove_flat } => {
+            ZertzAction::Placement {
+                marble_type,
+                dst_flat,
+                remove_flat,
+            } => {
                 assert_eq!(marble_type, 0);
                 assert_eq!(dst_flat, 3 * config.width + 2);
                 assert_eq!(remove_flat, Some(2 * config.width + 4));
@@ -230,13 +234,17 @@ mod tests {
     fn test_zertz_action_placement_no_removal() {
         let config = BoardConfig::standard(37, 1).unwrap();
         let action = ZertzAction::Placement {
-            marble_type: 1,  // gray
+            marble_type: 1, // gray
             dst_flat: 4 * config.width + 3,
             remove_flat: None,
         };
 
         match action {
-            ZertzAction::Placement { marble_type, dst_flat, remove_flat } => {
+            ZertzAction::Placement {
+                marble_type,
+                dst_flat,
+                remove_flat,
+            } => {
                 assert_eq!(marble_type, 1);
                 assert_eq!(dst_flat, 4 * config.width + 3);
                 assert_eq!(remove_flat, None);
@@ -279,8 +287,16 @@ mod tests {
 
         match (&action, &cloned) {
             (
-                ZertzAction::Placement { marble_type: mt1, dst_flat: df1, remove_flat: rf1 },
-                ZertzAction::Placement { marble_type: mt2, dst_flat: df2, remove_flat: rf2 },
+                ZertzAction::Placement {
+                    marble_type: mt1,
+                    dst_flat: df1,
+                    remove_flat: rf1,
+                },
+                ZertzAction::Placement {
+                    marble_type: mt2,
+                    dst_flat: df2,
+                    remove_flat: rf2,
+                },
             ) => {
                 assert_eq!(mt1, mt2);
                 assert_eq!(df1, df2);

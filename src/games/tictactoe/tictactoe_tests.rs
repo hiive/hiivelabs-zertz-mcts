@@ -1,7 +1,9 @@
 #[cfg(test)]
 mod tests {
     use crate::game_trait::MCTSGame;
-    use crate::games::tictactoe::{TicTacToeAction, TicTacToeGame, PLAYER_X, PLAYER_O, PLAYER_X_WIN, PLAYER_O_WIN, DRAW};
+    use crate::games::tictactoe::{
+        TicTacToeAction, TicTacToeGame, DRAW, PLAYER_O, PLAYER_O_WIN, PLAYER_X, PLAYER_X_WIN,
+    };
     use ndarray::{Array1, Array3};
 
     #[test]
@@ -52,7 +54,10 @@ mod tests {
         spatial[[PLAYER_X, 0, 2]] = 1.0;
 
         assert!(game.is_terminal(&spatial.view(), &global.view()));
-        assert_eq!(game.get_outcome(&spatial.view(), &global.view()), PLAYER_X_WIN);
+        assert_eq!(
+            game.get_outcome(&spatial.view(), &global.view()),
+            PLAYER_X_WIN
+        );
     }
 
     #[test]
@@ -67,7 +72,10 @@ mod tests {
         spatial[[PLAYER_O, 2, 2]] = 1.0;
 
         assert!(game.is_terminal(&spatial.view(), &global.view()));
-        assert_eq!(game.get_outcome(&spatial.view(), &global.view()), PLAYER_O_WIN);
+        assert_eq!(
+            game.get_outcome(&spatial.view(), &global.view()),
+            PLAYER_O_WIN
+        );
     }
 
     #[test]

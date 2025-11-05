@@ -89,8 +89,8 @@ mod tests {
                 "Rotated symmetric position should have same canonical form"
             );
         }
-    }    
-    
+    }
+
     /// Helper to create a state with X marks at given positions
     fn create_state_x(positions: &[(usize, usize)]) -> Array3<f32> {
         let mut state = Array3::<f32>::zeros((2, 3, 3));
@@ -519,5 +519,4 @@ mod tests {
             );
         }
     }
-    
 }

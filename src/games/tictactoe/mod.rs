@@ -107,7 +107,9 @@ impl TicTacToeGame {
     fn is_board_full(spatial_state: &ArrayView3<f32>) -> bool {
         for row in 0..3 {
             for col in 0..3 {
-                if spatial_state[[PLAYER_X, row, col]] == 0.0 && spatial_state[[PLAYER_O, row, col]] == 0.0 {
+                if spatial_state[[PLAYER_X, row, col]] == 0.0
+                    && spatial_state[[PLAYER_O, row, col]] == 0.0
+                {
                     return false;
                 }
             }
@@ -130,7 +132,9 @@ impl MCTSGame for TicTacToeGame {
         for row in 0..3 {
             for col in 0..3 {
                 // Cell is empty if neither player has marked it
-                if spatial_state[[PLAYER_X, row, col]] == 0.0 && spatial_state[[PLAYER_O, row, col]] == 0.0 {
+                if spatial_state[[PLAYER_X, row, col]] == 0.0
+                    && spatial_state[[PLAYER_O, row, col]] == 0.0
+                {
                     actions.push(TicTacToeAction { row, col });
                 }
             }
@@ -151,7 +155,11 @@ impl MCTSGame for TicTacToeGame {
         spatial_state[[current_player, action.row, action.col]] = 1.0;
 
         // Switch player
-        global_state[0] = if current_player == PLAYER_X { PLAYER_O as f32 } else { PLAYER_X as f32 };
+        global_state[0] = if current_player == PLAYER_X {
+            PLAYER_O as f32
+        } else {
+            PLAYER_X as f32
+        };
 
         Ok(())
     }
@@ -201,7 +209,11 @@ impl MCTSGame for TicTacToeGame {
         root_player: usize,
     ) -> f32 {
         // Simple heuristic: count potential winning lines
-        let opponent = if root_player == PLAYER_X { PLAYER_O } else { PLAYER_X };
+        let opponent = if root_player == PLAYER_X {
+            PLAYER_O
+        } else {
+            PLAYER_X
+        };
 
         let mut score = 0.0;
 

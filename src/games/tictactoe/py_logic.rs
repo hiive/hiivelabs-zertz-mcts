@@ -18,13 +18,11 @@ use pyo3::prelude::*;
 /// Returns:
 ///     List of (row, col) tuples for empty squares
 #[pyfunction]
-pub fn get_valid_actions(
-    spatial_state: PyReadonlyArray3<f32>,
-) -> PyResult<Vec<(usize, usize)>> {
+pub fn get_valid_actions(spatial_state: PyReadonlyArray3<f32>) -> PyResult<Vec<(usize, usize)>> {
     let state = spatial_state.as_array();
     let game = TicTacToeGame::new();
     let dummy_global = Array1::zeros(1);
-    
+
     let actions = game.get_valid_actions(&state, &dummy_global.view());
     Ok(actions.into_iter().map(|a| (a.row, a.col)).collect())
 }
@@ -32,7 +30,7 @@ pub fn get_valid_actions(
 /// Apply an action to the state (mutates arrays in-place)
 ///
 /// Args:
-    ///     spatial_state: (2, 3, 3) array (MUTATED IN-PLACE)
+///     spatial_state: (2, 3, 3) array (MUTATED IN-PLACE)
 ///     global_state: (1,) array (MUTATED IN-PLACE)
 ///     row: Row index (0-2)
 ///     col: Column index (0-2)
@@ -48,14 +46,14 @@ pub fn apply_action<'py>(
 ) -> PyResult<PyTicTacToeActionResult> {
     let game = TicTacToeGame::new();
     let action = TicTacToeAction { row, col };
-    
+
     unsafe {
         let mut spatial_state_arr = spatial_state.as_array_mut();
         let mut global_state_arr = global_state.as_array_mut();
 
         // Apply action
         let _ = game.apply_action(&mut spatial_state_arr, &mut global_state_arr, &action);
-        
+
         // Check if terminal
         if game.is_terminal(&spatial_state_arr.view(), &global_state_arr.view()) {
             let outcome = game.get_outcome(&spatial_state_arr.view(), &global_state_arr.view());
@@ -147,6 +145,6 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(get_game_outcome, m)?)?;
     m.add_function(wrap_pyfunction!(get_current_player, m)?)?;
     m.add_function(wrap_pyfunction!(initial_state, m)?)?;
-    
+
     Ok(())
 }

@@ -29,13 +29,12 @@ use games::{
 };
 
 // Import game constants
-use games::tictactoe::{PLAYER_X, PLAYER_O, PLAYER_X_WIN, PLAYER_O_WIN, DRAW};
-use games::zertz::{
-    PLAYER_1_WIN, PLAYER_2_WIN, TIE, BOTH_LOSE,
-    STANDARD_MARBLES, BLITZ_MARBLES,
-    STANDARD_WIN_CONDITIONS, BLITZ_WIN_CONDITIONS,
-};
 use crate::games::zertz::{PLAYER_1, PLAYER_2};
+use games::tictactoe::{DRAW, PLAYER_O, PLAYER_O_WIN, PLAYER_X, PLAYER_X_WIN};
+use games::zertz::{
+    BLITZ_MARBLES, BLITZ_WIN_CONDITIONS, BOTH_LOSE, PLAYER_1_WIN, PLAYER_2_WIN, STANDARD_MARBLES,
+    STANDARD_WIN_CONDITIONS, TIE,
+};
 
 /// Generic MCTS engine with game-specific implementations
 ///
