@@ -959,8 +959,8 @@ pub fn transform_action_old(
         },
         ZertzAction::Capture { src_flat, dst_flat } => {
             // Convert start/dest flat indices back to direction + coordinates
-            let (start_y, start_x) = config.flat_to_yx(*src_flat);
-            let (dst_y, dst_x) = config.flat_to_yx(*dst_flat);
+            let (start_y, start_x) = config.flat_to_yx(src_flat);
+            let (dst_y, dst_x) = config.flat_to_yx(dst_flat);
 
             // Calculate direction
             let dy = dst_y as i32 - start_y as i32;
