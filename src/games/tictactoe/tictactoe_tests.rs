@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests {
     use crate::game_trait::MCTSGame;
-    use crate::games::tictactoe::{TicTacToeAction, TicTacToeGame};
+    use crate::games::tictactoe::{TicTacToeAction, TicTacToeGame, PLAYER_X, PLAYER_O, PLAYER_X_WIN, PLAYER_O_WIN, DRAW};
     use ndarray::{Array1, Array3};
 
     #[test]
@@ -9,7 +9,7 @@ mod tests {
         let (spatial, global) = TicTacToeGame::initial_state();
         assert_eq!(spatial.shape(), &[2, 3, 3]);
         assert_eq!(global.len(), 1);
-        assert_eq!(global[0], 0.0); // X starts
+        assert_eq!(global[0], PLAYER_X as f32); // X starts
     }
 
     #[test]
@@ -29,11 +29,11 @@ mod tests {
         let _ = game.apply_action(&mut spatial.view_mut(), &mut global.view_mut(), &action);
 
         // X should have marked center
-        assert_eq!(spatial[[0, 1, 1]], 1.0);
-        assert_eq!(spatial[[1, 1, 1]], 0.0);
+        assert_eq!(spatial[[PLAYER_X, 1, 1]], 1.0);
+        assert_eq!(spatial[[PLAYER_O, 1, 1]], 0.0);
 
         // Should switch to O
-        assert_eq!(global[0], 1.0);
+        assert_eq!(global[0], PLAYER_O as f32);
 
         // 8 cells remain
         let actions = game.get_valid_actions(&spatial.view(), &global.view());
@@ -44,56 +44,56 @@ mod tests {
     fn test_x_wins_row() {
         let game = TicTacToeGame::new();
         let mut spatial = Array3::zeros((2, 3, 3));
-        let global = Array1::from(vec![0.0]);
+        let global = Array1::from(vec![PLAYER_X as f32]);
 
         // X wins top row
-        spatial[[0, 0, 0]] = 1.0;
-        spatial[[0, 0, 1]] = 1.0;
-        spatial[[0, 0, 2]] = 1.0;
+        spatial[[PLAYER_X, 0, 0]] = 1.0;
+        spatial[[PLAYER_X, 0, 1]] = 1.0;
+        spatial[[PLAYER_X, 0, 2]] = 1.0;
 
         assert!(game.is_terminal(&spatial.view(), &global.view()));
-        assert_eq!(game.get_outcome(&spatial.view(), &global.view()), 1);
+        assert_eq!(game.get_outcome(&spatial.view(), &global.view()), PLAYER_X_WIN);
     }
 
     #[test]
     fn test_o_wins_diagonal() {
         let game = TicTacToeGame::new();
         let mut spatial = Array3::zeros((2, 3, 3));
-        let global = Array1::from(vec![1.0]);
+        let global = Array1::from(vec![PLAYER_O as f32]);
 
         // O wins main diagonal
-        spatial[[1, 0, 0]] = 1.0;
-        spatial[[1, 1, 1]] = 1.0;
-        spatial[[1, 2, 2]] = 1.0;
+        spatial[[PLAYER_O, 0, 0]] = 1.0;
+        spatial[[PLAYER_O, 1, 1]] = 1.0;
+        spatial[[PLAYER_O, 2, 2]] = 1.0;
 
         assert!(game.is_terminal(&spatial.view(), &global.view()));
-        assert_eq!(game.get_outcome(&spatial.view(), &global.view()), -1);
+        assert_eq!(game.get_outcome(&spatial.view(), &global.view()), PLAYER_O_WIN);
     }
 
     #[test]
     fn test_draw() {
         let game = TicTacToeGame::new();
         let mut spatial = Array3::zeros((2, 3, 3));
-        let global = Array1::from(vec![0.0]);
+        let global = Array1::from(vec![PLAYER_X as f32]);
 
         // Create a draw position:
         // X O X
         // O X X
         // O X O
-        spatial[[0, 0, 0]] = 1.0; // X
-        spatial[[1, 0, 1]] = 1.0; // O
-        spatial[[0, 0, 2]] = 1.0; // X
+        spatial[[PLAYER_X, 0, 0]] = 1.0; // X
+        spatial[[PLAYER_O, 0, 1]] = 1.0; // O
+        spatial[[PLAYER_X, 0, 2]] = 1.0; // X
 
-        spatial[[1, 1, 0]] = 1.0; // O
-        spatial[[0, 1, 1]] = 1.0; // X
-        spatial[[0, 1, 2]] = 1.0; // X
+        spatial[[PLAYER_O, 1, 0]] = 1.0; // O
+        spatial[[PLAYER_X, 1, 1]] = 1.0; // X
+        spatial[[PLAYER_X, 1, 2]] = 1.0; // X
 
-        spatial[[1, 2, 0]] = 1.0; // O
-        spatial[[0, 2, 1]] = 1.0; // X
-        spatial[[1, 2, 2]] = 1.0; // O
+        spatial[[PLAYER_O, 2, 0]] = 1.0; // O
+        spatial[[PLAYER_X, 2, 1]] = 1.0; // X
+        spatial[[PLAYER_O, 2, 2]] = 1.0; // O
 
         assert!(game.is_terminal(&spatial.view(), &global.view()));
-        assert_eq!(game.get_outcome(&spatial.view(), &global.view()), 0);
+        assert_eq!(game.get_outcome(&spatial.view(), &global.view()), DRAW);
     }
 
     #[test]
@@ -103,7 +103,7 @@ mod tests {
 
         let mut spatial2 = spatial1.clone();
         let global2 = global1.clone();
-        spatial2[[0, 0, 0]] = 1.0;
+        spatial2[[PLAYER_X, 0, 0]] = 1.0;
 
         let hash1 = game.hash_state(&spatial1.view(), &global1.view());
         let hash2 = game.hash_state(&spatial2.view(), &global2.view());

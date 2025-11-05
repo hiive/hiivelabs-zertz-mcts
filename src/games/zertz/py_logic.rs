@@ -377,7 +377,7 @@ pub fn get_supply_index(config: &BoardConfig, marble_type: char) -> usize {
 #[pyfunction]
 pub fn get_captured_index(config: &BoardConfig, player: usize, marble_type: char) -> usize {
     // Captured indices: P1: W=3, G=4, B=5; P2: W=6, G=7, B=8
-    // Player constants: PLAYER_1 = 0, PLAYER_2 = 1
+    // Player constants: logic::PLAYER_1 = 0, logic::PLAYER_2 = 1
     let marble_idx = match marble_type {
         'w' => 0,
         'g' => 1,

@@ -28,6 +28,10 @@ use games::{
     PyZertzActionResult, PyZertzMCTS,
 };
 
+// Import game constants
+use games::tictactoe::{PLAYER_X, PLAYER_O, PLAYER_X_WIN, PLAYER_O_WIN, DRAW};
+use games::zertz::{PLAYER_1_WIN, PLAYER_2_WIN, TIE, BOTH_LOSE, STANDARD_MARBLES, BLITZ_MARBLES};
+
 /// Generic MCTS engine with game-specific implementations
 ///
 /// Currently supports:
@@ -49,6 +53,15 @@ fn hiivelabs_mcts(m: &Bound<'_, PyModule>) -> PyResult<()> {
     zertz_mod.add_class::<PyZertzMCTS>()?;
     zertz_mod.add_class::<PyZertzAction>()?;
     zertz_mod.add_class::<PyZertzActionResult>()?;
+
+    // Zertz constants
+    zertz_mod.add("PLAYER_1_WIN", PLAYER_1_WIN)?;
+    zertz_mod.add("PLAYER_2_WIN", PLAYER_2_WIN)?;
+    zertz_mod.add("TIE", TIE)?;
+    zertz_mod.add("BOTH_LOSE", BOTH_LOSE)?;
+    zertz_mod.add("STANDARD_MARBLES", STANDARD_MARBLES)?;
+    zertz_mod.add("BLITZ_MARBLES", BLITZ_MARBLES)?;
+
     games::zertz::py_logic::register(&zertz_mod)?; // Zertz game logic functions
     m.add_submodule(&zertz_mod)?;
     sys_modules.set_item("hiivelabs_mcts.zertz", &zertz_mod)?;
@@ -66,6 +79,14 @@ fn hiivelabs_mcts(m: &Bound<'_, PyModule>) -> PyResult<()> {
     let tictactoe_mod = PyModule::new(m.py(), "tictactoe")?;
     tictactoe_mod.add_class::<PyTicTacToeMCTS>()?;
     tictactoe_mod.add_class::<PyTicTacToeActionResult>()?;
+
+    // TicTacToe constants
+    tictactoe_mod.add("PLAYER_X", PLAYER_X)?;
+    tictactoe_mod.add("PLAYER_O", PLAYER_O)?;
+    tictactoe_mod.add("PLAYER_X_WIN", PLAYER_X_WIN)?;
+    tictactoe_mod.add("PLAYER_O_WIN", PLAYER_O_WIN)?;
+    tictactoe_mod.add("DRAW", DRAW)?;
+
     games::tictactoe::py_logic::register(&tictactoe_mod)?; // TicTacToe game logic functions
     m.add_submodule(&tictactoe_mod)?;
     sys_modules.set_item("hiivelabs_mcts.tictactoe", &tictactoe_mod)?;

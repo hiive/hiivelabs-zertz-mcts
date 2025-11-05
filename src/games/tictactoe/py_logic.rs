@@ -4,7 +4,7 @@
 //! allowing Python code to call Rust game logic directly.
 
 use super::action_result::{PyTicTacToeActionResult, TicTacToeActionResult};
-use super::{TicTacToeAction, TicTacToeGame};
+use super::{TicTacToeAction, TicTacToeGame, DRAW};
 use crate::game_trait::MCTSGame;
 use ndarray::Array1;
 use numpy::{PyArray1, PyArray3, PyArrayMethods, PyReadonlyArray1, PyReadonlyArray3};
@@ -62,7 +62,7 @@ pub fn apply_action<'py>(
         // Check if terminal
         if game.is_terminal(&spatial_state_arr.view(), &global_state_arr.view()) {
             let outcome = game.get_outcome(&spatial_state_arr.view(), &global_state_arr.view());
-            if outcome == 0 {
+            if outcome == DRAW {
                 // Draw
                 Ok(PyTicTacToeActionResult {
                     inner: TicTacToeActionResult::Draw,

@@ -30,6 +30,15 @@ use ndarray::{Array1, Array3, ArrayView1, ArrayView3, ArrayViewMut1, ArrayViewMu
 
 pub use action_result::PyTicTacToeActionResult;
 
+// Player constants
+pub const PLAYER_X: usize = 0;
+pub const PLAYER_O: usize = 1;
+
+// Game outcome constants
+pub const PLAYER_X_WIN: i8 = 1;
+pub const PLAYER_O_WIN: i8 = -1;
+pub const DRAW: i8 = 0;
+
 /// Tic-Tac-Toe action: place mark at (row, col)
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct TicTacToeAction {
@@ -50,7 +59,7 @@ impl TicTacToeGame {
     pub fn initial_state() -> (Array3<f32>, Array1<f32>) {
         let spatial_state = Array3::zeros((2, 3, 3));
         let mut global_state = Array1::zeros(1);
-        global_state[0] = 0.0; // X (player 0) starts
+        global_state[0] = PLAYER_X as f32; // X starts
         (spatial_state, global_state)
     }
 
@@ -98,7 +107,7 @@ impl TicTacToeGame {
     fn is_board_full(spatial_state: &ArrayView3<f32>) -> bool {
         for row in 0..3 {
             for col in 0..3 {
-                if spatial_state[[0, row, col]] == 0.0 && spatial_state[[1, row, col]] == 0.0 {
+                if spatial_state[[PLAYER_X, row, col]] == 0.0 && spatial_state[[PLAYER_O, row, col]] == 0.0 {
                     return false;
                 }
             }
@@ -121,7 +130,7 @@ impl MCTSGame for TicTacToeGame {
         for row in 0..3 {
             for col in 0..3 {
                 // Cell is empty if neither player has marked it
-                if spatial_state[[0, row, col]] == 0.0 && spatial_state[[1, row, col]] == 0.0 {
+                if spatial_state[[PLAYER_X, row, col]] == 0.0 && spatial_state[[PLAYER_O, row, col]] == 0.0 {
                     actions.push(TicTacToeAction { row, col });
                 }
             }
@@ -142,7 +151,7 @@ impl MCTSGame for TicTacToeGame {
         spatial_state[[current_player, action.row, action.col]] = 1.0;
 
         // Switch player
-        global_state[0] = if current_player == 0 { 1.0 } else { 0.0 };
+        global_state[0] = if current_player == PLAYER_X { PLAYER_O as f32 } else { PLAYER_X as f32 };
 
         Ok(())
     }
@@ -153,24 +162,24 @@ impl MCTSGame for TicTacToeGame {
         _global_state: &ArrayView1<f32>,
     ) -> bool {
         // Terminal if either player has won or board is full
-        Self::check_three_in_row(spatial_state, 0)
-            || Self::check_three_in_row(spatial_state, 1)
+        Self::check_three_in_row(spatial_state, PLAYER_X)
+            || Self::check_three_in_row(spatial_state, PLAYER_O)
             || Self::is_board_full(spatial_state)
     }
 
     fn get_outcome(&self, spatial_state: &ArrayView3<f32>, _global_state: &ArrayView1<f32>) -> i8 {
         // Check X (player 0) win
-        if Self::check_three_in_row(spatial_state, 0) {
-            return 1; // X wins
+        if Self::check_three_in_row(spatial_state, PLAYER_X) {
+            return PLAYER_X_WIN;
         }
 
         // Check O (player 1) win
-        if Self::check_three_in_row(spatial_state, 1) {
-            return -1; // O wins
+        if Self::check_three_in_row(spatial_state, PLAYER_O) {
+            return PLAYER_O_WIN;
         }
 
         // Draw
-        0
+        DRAW
     }
 
     fn get_current_player(&self, global_state: &ArrayView1<f32>) -> usize {
@@ -192,7 +201,7 @@ impl MCTSGame for TicTacToeGame {
         root_player: usize,
     ) -> f32 {
         // Simple heuristic: count potential winning lines
-        let opponent = if root_player == 0 { 1 } else { 0 };
+        let opponent = if root_player == PLAYER_X { PLAYER_O } else { PLAYER_X };
 
         let mut score = 0.0;
 
@@ -255,9 +264,9 @@ impl MCTSGame for TicTacToeGame {
         for row in 0..3 {
             for col in 0..3 {
                 hash <<= 2;
-                if spatial_state[[0, row, col]] > 0.0 {
+                if spatial_state[[PLAYER_X, row, col]] > 0.0 {
                     hash |= 1; // X
-                } else if spatial_state[[1, row, col]] > 0.0 {
+                } else if spatial_state[[PLAYER_O, row, col]] > 0.0 {
                     hash |= 2; // O
                 }
                 // else 0 (empty)

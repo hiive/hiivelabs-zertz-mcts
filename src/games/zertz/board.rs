@@ -4,6 +4,7 @@ use std::collections::HashMap;
 
 use super::action::{PyZertzAction, ZertzAction};
 use super::action_result::{PyZertzActionResult, ZertzActionResult};
+use super::logic::{PLAYER_1, PLAYER_2};
 
 /// Game mode (Standard or Blitz)
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -153,8 +154,8 @@ impl BoardConfig {
             p2_cap_g: 7,
             p2_cap_b: 8,
             cur_player: 9,
-            player_1: 0,
-            player_2: 1,
+            player_1: PLAYER_1,
+            player_2: PLAYER_2,
             directions: vec![(1, 0), (0, -1), (-1, -1), (-1, 0), (0, 1), (1, 1)],
             marble_to_layer,
         })

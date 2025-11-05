@@ -46,6 +46,16 @@ class TransformFlags:
 class zertz:
     """Zertz game implementation submodule."""
 
+    # Game outcome constants
+    PLAYER_1_WIN: int  # = 1
+    PLAYER_2_WIN: int  # = -1
+    TIE: int  # = 0
+    BOTH_LOSE: int  # = -2
+
+    # Marble supply constants (white, gray, black)
+    STANDARD_MARBLES: Tuple[int, int, int]  # = (6, 8, 10)
+    BLITZ_MARBLES: Tuple[int, int, int]  # = (5, 7, 9)
+
     class BoardState:
         """
         Rust-backed board state representation for testing and comparison.
@@ -1637,6 +1647,15 @@ class zertz:
 
 class tictactoe:
     """TicTacToe game implementation submodule."""
+
+    # Player constants
+    PLAYER_X: int  # = 0
+    PLAYER_O: int  # = 1
+
+    # Game outcome constants
+    PLAYER_X_WIN: int  # = 1
+    PLAYER_O_WIN: int  # = -1
+    DRAW: int  # = 0
 
     class TicTacToeMCTS:
         """Monte Carlo Tree Search engine for Tic-Tac-Toe."""

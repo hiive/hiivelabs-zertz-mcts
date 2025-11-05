@@ -27,6 +27,14 @@ use smallvec::SmallVec;
 use std::collections::{HashSet, VecDeque};
 
 // ============================================================================
+// PLAYER CONSTANTS
+// ============================================================================
+
+/// Player indices
+pub const PLAYER_1: usize = 0;
+pub const PLAYER_2: usize = 1;
+
+// ============================================================================
 // GAME OUTCOME CONSTANTS
 // ============================================================================
 
@@ -39,6 +47,16 @@ pub const BOTH_LOSE: i8 = -2; // Tournament rule: both lose (collaboration detec
 // NOTE: Win thresholds configured per mode via BoardConfig::win_conditions
 // Standard: 3-of-each, or 4W/5G/6B
 // Blitz: 2-of-each, or 3W/4G/5B
+
+// ============================================================================
+// MARBLE SUPPLY CONSTANTS
+// ============================================================================
+
+/// Standard game marble supply: (white, gray, black)
+pub const STANDARD_MARBLES: (u8, u8, u8) = (6, 8, 10);
+
+/// Blitz game marble supply: (white, gray, black)
+pub const BLITZ_MARBLES: (u8, u8, u8) = (5, 7, 9);
 
 // ============================================================================
 // UTILITY FUNCTIONS

@@ -18,6 +18,6 @@
 pub mod tictactoe;
 pub mod zertz; // Zertz game (all Zertz code in submodules) // TicTacToe game (all TicTacToe code in submodules)
 
-// Re-export game types for convenience
+// Re-export game types and constants for convenience
 pub use tictactoe::{PyTicTacToeActionResult, PyTicTacToeMCTS};
 pub use zertz::{BoardConfig, BoardState, PyZertzAction, PyZertzActionResult, PyZertzMCTS};
