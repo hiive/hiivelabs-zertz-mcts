@@ -5,6 +5,7 @@
 
 use super::action_result::{PyTicTacToeActionResult, TicTacToeActionResult};
 use super::{TicTacToeAction, TicTacToeGame};
+use crate::game_trait::MCTSGame;
 use ndarray::Array1;
 use numpy::{PyArray1, PyArray3, PyArrayMethods, PyReadonlyArray1, PyReadonlyArray3};
 use pyo3::prelude::*;
