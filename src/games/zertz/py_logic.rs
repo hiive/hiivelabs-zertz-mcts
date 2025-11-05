@@ -864,7 +864,7 @@ pub fn transform_action_old(
     action_type: &str,
     action_data: &Bound<'_, pyo3::types::PyTuple>,
     transform: &str,
-) -> PyResult<(String, Vec<Option<usize>>)> {
+) -> PyResult<(String, Option<Vec<Option<usize>>>)> {
     // Convert Python tuple format to ZertzAction
     let action = match action_type {
         "PUT" => {
@@ -944,51 +944,8 @@ pub fn transform_action_old(
 
     // Call Rust transform_action
     let transformed = action_transform::transform_action(&action, transform, config);
+    Ok(transformed.to_tuple(config))
 
-    // Convert back to Python tuple format
-    match transformed {
-        ZertzAction::Placement {
-            marble_type,
-            dst_flat,
-            remove_flat,
-        } => match transformed.to_placement_action(config) {
-            Some(p) => Ok(p),
-            _ => Err(pyo3::exceptions::PyValueError::new_err(
-                "Invalid placement action conversion",
-            )),
-        },
-        ZertzAction::Capture { src_flat, dst_flat } => {
-            // Convert start/dest flat indices back to direction + coordinates
-            let (start_y, start_x) = config.flat_to_yx(src_flat);
-            let (dst_y, dst_x) = config.flat_to_yx(dst_flat);
-
-            // Calculate direction
-            let dy = dst_y as i32 - start_y as i32;
-            let dx = dst_x as i32 - start_x as i32;
-
-            // Divide by 2 to get direction vector (since jump is 2 steps)
-            let dir_dy = dy / 2;
-            let dir_dx = dx / 2;
-
-            // Find direction index
-            let directions = config.get_directions();
-            let direction_idx = directions
-                .iter()
-                .position(|&(dy, dx)| dy == dir_dy && dx == dir_dx)
-                .ok_or_else(|| {
-                    pyo3::exceptions::PyValueError::new_err(format!(
-                        "Could not find direction for ({}, {})",
-                        dir_dy, dir_dx
-                    ))
-                })?;
-
-            Ok((
-                "CAP".to_string(),
-                vec![Some(direction_idx), Some(start_y), Some(start_x)],
-            ))
-        }
-        ZertzAction::Pass => Ok(("PASS".to_string(), vec![])),
-    }
 }
 
 /// Transform an action using symmetry operations

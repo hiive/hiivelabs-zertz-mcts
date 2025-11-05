@@ -16,7 +16,7 @@ use ndarray::{Array3, ArrayView3};
 ///
 /// # Returns
 /// Rotated state array
-fn rotate_90_clockwise(state: &ArrayView3<f32>, k: i32) -> Array3<f32> {
+pub(crate) fn rotate_90_clockwise(state: &ArrayView3<f32>, k: i32) -> Array3<f32> {
     let k = ((k % 4) + 4) % 4; // Normalize to 0-3
     let mut result = state.to_owned();
 
@@ -42,7 +42,7 @@ fn rotate_90_clockwise(state: &ArrayView3<f32>, k: i32) -> Array3<f32> {
 ///
 /// # Returns
 /// Horizontally flipped state
-fn reflect_horizontal(state: &ArrayView3<f32>) -> Array3<f32> {
+pub(crate) fn reflect_horizontal(state: &ArrayView3<f32>) -> Array3<f32> {
     let mut result = state.to_owned();
 
     for layer in 0..2 {
@@ -64,7 +64,7 @@ fn reflect_horizontal(state: &ArrayView3<f32>) -> Array3<f32> {
 ///
 /// # Returns
 /// Vertically flipped state
-fn reflect_vertical(state: &ArrayView3<f32>) -> Array3<f32> {
+pub(crate) fn reflect_vertical(state: &ArrayView3<f32>) -> Array3<f32> {
     let mut result = state.to_owned();
 
     for layer in 0..2 {
@@ -133,7 +133,7 @@ fn compute_canonical_key(state: &ArrayView3<f32>) -> Vec<u8> {
 ///
 /// # Returns
 /// Vector of 8 transformed states (one for each symmetry)
-fn generate_symmetries(state: &ArrayView3<f32>) -> Vec<Array3<f32>> {
+pub(crate) fn generate_symmetries(state: &ArrayView3<f32>) -> Vec<Array3<f32>> {
     let mut symmetries = Vec::with_capacity(8);
 
     // 4 rotations
@@ -204,94 +204,5 @@ pub fn transform_name(transform_idx: usize) -> &'static str {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use ndarray::Array3;
 
-    #[test]
-    fn test_rotate_90_identity() {
-        let state = Array3::<f32>::zeros((2, 3, 3));
-        let rotated = rotate_90_clockwise(&state.view(), 0);
-        assert_eq!(state, rotated);
-    }
-
-    #[test]
-    fn test_rotate_90_full_circle() {
-        let mut state = Array3::<f32>::zeros((2, 3, 3));
-        state[[0, 0, 0]] = 1.0; // Top-left X
-
-        let rotated = rotate_90_clockwise(&state.view(), 4);
-        assert_eq!(state, rotated, "4 rotations should return to original");
-    }
-
-    #[test]
-    fn test_rotate_90_clockwise_once() {
-        let mut state = Array3::<f32>::zeros((2, 3, 3));
-        state[[0, 0, 0]] = 1.0; // Top-left
-
-        let rotated = rotate_90_clockwise(&state.view(), 1);
-        // After 90° clockwise: top-left (0,0) -> top-right (0,2)
-        assert_eq!(rotated[[0, 0, 2]], 1.0);
-        assert_eq!(rotated[[0, 0, 0]], 0.0);
-    }
-
-    #[test]
-    fn test_reflect_horizontal() {
-        let mut state = Array3::<f32>::zeros((2, 3, 3));
-        state[[0, 0, 1]] = 1.0; // Top-middle
-
-        let reflected = reflect_horizontal(&state.view());
-        // After horizontal flip: top-middle (0,1) -> bottom-middle (2,1)
-        assert_eq!(reflected[[0, 2, 1]], 1.0);
-        assert_eq!(reflected[[0, 0, 1]], 0.0);
-    }
-
-    #[test]
-    fn test_reflect_vertical() {
-        let mut state = Array3::<f32>::zeros((2, 3, 3));
-        state[[0, 1, 0]] = 1.0; // Middle-left
-
-        let reflected = reflect_vertical(&state.view());
-        // After vertical flip: middle-left (1,0) -> middle-right (1,2)
-        assert_eq!(reflected[[0, 1, 2]], 1.0);
-        assert_eq!(reflected[[0, 1, 0]], 0.0);
-    }
-
-    #[test]
-    fn test_symmetries_count() {
-        let state = Array3::<f32>::zeros((2, 3, 3));
-        let symmetries = generate_symmetries(&state.view());
-        assert_eq!(symmetries.len(), 8, "Should generate 8 symmetries");
-    }
-
-    #[test]
-    fn test_canonicalize_empty_board() {
-        let state = Array3::<f32>::zeros((2, 3, 3));
-        let (canonical, idx) = canonicalize_state(&state.view());
-
-        // Empty board should be its own canonical form
-        assert_eq!(
-            idx, 0,
-            "Empty board should be canonical (identity transform)"
-        );
-        assert_eq!(canonical, state);
-    }
-
-    #[test]
-    fn test_canonicalize_symmetric_positions() {
-        // Create a symmetric position (X in center)
-        let mut state = Array3::<f32>::zeros((2, 3, 3));
-        state[[0, 1, 1]] = 1.0; // X in center
-
-        let (canonical1, _) = canonicalize_state(&state.view());
-
-        // All rotations should produce the same canonical form
-        for k in 1..4 {
-            let rotated = rotate_90_clockwise(&state.view(), k);
-            let (canonical2, _) = canonicalize_state(&rotated.view());
-            assert_eq!(
-                canonical1, canonical2,
-                "Rotated symmetric position should have same canonical form"
-            );
-        }
-    }
 }

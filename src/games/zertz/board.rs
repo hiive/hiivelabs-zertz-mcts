@@ -2,8 +2,8 @@ use numpy::{PyArray1, PyArray3, PyArray5, PyArrayMethods, PyReadonlyArray1, PyRe
 use pyo3::prelude::*;
 use std::collections::HashMap;
 
-use super::action::{PyZertzAction, ZertzAction};
-use super::action_result::{PyZertzActionResult, ZertzActionResult};
+use super::action::{PyZertzAction};
+use super::action_result::{PyZertzActionResult};
 use super::logic::{PLAYER_1, PLAYER_2};
 
 /// Game mode (Standard or Blitz)
@@ -349,7 +349,7 @@ impl BoardState {
     /// # Deprecated
     /// This method is deprecated. Use `apply_placement()` with a `ZertzAction` instead.
     #[deprecated(
-        since = "0.1.0",
+        since = "0.6.0",
         note = "Use apply_placement() with ZertzAction instead"
     )]
     #[pyo3(signature=(marble_type, dst_y, dst_x, remove_y=None, remove_x=None))]
@@ -389,7 +389,7 @@ impl BoardState {
     /// # Deprecated
     /// This method is deprecated. Use `apply_capture()` with a `ZertzAction` instead.
     #[deprecated(
-        since = "0.1.0",
+        since = "0.6.0",
         note = "Use apply_capture() with ZertzAction instead"
     )]
     fn apply_capture_old(

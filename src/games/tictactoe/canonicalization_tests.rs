@@ -3,6 +3,94 @@ mod tests {
     use super::super::canonicalization::*;
     use ndarray::Array3;
 
+    #[test]
+    fn test_rotate_90_identity() {
+        let state = Array3::<f32>::zeros((2, 3, 3));
+        let rotated = rotate_90_clockwise(&state.view(), 0);
+        assert_eq!(state, rotated);
+    }
+
+    #[test]
+    fn test_rotate_90_full_circle() {
+        let mut state = Array3::<f32>::zeros((2, 3, 3));
+        state[[0, 0, 0]] = 1.0; // Top-left X
+
+        let rotated = rotate_90_clockwise(&state.view(), 4);
+        assert_eq!(state, rotated, "4 rotations should return to original");
+    }
+
+    #[test]
+    fn test_rotate_90_clockwise_once() {
+        let mut state = Array3::<f32>::zeros((2, 3, 3));
+        state[[0, 0, 0]] = 1.0; // Top-left
+
+        let rotated = rotate_90_clockwise(&state.view(), 1);
+        // After 90° clockwise: top-left (0,0) -> top-right (0,2)
+        assert_eq!(rotated[[0, 0, 2]], 1.0);
+        assert_eq!(rotated[[0, 0, 0]], 0.0);
+    }
+
+    #[test]
+    fn test_reflect_horizontal() {
+        let mut state = Array3::<f32>::zeros((2, 3, 3));
+        state[[0, 0, 1]] = 1.0; // Top-middle
+
+        let reflected = reflect_horizontal(&state.view());
+        // After horizontal flip: top-middle (0,1) -> bottom-middle (2,1)
+        assert_eq!(reflected[[0, 2, 1]], 1.0);
+        assert_eq!(reflected[[0, 0, 1]], 0.0);
+    }
+
+    #[test]
+    fn test_reflect_vertical() {
+        let mut state = Array3::<f32>::zeros((2, 3, 3));
+        state[[0, 1, 0]] = 1.0; // Middle-left
+
+        let reflected = reflect_vertical(&state.view());
+        // After vertical flip: middle-left (1,0) -> middle-right (1,2)
+        assert_eq!(reflected[[0, 1, 2]], 1.0);
+        assert_eq!(reflected[[0, 1, 0]], 0.0);
+    }
+
+    #[test]
+    fn test_symmetries_count() {
+        let state = Array3::<f32>::zeros((2, 3, 3));
+        let symmetries = generate_symmetries(&state.view());
+        assert_eq!(symmetries.len(), 8, "Should generate 8 symmetries");
+    }
+
+    #[test]
+    fn test_canonicalize_empty_board() {
+        let state = Array3::<f32>::zeros((2, 3, 3));
+        let (canonical, idx) = canonicalize_state(&state.view());
+
+        // Empty board should be its own canonical form
+        assert_eq!(
+            idx, 0,
+            "Empty board should be canonical (identity transform)"
+        );
+        assert_eq!(canonical, state);
+    }
+
+    #[test]
+    fn test_canonicalize_symmetric_positions() {
+        // Create a symmetric position (X in center)
+        let mut state = Array3::<f32>::zeros((2, 3, 3));
+        state[[0, 1, 1]] = 1.0; // X in center
+
+        let (canonical1, _) = canonicalize_state(&state.view());
+
+        // All rotations should produce the same canonical form
+        for k in 1..4 {
+            let rotated = rotate_90_clockwise(&state.view(), k);
+            let (canonical2, _) = canonicalize_state(&rotated.view());
+            assert_eq!(
+                canonical1, canonical2,
+                "Rotated symmetric position should have same canonical form"
+            );
+        }
+    }    
+    
     /// Helper to create a state with X marks at given positions
     fn create_state_x(positions: &[(usize, usize)]) -> Array3<f32> {
         let mut state = Array3::<f32>::zeros((2, 3, 3));
@@ -431,4 +519,5 @@ mod tests {
             );
         }
     }
+    
 }

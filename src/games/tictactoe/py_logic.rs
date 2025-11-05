@@ -52,12 +52,9 @@ pub fn apply_action<'py>(
     unsafe {
         let mut spatial_state_arr = spatial_state.as_array_mut();
         let mut global_state_arr = global_state.as_array_mut();
-        
-        // Get current player before applying action
-        let current_player = global_state_arr[0] as usize;
-        
+
         // Apply action
-        game.apply_action(&mut spatial_state_arr, &mut global_state_arr, &action);
+        let _ = game.apply_action(&mut spatial_state_arr, &mut global_state_arr, &action);
         
         // Check if terminal
         if game.is_terminal(&spatial_state_arr.view(), &global_state_arr.view()) {

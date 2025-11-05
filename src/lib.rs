@@ -35,6 +35,7 @@ use games::zertz::{
     STANDARD_MARBLES, BLITZ_MARBLES,
     STANDARD_WIN_CONDITIONS, BLITZ_WIN_CONDITIONS,
 };
+use crate::games::zertz::{PLAYER_1, PLAYER_2};
 
 /// Generic MCTS engine with game-specific implementations
 ///
@@ -59,6 +60,8 @@ fn hiivelabs_mcts(m: &Bound<'_, PyModule>) -> PyResult<()> {
     zertz_mod.add_class::<PyZertzActionResult>()?;
 
     // Zertz constants
+    zertz_mod.add("PLAYER_1", PLAYER_1)?;
+    zertz_mod.add("PLAYER_2", PLAYER_2)?;
     zertz_mod.add("PLAYER_1_WIN", PLAYER_1_WIN)?;
     zertz_mod.add("PLAYER_2_WIN", PLAYER_2_WIN)?;
     zertz_mod.add("TIE", TIE)?;

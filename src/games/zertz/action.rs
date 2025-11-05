@@ -51,7 +51,7 @@ impl ZertzAction {
                 let (dst_y, dst_x) = config.flat_to_yx(*dst_flat);
                 let (rem_y, rem_x) = config.flat_to_optional_yx(*remove_flat);
                 (
-                    "PUT".to_string(),
+                    self.action_type(),
                     Option::from(vec![
                         Some(*marble_type),
                         Some(dst_y),
@@ -70,44 +70,6 @@ impl ZertzAction {
                 )
             }
             ZertzAction::Pass => (self.action_type(), None),
-        }
-    }
-
-    pub fn to_placement_action(
-        &self,
-        config: &BoardConfig,
-    ) -> Option<(String, Vec<Option<usize>>)> {
-        // Returns ((dst_y, dst_x), optional (rem_y, rem_x))
-        match self {
-            ZertzAction::Placement {
-                marble_type,
-                dst_flat,
-                remove_flat,
-            } => {
-                let (dst_y, dst_x) = config.flat_to_yx(*dst_flat);
-                let (rem_y, rem_x) = config.flat_to_optional_yx(*remove_flat);
-
-                Some((
-                    self.action_type(),
-                    vec![Some(*marble_type), Some(dst_y), Some(dst_x), rem_y, rem_x],
-                ))
-            }
-            _ => None,
-        }
-    }
-
-    pub fn to_capture_action(&self, config: &BoardConfig) -> Option<(String, Vec<usize>)> {
-        // Returns ((start_y, start_x), (dst_y, dst_x))
-        match self {
-            ZertzAction::Capture { src_flat, dst_flat } => {
-                // Return (None, src_flat, dst_flat)
-                // None distinguishes captures from placements (which have Some(marble_type))
-                // Python will unflatten both coordinates and calculate cap_index as midpoint
-                let (src_y, src_x) = config.flat_to_yx(*src_flat);
-                let (dst_y, dst_x) = config.flat_to_yx(*dst_flat);
-                Some((self.action_type(), vec![src_y, src_x, dst_y, dst_x]))
-            }
-            _ => None,
         }
     }
 }

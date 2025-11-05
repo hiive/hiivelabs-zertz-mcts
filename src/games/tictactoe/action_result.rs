@@ -17,9 +17,7 @@ pub enum TicTacToeActionResult {
 
 impl TicTacToeActionResult {
     /// Create a normal move result
-    pub fn move_result() -> Self {
-        TicTacToeActionResult::Move
-    }
+    pub fn move_result() -> Self { TicTacToeActionResult::Move }
 
     /// Create a winning result
     pub fn win() -> Self {
