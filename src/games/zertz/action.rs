@@ -239,3 +239,136 @@ impl PyZertzAction {
         hasher.finish()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::games::zertz::BoardConfig;
+
+    #[test]
+    fn test_zertz_action_placement_creation() {
+        let config = BoardConfig::standard(37, 1).unwrap();
+        let action = ZertzAction::Placement {
+            marble_type: 0,  // white
+            dst_flat: 3 * config.width + 2,
+            remove_flat: Some(2 * config.width + 4),
+        };
+
+        match action {
+            ZertzAction::Placement { marble_type, dst_flat, remove_flat } => {
+                assert_eq!(marble_type, 0);
+                assert_eq!(dst_flat, 3 * config.width + 2);
+                assert_eq!(remove_flat, Some(2 * config.width + 4));
+            }
+            _ => panic!("Expected Placement variant"),
+        }
+    }
+
+    #[test]
+    fn test_zertz_action_placement_no_removal() {
+        let config = BoardConfig::standard(37, 1).unwrap();
+        let action = ZertzAction::Placement {
+            marble_type: 1,  // gray
+            dst_flat: 4 * config.width + 3,
+            remove_flat: None,
+        };
+
+        match action {
+            ZertzAction::Placement { marble_type, dst_flat, remove_flat } => {
+                assert_eq!(marble_type, 1);
+                assert_eq!(dst_flat, 4 * config.width + 3);
+                assert_eq!(remove_flat, None);
+            }
+            _ => panic!("Expected Placement variant"),
+        }
+    }
+
+    #[test]
+    fn test_zertz_action_capture_creation() {
+        let config = BoardConfig::standard(37, 1).unwrap();
+        let action = ZertzAction::Capture {
+            src_flat: 3 * config.width + 3,
+            dst_flat: 1 * config.width + 3,
+        };
+
+        match action {
+            ZertzAction::Capture { src_flat, dst_flat } => {
+                assert_eq!(src_flat, 3 * config.width + 3);
+                assert_eq!(dst_flat, 1 * config.width + 3);
+            }
+            _ => panic!("Expected Capture variant"),
+        }
+    }
+
+    #[test]
+    fn test_zertz_action_pass_creation() {
+        let action = ZertzAction::Pass;
+        assert!(matches!(action, ZertzAction::Pass));
+    }
+
+    #[test]
+    fn test_zertz_action_clone() {
+        let action = ZertzAction::Placement {
+            marble_type: 2,
+            dst_flat: 15,
+            remove_flat: Some(20),
+        };
+        let cloned = action.clone();
+
+        match (&action, &cloned) {
+            (
+                ZertzAction::Placement { marble_type: mt1, dst_flat: df1, remove_flat: rf1 },
+                ZertzAction::Placement { marble_type: mt2, dst_flat: df2, remove_flat: rf2 },
+            ) => {
+                assert_eq!(mt1, mt2);
+                assert_eq!(df1, df2);
+                assert_eq!(rf1, rf2);
+            }
+            _ => panic!("Clone did not produce same variant"),
+        }
+    }
+
+    #[test]
+    fn test_zertz_action_equality() {
+        let action1 = ZertzAction::Capture {
+            src_flat: 10,
+            dst_flat: 20,
+        };
+        let action2 = ZertzAction::Capture {
+            src_flat: 10,
+            dst_flat: 20,
+        };
+        let action3 = ZertzAction::Capture {
+            src_flat: 10,
+            dst_flat: 21,
+        };
+
+        assert_eq!(action1, action2);
+        assert_ne!(action1, action3);
+    }
+
+    #[test]
+    fn test_zertz_action_hash() {
+        use std::collections::HashSet;
+
+        let action1 = ZertzAction::Placement {
+            marble_type: 0,
+            dst_flat: 10,
+            remove_flat: None,
+        };
+        let action2 = ZertzAction::Placement {
+            marble_type: 0,
+            dst_flat: 10,
+            remove_flat: None,
+        };
+        let action3 = ZertzAction::Pass;
+
+        let mut set = HashSet::new();
+        set.insert(action1.clone());
+        set.insert(action2);
+        set.insert(action3);
+
+        // action1 and action2 are equal, so set should have 2 elements
+        assert_eq!(set.len(), 2);
+    }
+}
