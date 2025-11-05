@@ -116,12 +116,15 @@ class zertz:
         def apply_placement(
             self,
             action: ZertzAction
-        ) -> None:
+        ) -> ZertzActionResult:
             """
             Apply a placement action to the board (mutating).
 
             Args:
                 action: ZertzAction (must be a Placement variant)
+
+            Returns:
+                ZertzActionResult containing isolation capture information
 
             Raises:
                 ValueError: If action is not a Placement variant
@@ -131,12 +134,15 @@ class zertz:
         def apply_capture(
             self,
             action: ZertzAction
-        ) -> None:
+        ) -> ZertzActionResult:
             """
             Apply a capture action to the board (mutating).
 
             Args:
                 action: ZertzAction (must be a Capture variant)
+
+            Returns:
+                ZertzActionResult containing captured marble information
 
             Raises:
                 ValueError: If action is not a Capture variant
@@ -1418,7 +1424,7 @@ class zertz:
         spatial_state: npt.NDArray[np.float32],
         global_state: npt.NDArray[np.float32],
         action: ZertzAction,
-    ) -> List[Tuple[int, int, int]]:
+    ) -> ZertzActionResult:
         """
         Apply placement action to state IN-PLACE.
 
@@ -1429,8 +1435,7 @@ class zertz:
             action: ZertzAction (must be a Placement variant)
 
         Returns:
-            List of captured marble positions from isolation as (marble_layer, y, x) tuples,
-            or empty list if no isolation captures occurred
+            ZertzActionResult containing isolation capture information
 
         Raises:
             ValueError: If action is not a Placement variant
@@ -1443,7 +1448,7 @@ class zertz:
         spatial_state: npt.NDArray[np.float32],
         global_state: npt.NDArray[np.float32],
         action: ZertzAction,
-    ) -> None:
+    ) -> ZertzActionResult:
         """
         Apply capture action to state IN-PLACE.
 
@@ -1452,6 +1457,9 @@ class zertz:
             spatial_state: (L, H, W) spatial_state state array (MUTATED IN-PLACE)
             global_state: (10,) global_state state array (MUTATED IN-PLACE)
             action: ZertzAction (must be a Capture variant)
+
+        Returns:
+            ZertzActionResult containing captured marble information
 
         Raises:
             ValueError: If action is not a Capture variant

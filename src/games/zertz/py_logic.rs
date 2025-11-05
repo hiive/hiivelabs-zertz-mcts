@@ -4,7 +4,7 @@
 //! allowing Python code to call Rust game logic directly.
 
 use super::action::{PyZertzAction, ZertzAction};
-use super::action_result::PyZertzActionResult;
+use super::action_result::{PyZertzActionResult, ZertzActionResult};
 use super::{action_transform, board::BoardConfig, canonicalization, logic, notation};
 use crate::canonicalization_transform_flags::{PyTransformFlags, TransformFlags};
 use numpy::{PyArray1, PyArray3, PyArray5, PyArrayMethods, PyReadonlyArray1, PyReadonlyArray3};
@@ -602,14 +602,14 @@ pub fn apply_capture_action_old<'py>(
 /// Apply a placement action (mutates arrays in-place)
 ///
 /// Accepts a ZertzAction which must be a Placement variant.
-/// Returns list of captured marble positions from isolation as (marble_layer, y, x) tuples.
+/// Returns a ZertzActionResult containing isolation capture information.
 #[pyfunction]
 pub fn apply_placement_action<'py>(
     config: &BoardConfig,
     spatial_state: &Bound<'py, PyArray3<f32>>,
     global_state: &Bound<'py, PyArray1<f32>>,
     action: &PyZertzAction,
-) -> PyResult<Vec<(usize, usize, usize)>> {
+) -> PyResult<PyZertzActionResult> {
     // Extract placement data from action
     match &action.inner {
         ZertzAction::Placement {
@@ -622,7 +622,7 @@ pub fn apply_placement_action<'py>(
             let dst_x = dst_flat % width;
             let (remove_y, remove_x) = remove_flat.map(|flat| (flat / width, flat % width)).unzip();
 
-            let captured_marbles = unsafe {
+            let isolation_captures = unsafe {
                 let mut spatial_state_arr = spatial_state.as_array_mut();
                 let mut global_state_arr = global_state.as_array_mut();
                 logic::apply_placement(
@@ -637,7 +637,9 @@ pub fn apply_placement_action<'py>(
                 )
                 .map_err(pyo3::exceptions::PyValueError::new_err)?
             };
-            Ok(captured_marbles)
+
+            let result = ZertzActionResult::placement(isolation_captures);
+            Ok(PyZertzActionResult { inner: result })
         }
         _ => Err(pyo3::exceptions::PyValueError::new_err(
             "Action must be a Placement variant for apply_placement_action",
@@ -648,13 +650,14 @@ pub fn apply_placement_action<'py>(
 /// Apply a capture action (mutates arrays in-place)
 ///
 /// Accepts a ZertzAction which must be a Capture variant.
+/// Returns a ZertzActionResult containing captured marble information.
 #[pyfunction]
 pub fn apply_capture_action<'py>(
     config: &BoardConfig,
     spatial_state: &Bound<'py, PyArray3<f32>>,
     global_state: &Bound<'py, PyArray1<f32>>,
     action: &PyZertzAction,
-) -> PyResult<()> {
+) -> PyResult<PyZertzActionResult> {
     // Extract capture data from action
     match &action.inner {
         ZertzAction::Capture { src_flat, dst_flat } => {
@@ -663,6 +666,25 @@ pub fn apply_capture_action<'py>(
             let start_x = src_flat % width;
             let dest_y = dst_flat / width;
             let dest_x = dst_flat % width;
+
+            // Calculate captured marble position (midpoint between start and dest)
+            let cap_y = (start_y + dest_y) / 2;
+            let cap_x = (start_x + dest_x) / 2;
+
+            // Extract marble type at captured position before applying the action
+            let captured_marble_type = unsafe {
+                let spatial_state_arr = spatial_state.as_array();
+                // Find which marble layer has a marble at this position
+                (1..4)
+                    .find(|&layer| spatial_state_arr[[layer, cap_y, cap_x]] > 0.0)
+                    .map(|layer| layer - 1) // Convert layer to marble type (0=white, 1=gray, 2=black)
+                    .ok_or_else(|| {
+                        pyo3::exceptions::PyValueError::new_err(format!(
+                            "No marble found at capture position ({}, {})",
+                            cap_y, cap_x
+                        ))
+                    })?
+            };
 
             unsafe {
                 let mut spatial_state_arr = spatial_state.as_array_mut();
@@ -677,7 +699,9 @@ pub fn apply_capture_action<'py>(
                     dest_x,
                 );
             }
-            Ok(())
+
+            let result = ZertzActionResult::capture(captured_marble_type, cap_y, cap_x);
+            Ok(PyZertzActionResult { inner: result })
         }
         _ => Err(pyo3::exceptions::PyValueError::new_err(
             "Action must be a Capture variant for apply_capture_action",

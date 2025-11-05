@@ -2,6 +2,9 @@ use numpy::{PyArray1, PyArray3, PyArray5, PyArrayMethods, PyReadonlyArray1, PyRe
 use pyo3::prelude::*;
 use std::collections::HashMap;
 
+use super::action::{PyZertzAction, ZertzAction};
+use super::action_result::{PyZertzActionResult, ZertzActionResult};
+
 /// Game mode (Standard or Blitz)
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum GameMode {
@@ -417,11 +420,13 @@ impl BoardState {
     }
 
     /// Apply a placement action using ZertzAction
+    ///
+    /// Returns a ZertzActionResult containing isolation capture information.
     fn apply_placement(
         &mut self,
         py: Python<'_>,
         action: &PyZertzAction,
-    ) -> PyResult<()> {
+    ) -> PyResult<PyZertzActionResult> {
         // Extract placement data from action
         match &action.inner {
             ZertzAction::Placement {
@@ -439,7 +444,7 @@ impl BoardState {
                     self.spatial_state.bind(py).readonly().as_array().to_owned();
                 let mut global = self.global.bind(py).readonly().as_array().to_owned();
 
-                super::logic::apply_placement(
+                let isolation_captures = super::logic::apply_placement(
                     &self.config,
                     &mut spatial_state.view_mut(),
                     &mut global.view_mut(),
@@ -455,7 +460,8 @@ impl BoardState {
                 self.spatial_state = PyArray3::from_array(py, &spatial_state).into();
                 self.global = PyArray1::from_array(py, &global).into();
 
-                Ok(())
+                let result = ZertzActionResult::placement(isolation_captures);
+                Ok(PyZertzActionResult { inner: result })
             }
             _ => Err(pyo3::exceptions::PyValueError::new_err(
                 "Action must be a Placement variant for apply_placement",
@@ -464,7 +470,13 @@ impl BoardState {
     }
 
     /// Apply a capture action using ZertzAction
-    fn apply_capture(&mut self, py: Python<'_>, action: &PyZertzAction) -> PyResult<()> {
+    ///
+    /// Returns a ZertzActionResult containing captured marble information.
+    fn apply_capture(
+        &mut self,
+        py: Python<'_>,
+        action: &PyZertzAction,
+    ) -> PyResult<PyZertzActionResult> {
         // Extract capture data from action
         match &action.inner {
             ZertzAction::Capture { src_flat, dst_flat } => {
@@ -474,9 +486,24 @@ impl BoardState {
                 let dest_y = dst_flat / width;
                 let dest_x = dst_flat % width;
 
+                // Calculate captured marble position (midpoint between start and dest)
+                let cap_y = (start_y + dest_y) / 2;
+                let cap_x = (start_x + dest_x) / 2;
+
                 let mut spatial_state =
                     self.spatial_state.bind(py).readonly().as_array().to_owned();
                 let mut global = self.global.bind(py).readonly().as_array().to_owned();
+
+                // Extract marble type at captured position before applying the action
+                let captured_marble_type = (1..4)
+                    .find(|&layer| spatial_state[[layer, cap_y, cap_x]] > 0.0)
+                    .map(|layer| layer - 1) // Convert layer to marble type (0=white, 1=gray, 2=black)
+                    .ok_or_else(|| {
+                        pyo3::exceptions::PyValueError::new_err(format!(
+                            "No marble found at capture position ({}, {})",
+                            cap_y, cap_x
+                        ))
+                    })?;
 
                 super::logic::apply_capture(
                     &self.config,
@@ -492,7 +519,8 @@ impl BoardState {
                 self.spatial_state = PyArray3::from_array(py, &spatial_state).into();
                 self.global = PyArray1::from_array(py, &global).into();
 
-                Ok(())
+                let result = ZertzActionResult::capture(captured_marble_type, cap_y, cap_x);
+                Ok(PyZertzActionResult { inner: result })
             }
             _ => Err(pyo3::exceptions::PyValueError::new_err(
                 "Action must be a Capture variant for apply_capture",
