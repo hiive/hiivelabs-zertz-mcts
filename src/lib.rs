@@ -30,7 +30,11 @@ use games::{
 
 // Import game constants
 use games::tictactoe::{PLAYER_X, PLAYER_O, PLAYER_X_WIN, PLAYER_O_WIN, DRAW};
-use games::zertz::{PLAYER_1_WIN, PLAYER_2_WIN, TIE, BOTH_LOSE, STANDARD_MARBLES, BLITZ_MARBLES};
+use games::zertz::{
+    PLAYER_1_WIN, PLAYER_2_WIN, TIE, BOTH_LOSE,
+    STANDARD_MARBLES, BLITZ_MARBLES,
+    STANDARD_WIN_CONDITIONS, BLITZ_WIN_CONDITIONS,
+};
 
 /// Generic MCTS engine with game-specific implementations
 ///
@@ -61,6 +65,8 @@ fn hiivelabs_mcts(m: &Bound<'_, PyModule>) -> PyResult<()> {
     zertz_mod.add("BOTH_LOSE", BOTH_LOSE)?;
     zertz_mod.add("STANDARD_MARBLES", STANDARD_MARBLES)?;
     zertz_mod.add("BLITZ_MARBLES", BLITZ_MARBLES)?;
+    zertz_mod.add("STANDARD_WIN_CONDITIONS", STANDARD_WIN_CONDITIONS)?;
+    zertz_mod.add("BLITZ_WIN_CONDITIONS", BLITZ_WIN_CONDITIONS)?;
 
     games::zertz::py_logic::register(&zertz_mod)?; // Zertz game logic functions
     m.add_submodule(&zertz_mod)?;

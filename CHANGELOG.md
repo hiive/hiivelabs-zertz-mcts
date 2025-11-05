@@ -19,6 +19,7 @@ All notable changes to this project will be documented in this file.
     - Player constants: `PLAYER_1 = 0`, `PLAYER_2 = 1`
     - Outcome constants: `PLAYER_1_WIN = 1`, `PLAYER_2_WIN = -1`, `TIE = 0`, `BOTH_LOSE = -2`
     - Marble supply constants: `STANDARD_MARBLES = (6, 8, 10)`, `BLITZ_MARBLES = (5, 7, 9)`
+    - Win condition constants: `STANDARD_WIN_CONDITIONS = (3, 4, 5, 6)`, `BLITZ_WIN_CONDITIONS = (2, 3, 4, 5)`
     - Available in Python via `hiivelabs_mcts.zertz` module
   - Root-level exports: `PLAYER_1 = 0`, `PLAYER_2 = 1` for general use
   - All constants documented in type stubs (`hiivelabs_mcts.pyi`)

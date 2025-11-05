@@ -56,6 +56,10 @@ class zertz:
     STANDARD_MARBLES: Tuple[int, int, int]  # = (6, 8, 10)
     BLITZ_MARBLES: Tuple[int, int, int]  # = (5, 7, 9)
 
+    # Win condition constants (each_color, white_only, gray_only, black_only)
+    STANDARD_WIN_CONDITIONS: Tuple[int, int, int, int]  # = (3, 4, 5, 6)
+    BLITZ_WIN_CONDITIONS: Tuple[int, int, int, int]  # = (2, 3, 4, 5)
+
     class BoardState:
         """
         Rust-backed board state representation for testing and comparison.

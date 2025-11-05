@@ -44,5 +44,9 @@ mod zobrist_tests;
 pub use action::PyZertzAction;
 pub use action_result::PyZertzActionResult;
 pub use board::{BoardConfig, BoardState};
-pub use logic::{PLAYER_1, PLAYER_2, PLAYER_1_WIN, PLAYER_2_WIN, TIE, BOTH_LOSE, STANDARD_MARBLES, BLITZ_MARBLES};
+pub use logic::{
+    PLAYER_1, PLAYER_2, PLAYER_1_WIN, PLAYER_2_WIN, TIE, BOTH_LOSE,
+    STANDARD_MARBLES, BLITZ_MARBLES,
+    STANDARD_WIN_CONDITIONS, BLITZ_WIN_CONDITIONS,
+};
 pub use py_mcts::PyZertzMCTS;

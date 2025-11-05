@@ -201,7 +201,8 @@ PLAYER_2 = 1
 ```python
 from hiivelabs_mcts.zertz import (
     PLAYER_1_WIN, PLAYER_2_WIN, TIE, BOTH_LOSE,
-    STANDARD_MARBLES, BLITZ_MARBLES
+    STANDARD_MARBLES, BLITZ_MARBLES,
+    STANDARD_WIN_CONDITIONS, BLITZ_WIN_CONDITIONS
 )
 
 # Outcome constants
@@ -213,6 +214,10 @@ BOTH_LOSE = -2     # Tournament rule: collaboration detected
 # Marble supply (white, gray, black)
 STANDARD_MARBLES = (6, 8, 10)  # Standard mode
 BLITZ_MARBLES = (5, 7, 9)      # Blitz mode
+
+# Win conditions (each_color, white_only, gray_only, black_only)
+STANDARD_WIN_CONDITIONS = (3, 4, 5, 6)  # Standard: 3 of each OR 4W/5G/6B
+BLITZ_WIN_CONDITIONS = (2, 3, 4, 5)     # Blitz: 2 of each OR 3W/4G/5B
 ```
 
 ### TicTacToe Constants

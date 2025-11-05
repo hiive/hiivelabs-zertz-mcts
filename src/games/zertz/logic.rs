@@ -59,6 +59,18 @@ pub const STANDARD_MARBLES: (u8, u8, u8) = (6, 8, 10);
 pub const BLITZ_MARBLES: (u8, u8, u8) = (5, 7, 9);
 
 // ============================================================================
+// WIN CONDITION CONSTANTS
+// ============================================================================
+
+/// Standard game win conditions: (each_color, white_only, gray_only, black_only)
+/// Win by capturing 3 of each color OR 4 white OR 5 gray OR 6 black
+pub const STANDARD_WIN_CONDITIONS: (u8, u8, u8, u8) = (3, 4, 5, 6);
+
+/// Blitz game win conditions: (each_color, white_only, gray_only, black_only)
+/// Win by capturing 2 of each color OR 3 white OR 4 gray OR 5 black
+pub const BLITZ_WIN_CONDITIONS: (u8, u8, u8, u8) = (2, 3, 4, 5);
+
+// ============================================================================
 // UTILITY FUNCTIONS
 // ============================================================================
 
