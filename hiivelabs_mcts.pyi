@@ -115,6 +115,36 @@ class zertz:
 
         def apply_placement(
             self,
+            action: ZertzAction
+        ) -> None:
+            """
+            Apply a placement action to the board (mutating).
+
+            Args:
+                action: ZertzAction (must be a Placement variant)
+
+            Raises:
+                ValueError: If action is not a Placement variant
+            """
+            ...
+
+        def apply_capture(
+            self,
+            action: ZertzAction
+        ) -> None:
+            """
+            Apply a capture action to the board (mutating).
+
+            Args:
+                action: ZertzAction (must be a Capture variant)
+
+            Raises:
+                ValueError: If action is not a Capture variant
+            """
+            ...
+
+        def apply_placement_old(
+            self,
             marble_type: int,
             dst_y: int,
             dst_x: int,
@@ -123,6 +153,9 @@ class zertz:
         ) -> None:
             """
             Apply a placement action to the board (mutating).
+
+            .. deprecated::
+                Use :meth:`apply_placement` with a :class:`ZertzAction` instead.
 
             Args:
                 marble_type: Marble type (0=white, 1=gray, 2=black)
@@ -133,19 +166,24 @@ class zertz:
             """
             ...
 
-        def apply_capture(
+        def apply_capture_old(
             self,
             start_y: int,
             start_x: int,
-            direction: int
+            dest_y: int,
+            dest_x: int
         ) -> None:
             """
             Apply a capture action to the board (mutating).
 
+            .. deprecated::
+                Use :meth:`apply_capture` with a :class:`ZertzAction` instead.
+
             Args:
                 start_y: Starting Y coordinate
                 start_x: Starting X coordinate
-                direction: Direction index (0-5 for 6 hexagonal directions)
+                dest_y: Destination Y coordinate
+                dest_x: Destination X coordinate
             """
             ...
 
@@ -1379,6 +1417,52 @@ class zertz:
         config: BoardConfig,
         spatial_state: npt.NDArray[np.float32],
         global_state: npt.NDArray[np.float32],
+        action: ZertzAction,
+    ) -> List[Tuple[int, int, int]]:
+        """
+        Apply placement action to state IN-PLACE.
+
+        Args:
+            config: BoardConfig
+            spatial_state: (L, H, W) spatial_state state array (MUTATED IN-PLACE)
+            global_state: (10,) global_state state array (MUTATED IN-PLACE)
+            action: ZertzAction (must be a Placement variant)
+
+        Returns:
+            List of captured marble positions from isolation as (marble_layer, y, x) tuples,
+            or empty list if no isolation captures occurred
+
+        Raises:
+            ValueError: If action is not a Placement variant
+        """
+        ...
+
+
+    def apply_capture_action(
+        config: BoardConfig,
+        spatial_state: npt.NDArray[np.float32],
+        global_state: npt.NDArray[np.float32],
+        action: ZertzAction,
+    ) -> None:
+        """
+        Apply capture action to state IN-PLACE.
+
+        Args:
+            config: BoardConfig
+            spatial_state: (L, H, W) spatial_state state array (MUTATED IN-PLACE)
+            global_state: (10,) global_state state array (MUTATED IN-PLACE)
+            action: ZertzAction (must be a Capture variant)
+
+        Raises:
+            ValueError: If action is not a Capture variant
+        """
+        ...
+
+
+    def apply_placement_action_old(
+        config: BoardConfig,
+        spatial_state: npt.NDArray[np.float32],
+        global_state: npt.NDArray[np.float32],
         marble_type: int,
         dst_y: int,
         dst_x: int,
@@ -1387,6 +1471,9 @@ class zertz:
     ) -> List[Tuple[int, int, int]]:
         """
         Apply placement action to state IN-PLACE.
+
+        .. deprecated::
+            Use :func:`apply_placement_action` with a :class:`ZertzAction` instead.
 
         Args:
             config: BoardConfig
@@ -1405,24 +1492,29 @@ class zertz:
         ...
 
 
-    def apply_capture_action(
+    def apply_capture_action_old(
         config: BoardConfig,
         spatial_state: npt.NDArray[np.float32],
         global_state: npt.NDArray[np.float32],
-        src_y: int,
-        src_x: int,
-        direction: int,
+        start_y: int,
+        start_x: int,
+        dest_y: int,
+        dest_x: int,
     ) -> None:
         """
         Apply capture action to state IN-PLACE.
+
+        .. deprecated::
+            Use :func:`apply_capture_action` with a :class:`ZertzAction` instead.
 
         Args:
             config: BoardConfig
             spatial_state: (L, H, W) spatial_state state array (MUTATED IN-PLACE)
             global_state: (10,) global_state state array (MUTATED IN-PLACE)
-            src_y: Starting Y coordinate
-            src_x: Starting X coordinate
-            direction: Direction index (0-5 for 6 hexagonal directions)
+            start_y: Starting Y coordinate
+            start_x: Starting X coordinate
+            dest_y: Destination Y coordinate
+            dest_x: Destination X coordinate
         """
         ...
 
@@ -1467,12 +1559,42 @@ class zertz:
 
     def transform_action(
         config: BoardConfig,
+        action: ZertzAction,
+        transform: str,
+    ) -> ZertzAction:
+        """
+        Transform an action using symmetry operations.
+
+        Applies rotation, mirror, and/or translation transforms to a ZertzAction.
+        This is used for action canonicalization and replay with symmetries.
+
+        Args:
+            config: BoardConfig specifying board size
+            action: ZertzAction to transform
+            transform: Transform string (e.g., "R60", "MR120", "T1,0_R180M")
+
+        Returns:
+            Transformed ZertzAction
+
+        Examples:
+            >>> config = BoardConfig.standard_config(37)
+            >>> action = ZertzAction.placement(config, 0, 3, 3, None, None)
+            >>> transformed = transform_action(config, action, "R60")
+        """
+        ...
+
+
+    def transform_action_old(
+        config: BoardConfig,
         action_type: str,
         action_data: Tuple,
         transform: str,
     ) -> Tuple[str, List[Optional[int]]]:
         """
         Transform an action using symmetry operations.
+
+        .. deprecated::
+            Use :func:`transform_action` with a :class:`ZertzAction` instead.
 
         Applies rotation, mirror, and/or translation transforms to an action tuple.
         This is used for action canonicalization and replay with symmetries.
@@ -1491,11 +1613,11 @@ class zertz:
 
         Examples:
             >>> config = BoardConfig.standard_config(37)
-            >>> transform_action(config, "PUT", (0, 10, 15), "R60")
+            >>> transform_action_old(config, "PUT", (0, 10, 15), "R60")
             ('PUT', [0, 12, 17])
-            >>> transform_action(config, "CAP", (0, 3, 3), "MR120")
+            >>> transform_action_old(config, "CAP", (0, 3, 3), "MR120")
             ('CAP', [2, 4, 2])
-            >>> transform_action(config, "PASS", (), "R60")
+            >>> transform_action_old(config, "PASS", (), "R60")
             ('PASS', [])
         """
         ...

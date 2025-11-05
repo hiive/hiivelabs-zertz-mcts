@@ -342,8 +342,14 @@ impl BoardState {
 
     /// Apply a placement action (for testing comparison with Python backend)
     ///
+    /// # Deprecated
+    /// This method is deprecated. Use `apply_placement()` with a `ZertzAction` instead.
+    #[deprecated(
+        since = "0.1.0",
+        note = "Use apply_placement() with ZertzAction instead"
+    )]
     #[pyo3(signature=(marble_type, dst_y, dst_x, remove_y=None, remove_x=None))]
-    fn apply_placement(
+    fn apply_placement_old(
         &mut self,
         py: Python<'_>,
         marble_type: usize,
@@ -375,7 +381,14 @@ impl BoardState {
     }
 
     /// Apply a capture action (for testing comparison with Python backend)
-    fn apply_capture(
+    ///
+    /// # Deprecated
+    /// This method is deprecated. Use `apply_capture()` with a `ZertzAction` instead.
+    #[deprecated(
+        since = "0.1.0",
+        note = "Use apply_capture() with ZertzAction instead"
+    )]
+    fn apply_capture_old(
         &mut self,
         py: Python<'_>,
         start_y: usize,
@@ -401,6 +414,90 @@ impl BoardState {
         self.global = PyArray1::from_array(py, &global).into();
 
         Ok(())
+    }
+
+    /// Apply a placement action using ZertzAction
+    fn apply_placement(
+        &mut self,
+        py: Python<'_>,
+        action: &PyZertzAction,
+    ) -> PyResult<()> {
+        // Extract placement data from action
+        match &action.inner {
+            ZertzAction::Placement {
+                marble_type,
+                dst_flat,
+                remove_flat,
+            } => {
+                let width = self.config.width;
+                let dst_y = dst_flat / width;
+                let dst_x = dst_flat % width;
+                let (remove_y, remove_x) =
+                    remove_flat.map(|flat| (flat / width, flat % width)).unzip();
+
+                let mut spatial_state =
+                    self.spatial_state.bind(py).readonly().as_array().to_owned();
+                let mut global = self.global.bind(py).readonly().as_array().to_owned();
+
+                super::logic::apply_placement(
+                    &self.config,
+                    &mut spatial_state.view_mut(),
+                    &mut global.view_mut(),
+                    *marble_type,
+                    dst_y,
+                    dst_x,
+                    remove_y,
+                    remove_x,
+                )
+                .map_err(pyo3::exceptions::PyValueError::new_err)?;
+
+                // Update stored arrays
+                self.spatial_state = PyArray3::from_array(py, &spatial_state).into();
+                self.global = PyArray1::from_array(py, &global).into();
+
+                Ok(())
+            }
+            _ => Err(pyo3::exceptions::PyValueError::new_err(
+                "Action must be a Placement variant for apply_placement",
+            )),
+        }
+    }
+
+    /// Apply a capture action using ZertzAction
+    fn apply_capture(&mut self, py: Python<'_>, action: &PyZertzAction) -> PyResult<()> {
+        // Extract capture data from action
+        match &action.inner {
+            ZertzAction::Capture { src_flat, dst_flat } => {
+                let width = self.config.width;
+                let start_y = src_flat / width;
+                let start_x = src_flat % width;
+                let dest_y = dst_flat / width;
+                let dest_x = dst_flat % width;
+
+                let mut spatial_state =
+                    self.spatial_state.bind(py).readonly().as_array().to_owned();
+                let mut global = self.global.bind(py).readonly().as_array().to_owned();
+
+                super::logic::apply_capture(
+                    &self.config,
+                    &mut spatial_state.view_mut(),
+                    &mut global.view_mut(),
+                    start_y,
+                    start_x,
+                    dest_y,
+                    dest_x,
+                );
+
+                // Update stored arrays
+                self.spatial_state = PyArray3::from_array(py, &spatial_state).into();
+                self.global = PyArray1::from_array(py, &global).into();
+
+                Ok(())
+            }
+            _ => Err(pyo3::exceptions::PyValueError::new_err(
+                "Action must be a Capture variant for apply_capture",
+            )),
+        }
     }
 
     /// Get spatial_state state (for testing)
