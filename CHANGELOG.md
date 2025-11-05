@@ -40,9 +40,13 @@ All notable changes to this project will be documented in this file.
   - Added comprehensive docstrings with parameter descriptions and return value documentation
 
 - **Code organization improvements**
-  - Applied DRY principle: eliminated ~90 lines of duplicate code
-  - BoardState methods now delegate to module-level functions
+  - Applied DRY principle: eliminated ~115 lines of duplicate code
+  - BoardState methods now delegate to module-level functions (thin wrappers)
   - Single source of truth for action application logic
+  - All coordinate conversions use BoardConfig helper methods
+    - Replaced 10 manual `flat / width, flat % width` conversions with `config.flat_to_yx()`
+    - Replaced 10 manual `y * width + x` conversions with `config.yx_to_flat()`
+    - Improved maintainability and reduced error potential
 
 ### Deprecated
 
