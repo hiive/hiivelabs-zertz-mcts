@@ -100,12 +100,12 @@ fn translate_action(
                 let nx = (rx as i32 + dx) as usize;
                 assert!(ny < config.width && nx < config.width);
                 assert!(layout[ny][nx]);
-                ny * config.width + nx
+                config.yx_to_flat(ny, nx)
             });
 
             ZertzAction::Placement {
                 marble_type: *marble_type,
-                dst_flat: new_dst_y * config.width + new_dst_x,
+                dst_flat: config.yx_to_flat(new_dst_y, new_dst_x),
                 remove_flat: new_remove_flat,
             }
         }
@@ -122,8 +122,8 @@ fn translate_action(
             assert!(layout[new_src_y][new_src_x]);
 
             ZertzAction::Capture {
-                src_flat: new_src_y * config.width + new_src_x,
-                dst_flat: new_dst_y * config.width + new_dst_x,
+                src_flat: config.yx_to_flat(new_src_y, new_src_x),
+                dst_flat: config.yx_to_flat(new_dst_y, new_dst_x),
             }
         }
         ZertzAction::Pass => ZertzAction::Pass,
@@ -173,12 +173,12 @@ fn apply_orientation(
                     ax_to_yx,
                 )
                 .expect("removal outside board under transform");
-                ny as usize * config.width + nx as usize
+                config.yx_to_flat(ny as usize, nx as usize)
             });
 
             ZertzAction::Placement {
                 marble_type: *marble_type,
-                dst_flat: new_dst_y as usize * config.width + new_dst_x as usize,
+                dst_flat: config.yx_to_flat(new_dst_y as usize, new_dst_x as usize),
                 remove_flat: new_remove_flat,
             }
         }
@@ -211,8 +211,8 @@ fn apply_orientation(
             .expect("capture dest outside board under transform");
 
             ZertzAction::Capture {
-                src_flat: new_src_y as usize * config.width + new_src_x as usize,
-                dst_flat: new_dst_y as usize * config.width + new_dst_x as usize,
+                src_flat: config.yx_to_flat(new_src_y as usize, new_src_x as usize),
+                dst_flat: config.yx_to_flat(new_dst_y as usize, new_dst_x as usize),
             }
         }
         ZertzAction::Pass => ZertzAction::Pass,

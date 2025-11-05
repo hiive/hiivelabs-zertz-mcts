@@ -617,10 +617,8 @@ pub fn apply_placement_action<'py>(
             dst_flat,
             remove_flat,
         } => {
-            let width = config.width;
-            let dst_y = dst_flat / width;
-            let dst_x = dst_flat % width;
-            let (remove_y, remove_x) = remove_flat.map(|flat| (flat / width, flat % width)).unzip();
+            let (dst_y, dst_x) = config.flat_to_yx(*dst_flat);
+            let (remove_y, remove_x) = config.flat_to_optional_yx(*remove_flat);
 
             let isolation_captures = unsafe {
                 let mut spatial_state_arr = spatial_state.as_array_mut();
@@ -661,11 +659,8 @@ pub fn apply_capture_action<'py>(
     // Extract capture data from action
     match &action.inner {
         ZertzAction::Capture { src_flat, dst_flat } => {
-            let width = config.width;
-            let start_y = src_flat / width;
-            let start_x = src_flat % width;
-            let dest_y = dst_flat / width;
-            let dest_x = dst_flat % width;
+            let (start_y, start_x) = config.flat_to_yx(*src_flat);
+            let (dest_y, dest_x) = config.flat_to_yx(*dst_flat);
 
             // Calculate captured marble position (midpoint between start and dest)
             let cap_y = (start_y + dest_y) / 2;
@@ -870,8 +865,6 @@ pub fn transform_action_old(
     action_data: &Bound<'_, pyo3::types::PyTuple>,
     transform: &str,
 ) -> PyResult<(String, Vec<Option<usize>>)> {
-    let width = config.width;
-
     // Convert Python tuple format to ZertzAction
     let action = match action_type {
         "PUT" => {
@@ -935,8 +928,8 @@ pub fn transform_action_old(
                 ));
             }
 
-            let src_flat = y * width + x;
-            let dst_flat = (dst_y as usize) * width + (dst_x as usize);
+            let src_flat = config.yx_to_flat(y, x);
+            let dst_flat = config.yx_to_flat(dst_y as usize, dst_x as usize);
 
             ZertzAction::Capture { src_flat, dst_flat }
         }
@@ -966,10 +959,8 @@ pub fn transform_action_old(
         },
         ZertzAction::Capture { src_flat, dst_flat } => {
             // Convert start/dest flat indices back to direction + coordinates
-            let start_y = src_flat / width;
-            let start_x = src_flat % width;
-            let dst_y = dst_flat / width;
-            let dst_x = dst_flat % width;
+            let (start_y, start_x) = config.flat_to_yx(*src_flat);
+            let (dst_y, dst_x) = config.flat_to_yx(*dst_flat);
 
             // Calculate direction
             let dy = dst_y as i32 - start_y as i32;
