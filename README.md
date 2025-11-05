@@ -134,6 +134,15 @@ The trait requires implementing:
   - Will be removed in a future major version
   - Maintained for backward compatibility only
 
+- **Old action functions** - *Deprecated* - Use ZertzAction-based equivalents instead
+  - `apply_placement_action_old()` → Use `apply_placement_action(config, spatial_state, global_state, action: ZertzAction)`
+  - `apply_capture_action_old()` → Use `apply_capture_action(config, spatial_state, global_state, action: ZertzAction)`
+  - `transform_action_old()` → Use `transform_action(config, action: ZertzAction, transform: str)`
+  - `BoardState.apply_placement_old()` → Use `BoardState.apply_placement(action: ZertzAction)`
+  - `BoardState.apply_capture_old()` → Use `BoardState.apply_capture(action: ZertzAction)`
+  - These functions are marked deprecated in Rust and will be removed in a future major version
+  - New functions provide better type safety and return structured `ZertzActionResult` objects
+
 ## Zertz State Encoding
 - Spatial tensor shape: `(t * 4 + 1, width, width)`
   Layer 0 stores ring presence, layers 1–3 track colour occupancy across timesteps, the final layer carries capture overlays when history is provided.
