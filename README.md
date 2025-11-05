@@ -184,6 +184,56 @@ algebraic_to_coordinate("A4", config)  # Returns (0, 0)
 - Actions are simple `(row, col)` tuples (0-indexed).
 - Minimal encoding demonstrates the basic requirements for implementing `MCTSGame`.
 
+## Game Constants
+
+The library exports comprehensive constants for consistent player and outcome references:
+
+### Root-level Constants
+```python
+from hiivelabs_mcts import PLAYER_1, PLAYER_2
+
+# Generic player indices (works for both games)
+PLAYER_1 = 0
+PLAYER_2 = 1
+```
+
+### Zertz Constants
+```python
+from hiivelabs_mcts.zertz import (
+    PLAYER_1_WIN, PLAYER_2_WIN, TIE, BOTH_LOSE,
+    STANDARD_MARBLES, BLITZ_MARBLES
+)
+
+# Outcome constants
+PLAYER_1_WIN = 1   # Player 1 wins
+PLAYER_2_WIN = -1  # Player 2 wins
+TIE = 0            # Draw/tie
+BOTH_LOSE = -2     # Tournament rule: collaboration detected
+
+# Marble supply (white, gray, black)
+STANDARD_MARBLES = (6, 8, 10)  # Standard mode
+BLITZ_MARBLES = (5, 7, 9)      # Blitz mode
+```
+
+### TicTacToe Constants
+```python
+from hiivelabs_mcts.tictactoe import (
+    PLAYER_X, PLAYER_O,
+    PLAYER_X_WIN, PLAYER_O_WIN, DRAW
+)
+
+# Player constants
+PLAYER_X = 0  # X player (goes first)
+PLAYER_O = 1  # O player (goes second)
+
+# Outcome constants
+PLAYER_X_WIN = 1   # X wins
+PLAYER_O_WIN = -1  # O wins
+DRAW = 0           # Draw/tie
+```
+
+All constants are fully documented in the type stubs (`hiivelabs_mcts.pyi`) for IDE support.
+
 ## Development
 - `cargo test` covers rule regression tests and fast MCTS smoke checks.
 - `cargo fmt` and `cargo clippy -- -D warnings` keep formatting and lints consistent with CI.

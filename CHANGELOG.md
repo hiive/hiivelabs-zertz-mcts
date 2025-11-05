@@ -10,6 +10,24 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **Game constants for consistent player and outcome references** - Added comprehensive constants for both games
+  - **TicTacToe constants**:
+    - Player constants: `PLAYER_X = 0`, `PLAYER_O = 1`
+    - Outcome constants: `PLAYER_X_WIN = 1`, `PLAYER_O_WIN = -1`, `DRAW = 0`
+    - Available in Python via `hiivelabs_mcts.tictactoe` module
+  - **Zertz constants**:
+    - Player constants: `PLAYER_1 = 0`, `PLAYER_2 = 1`
+    - Outcome constants: `PLAYER_1_WIN = 1`, `PLAYER_2_WIN = -1`, `TIE = 0`, `BOTH_LOSE = -2`
+    - Marble supply constants: `STANDARD_MARBLES = (6, 8, 10)`, `BLITZ_MARBLES = (5, 7, 9)`
+    - Available in Python via `hiivelabs_mcts.zertz` module
+  - Root-level exports: `PLAYER_1 = 0`, `PLAYER_2 = 1` for general use
+  - All constants documented in type stubs (`hiivelabs_mcts.pyi`)
+  - Benefits:
+    - Replaces magic numbers with semantic named constants
+    - Improves code clarity and maintainability
+    - Consistent references across Rust and Python code
+    - Better IDE support with type hints
+
 - **ZertzAction-based API improvements** - Major refactoring to standardize on structured action types
   - All apply functions now accept `ZertzAction` instead of individual parameters
   - All apply functions now return `ZertzActionResult` with structured outcome data
